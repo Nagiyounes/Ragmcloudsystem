@@ -398,6 +398,18 @@
             transform: scale(1.02);
             box-shadow: 0 4px 12px rgba(237, 137, 54, 0.3);
         }
+
+        /* NEW: Logout Button Styles */
+        .logout-btn {
+            background: linear-gradient(135deg, #f56565, #c53030);
+            color: white;
+            transition: all 0.3s ease;
+        }
+
+        .logout-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(245, 101, 101, 0.4);
+        }
     </style>
 </head>
 <body class="text-white">
@@ -504,6 +516,11 @@
                 <!-- NEW: Stop Bot Button -->
                 <button id="stopBotBtn" class="w-full bg-red-600 hover:bg-red-700 py-2 rounded-lg font-bold mb-2 transition-colors">
                     <i class="fas fa-stop mr-2"></i>إيقاف البوت
+                </button>
+
+                <!-- NEW: Logout Button -->
+                <button id="logoutBtn" class="w-full logout-btn py-2 rounded-lg font-bold mb-2">
+                    <i class="fas fa-sign-out-alt mr-2"></i>تسجيل الخروج
                 </button>
                 
                 <!-- AI Mode Toggle -->
@@ -744,6 +761,7 @@
         const closeQR = document.getElementById('closeQR');
         const reconnectBtn = document.getElementById('reconnectBtn');
         const stopBotBtn = document.getElementById('stopBotBtn');
+        const logoutBtn = document.getElementById('logoutBtn'); // NEW: Logout button
         const whatsappStatus = document.getElementById('whatsappStatus');
         const botStatus = document.getElementById('botStatus');
         const aiToggle = document.getElementById('aiToggle');
@@ -828,8 +846,12 @@
                 // Auto-fill promotional message for Ragmcloud ERP
                 bulkMessage.value = "🚀 نظام رقم كلاود ERP السحابي! حلول متكاملة للمحاسبة، المخزون، الموارد البشرية، والمزيد. جلسة استشارية مجانية! 📞 +966555111222 🌐 ragmcloud.sa";
                 
-                // Authenticate socket connection
-                socket.emit('authenticate', authToken);
+                // Authenticate socket connection - wait for currentUser to be loaded
+                setTimeout(() => {
+                    if (currentUser) {
+                        socket.emit('authenticate', authToken);
+                    }
+                }, 1000);
                 
             } catch (error) {
                 console.error('Failed to initialize app:', error);
@@ -861,22 +883,34 @@
                 }, 2000);
             });
 
-            // 🆕 USER-SPECIFIC WHATSAPP EVENTS
-            socket.on('user_status', (data) => {
-                updateWhatsAppStatus(data);
-            });
+            // 🆕 FIXED: USER-SPECIFIC WHATSAPP EVENTS - Listen for current user's events
+            socket.on('authenticated', (userData) => {
+                console.log('Socket authenticated for user:', userData);
+                
+                // Set up user-specific event listeners
+                const userId = currentUser.id;
+                
+                // 🆕 FIXED: Listen for user-specific events
+                socket.on(`user_status_${userId}`, (data) => {
+                    console.log('Received user status:', data);
+                    updateWhatsAppStatus(data);
+                });
 
-            socket.on('user_qr', (qrCodeUrl) => {
-                showQRCode(qrCodeUrl);
-            });
+                socket.on(`user_qr_${userId}`, (data) => {
+                    console.log('Received QR code for user:', userId);
+                    showQRCode(data.qrCode);
+                });
 
-            socket.on('user_bot_status', (data) => {
-                isBotStopped = data.stopped;
-                updateBotStatusUI();
-            });
+                socket.on(`user_bot_status_${userId}`, (data) => {
+                    console.log('Received bot status:', data);
+                    isBotStopped = data.stopped;
+                    updateBotStatusUI();
+                });
 
-            socket.on('user_message', (data) => {
-                handleUserMessage(data);
+                socket.on(`user_message_${userId}`, (data) => {
+                    console.log('Received user message:', data);
+                    handleUserMessage(data);
+                });
             });
 
             // NEW: Bot status event
@@ -935,6 +969,11 @@
                 const newState = !isBotStopped;
                 socket.emit('user_toggle_bot', { stop: newState });
                 showToast(newState ? '🛑 جاري إيقاف البوت...' : '🚀 جاري تشغيل البوت...', newState ? 'warning' : 'success');
+            });
+
+            // NEW: Logout Button
+            logoutBtn.addEventListener('click', () => {
+                logoutUser();
             });
             
             // AI Mode Toggle
@@ -1037,6 +1076,29 @@
             });
             
             addUserBtn.addEventListener('click', addNewUser);
+        }
+
+        // NEW: Logout Function
+        function logoutUser() {
+            if (confirm('هل أنت متأكد من تسجيل الخروج؟')) {
+                // Clear localStorage
+                localStorage.removeItem('authToken');
+                localStorage.removeItem('currentUser');
+                localStorage.removeItem('performanceStats');
+                
+                // Disconnect socket
+                if (socket) {
+                    socket.disconnect();
+                }
+                
+                // Show logout message
+                showToast('👋 تم تسجيل الخروج بنجاح', 'success');
+                
+                // Redirect to login page
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 1500);
+            }
         }
 
         // 🆕 USER-SPECIFIC WHATSAPP FUNCTIONS
