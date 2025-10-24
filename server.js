@@ -1,20 +1,36 @@
-const express = require('express');
-const path = require('path');
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-// Serve static files
-app.use(express.static(path.join(__dirname)));
-
-// Routes
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
-});
-
-app.get('/dashboard', (req, res) => {
-    res.sendFile(path.join(__dirname, 'dashboard.html'));
-});
-
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-});
+{
+  "name": "ragmcloud-erp",
+  "version": "1.0.0",
+  "description": "رقم كلاود ERP - Smart Sales Assistant with User Management",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.7.2",
+    "whatsapp-web.js": "^1.23.0",
+    "qrcode-terminal": "^0.12.0",
+    "qrcode": "^1.5.3",
+    "multer": "^1.4.5",
+    "xlsx": "^0.18.5",
+    "dotenv": "^16.3.1",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "keywords": [
+    "whatsapp",
+    "ai",
+    "sales",
+    "assistant",
+    "erp",
+    "user-management",
+    "ragmcloud"
+  ],
+  "author": "رقم كلاود",
+  "license": "MIT"
+}
