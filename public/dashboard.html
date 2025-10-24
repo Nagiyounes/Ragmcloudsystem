@@ -742,16 +742,16 @@
         let clients = [];
         let currentClient = null;
         let messages = {};
-        let isAIMode = true; // Default to AI mode enabled
+        let isAIMode = true;
         let socket = null;
         let isBulkSending = false;
         let currentStatusFilter = 'all';
-        let isBotStopped = false; // NEW: Bot stop state
+        let isBotStopped = false;
         
-        // NEW: User management variables
+        // User management variables
         let currentUser = null;
         let users = [];
-        let isAdminViewingAs = false; // If admin is viewing as another user
+        let isAdminViewingAs = false;
         let viewingAsUser = null;
         let authToken = null;
         
@@ -761,7 +761,7 @@
         const closeQR = document.getElementById('closeQR');
         const reconnectBtn = document.getElementById('reconnectBtn');
         const stopBotBtn = document.getElementById('stopBotBtn');
-        const logoutBtn = document.getElementById('logoutBtn'); // NEW: Logout button
+        const logoutBtn = document.getElementById('logoutBtn');
         const whatsappStatus = document.getElementById('whatsappStatus');
         const botStatus = document.getElementById('botStatus');
         const aiToggle = document.getElementById('aiToggle');
@@ -791,13 +791,13 @@
         const autoReportMessage = document.getElementById('autoReportMessage');
         const whatsappQrStatus = document.getElementById('whatsappQrStatus');
         
-        // NEW: Performance stats elements
+        // Performance stats elements
         const statMessages = document.getElementById('statMessages');
         const statAIReplies = document.getElementById('statAIReplies');
         const statClients = document.getElementById('statClients');
         const statInterested = document.getElementById('statInterested');
 
-        // NEW: User Management Elements
+        // User Management Elements
         const currentUserName = document.getElementById('currentUserName');
         const currentUserRole = document.getElementById('currentUserRole');
         const userManagementSection = document.getElementById('userManagementSection');
@@ -822,7 +822,6 @@
                 // Get auth token from localStorage
                 authToken = localStorage.getItem('authToken');
                 if (!authToken) {
-                    // Redirect to login if no token
                     window.location.href = '/';
                     return;
                 }
@@ -843,15 +842,8 @@
                 loadClients();
                 loadPerformanceStats();
                 
-                // Auto-fill promotional message for Ragmcloud ERP
+                // Auto-fill promotional message
                 bulkMessage.value = "🚀 نظام رقم كلاود ERP السحابي! حلول متكاملة للمحاسبة، المخزون، الموارد البشرية، والمزيد. جلسة استشارية مجانية! 📞 +966555111222 🌐 ragmcloud.sa";
-                
-                // Authenticate socket connection - wait for currentUser to be loaded
-                setTimeout(() => {
-                    if (currentUser) {
-                        socket.emit('authenticate', authToken);
-                    }
-                }, 1000);
                 
             } catch (error) {
                 console.error('Failed to initialize app:', error);
@@ -863,6 +855,11 @@
             socket.on('connect', () => {
                 console.log('Connected to server');
                 showToast('✅ تم الاتصال بالخادم بنجاح', 'success');
+                
+                // Authenticate socket connection after user is loaded
+                if (currentUser) {
+                    socket.emit('authenticate', authToken);
+                }
             });
             
             socket.on('disconnect', (reason) => {
@@ -883,63 +880,69 @@
                 }, 2000);
             });
 
-            // 🆕 FIXED: USER-SPECIFIC WHATSAPP EVENTS - Listen for current user's events
+            // 🆕 CRITICAL FIX: Wait for authentication success before setting up user-specific listeners
             socket.on('authenticated', (userData) => {
                 console.log('Socket authenticated for user:', userData);
                 
-                // Set up user-specific event listeners
-                const userId = currentUser.id;
+                if (!currentUser) {
+                    console.log('❌ currentUser not available yet, waiting...');
+                    return;
+                }
                 
-                // 🆕 FIXED: Listen for user-specific events
+                const userId = currentUser.id;
+                console.log(`🎯 Setting up user-specific listeners for user ${userId}`);
+                
+                // 🆕 FIXED: User-specific WhatsApp status
                 socket.on(`user_status_${userId}`, (data) => {
-                    console.log('Received user status:', data);
+                    console.log('📡 Received user status:', data);
                     updateWhatsAppStatus(data);
                 });
 
+                // 🆕 FIXED: User-specific QR code
                 socket.on(`user_qr_${userId}`, (data) => {
-                    console.log('Received QR code for user:', userId);
+                    console.log('📡 Received QR code for user:', userId);
+                    console.log('📱 QR Code data:', data);
                     showQRCode(data.qrCode);
                 });
 
+                // 🆕 FIXED: User-specific bot status
                 socket.on(`user_bot_status_${userId}`, (data) => {
-                    console.log('Received bot status:', data);
+                    console.log('📡 Received bot status:', data);
                     isBotStopped = data.stopped;
                     updateBotStatusUI();
                 });
 
+                // 🆕 FIXED: User-specific messages
                 socket.on(`user_message_${userId}`, (data) => {
-                    console.log('Received user message:', data);
+                    console.log('📡 Received user message:', data);
                     handleUserMessage(data);
                 });
+                
+                console.log(`✅ User-specific listeners setup complete for user ${userId}`);
             });
 
-            // NEW: Bot status event
+            // Global events (not user-specific)
             socket.on('bot_status', (data) => {
                 isBotStopped = data.stopped;
                 updateBotStatusUI();
             });
 
-            // NEW: Auto report notification
             socket.on('auto_report_notification', (data) => {
                 showAutoReportNotification(data);
             });
 
-            // NEW: Client status updated
             socket.on('client_status_updated', (data) => {
                 updateClientStatus(data.clientId, data.status);
             });
 
-            // NEW: Performance stats update
             socket.on('performance_stats', (data) => {
                 updatePerformanceStats(data);
             });
 
-            // NEW: Bulk progress updates
             socket.on('bulk_progress', (data) => {
                 handleBulkProgress(data);
             });
 
-            // NEW: Clients updated
             socket.on('clients_updated', (data) => {
                 clients = data;
                 renderClientList();
@@ -964,14 +967,14 @@
                 showToast('🔄 جاري إعادة الاتصال...', 'warning');
             });
             
-            // NEW: Stop Bot Button
+            // Stop Bot Button
             stopBotBtn.addEventListener('click', () => {
                 const newState = !isBotStopped;
                 socket.emit('user_toggle_bot', { stop: newState });
                 showToast(newState ? '🛑 جاري إيقاف البوت...' : '🚀 جاري تشغيل البوت...', newState ? 'warning' : 'success');
             });
 
-            // NEW: Logout Button
+            // Logout Button
             logoutBtn.addEventListener('click', () => {
                 logoutUser();
             });
@@ -1057,7 +1060,7 @@
                 scrollChatToBottom();
             });
             
-            // NEW: User Management Event Listeners
+            // User Management Event Listeners
             userSwitchBtn.addEventListener('click', () => {
                 userSwitchOverlay.classList.remove('hidden');
                 currentViewingUser.textContent = isAdminViewingAs ? viewingAsUser.name : currentUser.name;
@@ -1078,7 +1081,7 @@
             addUserBtn.addEventListener('click', addNewUser);
         }
 
-        // NEW: Logout Function
+        // Logout Function
         function logoutUser() {
             if (confirm('هل أنت متأكد من تسجيل الخروج؟')) {
                 // Clear localStorage
@@ -1103,6 +1106,7 @@
 
         // 🆕 USER-SPECIFIC WHATSAPP FUNCTIONS
         function updateWhatsAppStatus(data) {
+            console.log('🔄 Updating WhatsApp status:', data);
             whatsappStatus.textContent = data.message;
             if (data.connected) {
                 whatsappStatus.className = 'status-connected px-3 py-1 rounded-full text-sm font-bold';
@@ -1119,9 +1123,18 @@
         }
 
         function showQRCode(qrCodeUrl) {
+            console.log('🖼️ Showing QR code:', qrCodeUrl);
+            if (!qrCodeUrl) {
+                console.error('❌ No QR code URL provided');
+                showToast('❌ لم يتم توليد QR Code', 'error');
+                return;
+            }
+            
             qrCode.innerHTML = `<img src="${qrCodeUrl}" alt="WhatsApp QR Code" class="w-64 h-64">`;
             qrOverlay.classList.remove('hidden');
             whatsappQrStatus.classList.remove('hidden');
+            
+            console.log('✅ QR code overlay shown');
         }
 
         function fetchUserQRCode() {
@@ -1147,13 +1160,13 @@
         }
 
         function handleUserMessage(data) {
+            console.log('💬 Handling user message:', data);
             if (currentClient && currentClient.phone === data.from) {
-                // Add message to current chat
                 const newMessage = {
                     id: Date.now(),
-                    content: data.message,
-                    type: data.fromMe ? 'sent' : 'received',
-                    time: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })
+                    message: data.message,
+                    fromMe: data.fromMe,
+                    timestamp: new Date().toISOString()
                 };
                 
                 if (!messages[currentClient.id]) {
@@ -1162,7 +1175,6 @@
                 messages[currentClient.id].push(newMessage);
                 renderMessages(messages[currentClient.id]);
                 
-                // Update performance stats for AI replies
                 if (data.fromMe) {
                     updatePerformanceStats({
                         aiReplies: parseInt(statAIReplies.textContent) + 1
@@ -1171,13 +1183,19 @@
             }
         }
         
-        // NEW: User Management Functions
+        // User Management Functions
         function loadCurrentUser() {
             const savedUser = localStorage.getItem('currentUser');
             if (savedUser) {
                 currentUser = JSON.parse(savedUser);
+                updateUserInterface();
+                
+                // 🆕 CRITICAL: Authenticate socket AFTER user is loaded
+                if (socket && socket.connected) {
+                    console.log('🔐 Authenticating socket for user:', currentUser.id);
+                    socket.emit('authenticate', authToken);
+                }
             } else {
-                // Try to get user info from API
                 fetch('/api/me', {
                     method: 'GET',
                     headers: {
@@ -1191,6 +1209,12 @@
                         currentUser = data.user;
                         localStorage.setItem('currentUser', JSON.stringify(currentUser));
                         updateUserInterface();
+                        
+                        // 🆕 CRITICAL: Authenticate socket AFTER user is loaded
+                        if (socket && socket.connected) {
+                            console.log('🔐 Authenticating socket for user:', currentUser.id);
+                            socket.emit('authenticate', authToken);
+                        }
                     } else {
                         window.location.href = '/';
                     }
@@ -1199,10 +1223,7 @@
                     console.error('Error loading user:', error);
                     window.location.href = '/';
                 });
-                return;
             }
-            
-            updateUserInterface();
         }
         
         function loadUsers() {
@@ -1228,10 +1249,11 @@
         }
         
         function updateUserInterface() {
+            if (!currentUser) return;
+            
             currentUserName.textContent = currentUser.name;
             currentUserRole.textContent = currentUser.role === 'admin' ? 'مدير' : 'مستخدم عادي';
             
-            // Show/hide user management based on role
             if (currentUser.role === 'admin' && !isAdminViewingAs) {
                 userManagementSection.classList.remove('hidden');
                 userSwitchBtn.classList.remove('hidden');
@@ -1240,7 +1262,6 @@
                 userSwitchBtn.classList.add('hidden');
             }
             
-            // Update role badge color
             currentUserRole.className = currentUser.role === 'admin' 
                 ? 'px-3 py-1 bg-purple-600 rounded-full text-sm font-bold'
                 : 'px-3 py-1 bg-primary rounded-full text-sm font-bold';
@@ -1274,7 +1295,7 @@
                 if (data.success) {
                     showToast('✅ تم إضافة المستخدم بنجاح', 'success');
                     clearUserForm();
-                    loadUsers(); // Reload users list
+                    loadUsers();
                 } else {
                     showToast('❌ ' + data.error, 'error');
                 }
@@ -1314,7 +1335,6 @@
                 usersList.appendChild(userElement);
             });
             
-            // Add event listeners for switch buttons
             document.querySelectorAll('.switch-to-user-btn').forEach(btn => {
                 btn.addEventListener('click', (e) => {
                     const userId = parseInt(e.target.closest('button').dataset.userId);
@@ -1358,7 +1378,6 @@
                     fileInfo.innerHTML = `<i class="fas fa-file-excel text-primary-light mr-1"></i> ${file.name} (${data.count} عميل)`;
                     showToast(`✅ ${data.message}`, 'success');
                     
-                    // Update clients list
                     clients = data.clients;
                     renderClientList();
                     updateClientsCount();
@@ -1437,17 +1456,14 @@
             clientStatusSelector.classList.remove('hidden');
             statusSelect.value = client.status;
             
-            // Enable message input
             messageInput.disabled = false;
             sendMessageBtn.disabled = false;
             
-            // Update active state in list
             document.querySelectorAll('.client-item').forEach(item => {
                 item.classList.remove('active');
             });
             document.querySelector(`[data-client-id="${client.id}"]`).classList.add('active');
             
-            // Load messages for this client
             loadMessages(client.id);
         }
         
@@ -1503,13 +1519,11 @@
             const message = messageInput.value.trim();
             if (!message || !currentClient) return;
             
-            // Send message via socket
             socket.emit('send_message', {
                 to: currentClient.phone,
                 message: message
             });
             
-            // Add message to UI immediately
             const newMessage = {
                 id: Date.now(),
                 message: message,
@@ -1523,11 +1537,8 @@
             messages[currentClient.id].push(newMessage);
             
             renderMessages(messages[currentClient.id]);
-            
-            // Clear input
             messageInput.value = '';
             
-            // Update performance stats
             updatePerformanceStats({
                 messages: parseInt(statMessages.textContent) + 1
             });
@@ -1573,7 +1584,7 @@
                     sendBulkBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> جاري الإرسال...';
                 } else {
                     showToast('❌ ' + data.error, 'error');
-                }
+                    }
             })
             .catch(error => {
                 console.error('Error sending bulk messages:', error);
@@ -1594,7 +1605,6 @@
         function updateClientStatus(clientId, newStatus) {
             const client = clients.find(c => c.id === clientId);
             if (client) {
-                // Update via socket
                 socket.emit('update_client_status', {
                     phone: client.phone,
                     status: newStatus
@@ -1603,7 +1613,6 @@
                 client.status = newStatus;
                 renderClientList();
                 
-                // Update performance stats if status changed to interested
                 if (newStatus === 'interested') {
                     updatePerformanceStats({
                         interested: parseInt(statInterested.textContent) + 1
@@ -1627,7 +1636,6 @@
         function setStatusFilter(status) {
             currentStatusFilter = status;
             
-            // Update active state of filter buttons
             document.querySelectorAll('.status-filter-btn').forEach(btn => {
                 btn.classList.remove('active');
             });
@@ -1651,7 +1659,6 @@
             if (stats.clients !== undefined) statClients.textContent = stats.clients;
             if (stats.interested !== undefined) statInterested.textContent = stats.interested;
             
-            // Save to localStorage
             const currentStats = {
                 messages: parseInt(statMessages.textContent),
                 aiReplies: parseInt(statAIReplies.textContent),
@@ -1662,7 +1669,6 @@
         }
         
         function loadPerformanceStats() {
-            // Load from API
             fetch('/api/employee-performance', {
                 method: 'GET',
                 headers: {
@@ -1684,7 +1690,6 @@
             })
             .catch(error => {
                 console.error('Error loading performance stats:', error);
-                // Fallback to localStorage
                 const savedStats = localStorage.getItem('performanceStats');
                 if (savedStats) {
                     updatePerformanceStats(JSON.parse(savedStats));
