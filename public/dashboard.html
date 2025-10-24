@@ -829,18 +829,17 @@
                 // Connect to Socket.io with authentication
                 socket = io({
                     timeout: 10000,
-                    reconnectionAttempts: 5,
-                    auth: {
-                        token: authToken
-                    }
+                    reconnectionAttempts: 5
                 });
                 
                 setupSocketEvents();
                 setupEventListeners();
-                loadCurrentUser();
-                loadUsers();
-                loadClients();
-                loadPerformanceStats();
+                loadCurrentUser(); // This will trigger authentication
+                
+                // 🆕 Auto-check WhatsApp status on load
+                setTimeout(() => {
+                    checkWhatsAppStatus();
+                }, 2000);
                 
                 // Auto-fill promotional message
                 bulkMessage.value = "🚀 نظام رقم كلاود ERP السحابي! حلول متكاملة للمحاسبة، المخزون، الموارد البشرية، والمزيد. جلسة استشارية مجانية! 📞 +966555111222 🌐 ragmcloud.sa";
@@ -853,13 +852,48 @@
         
         function setupSocketEvents() {
             socket.on('connect', () => {
-                console.log('Connected to server');
+                console.log('✅ Connected to server');
                 showToast('✅ تم الاتصال بالخادم بنجاح', 'success');
                 
-                // Authenticate socket connection after user is loaded
+                // Authenticate socket connection
                 if (currentUser) {
+                    console.log('🔐 Authenticating socket for user:', currentUser.id);
                     socket.emit('authenticate', authToken);
                 }
+            });
+            
+            socket.on('authenticated', (userData) => {
+                console.log('✅ Socket authenticated for user:', userData);
+                const userId = currentUser.id;
+                
+                // 🆕 FIXED: User-specific WhatsApp status
+                socket.on(`user_status_${userId}`, (data) => {
+                    console.log('📡 Received user status:', data);
+                    updateWhatsAppStatus(data);
+                });
+
+                // 🆕 FIXED: User-specific QR code with auto-display
+                socket.on(`user_qr_${userId}`, (data) => {
+                    console.log('📡 Received QR code for user:', userId);
+                    if (data.qrCode) {
+                        showQRCode(data.qrCode);
+                    }
+                });
+
+                // 🆕 FIXED: User-specific bot status
+                socket.on(`user_bot_status_${userId}`, (data) => {
+                    console.log('📡 Received bot status:', data);
+                    isBotStopped = data.stopped;
+                    updateBotStatusUI();
+                });
+
+                // 🆕 FIXED: User-specific messages
+                socket.on(`user_message_${userId}`, (data) => {
+                    console.log('📡 Received user message:', data);
+                    handleUserMessage(data);
+                });
+                
+                console.log(`✅ User-specific listeners setup complete for user ${userId}`);
             });
             
             socket.on('disconnect', (reason) => {
@@ -878,47 +912,6 @@
                 setTimeout(() => {
                     window.location.href = '/';
                 }, 2000);
-            });
-
-            // 🆕 CRITICAL FIX: Wait for authentication success before setting up user-specific listeners
-            socket.on('authenticated', (userData) => {
-                console.log('Socket authenticated for user:', userData);
-                
-                if (!currentUser) {
-                    console.log('❌ currentUser not available yet, waiting...');
-                    return;
-                }
-                
-                const userId = currentUser.id;
-                console.log(`🎯 Setting up user-specific listeners for user ${userId}`);
-                
-                // 🆕 FIXED: User-specific WhatsApp status
-                socket.on(`user_status_${userId}`, (data) => {
-                    console.log('📡 Received user status:', data);
-                    updateWhatsAppStatus(data);
-                });
-
-                // 🆕 FIXED: User-specific QR code
-                socket.on(`user_qr_${userId}`, (data) => {
-                    console.log('📡 Received QR code for user:', userId);
-                    console.log('📱 QR Code data:', data);
-                    showQRCode(data.qrCode);
-                });
-
-                // 🆕 FIXED: User-specific bot status
-                socket.on(`user_bot_status_${userId}`, (data) => {
-                    console.log('📡 Received bot status:', data);
-                    isBotStopped = data.stopped;
-                    updateBotStatusUI();
-                });
-
-                // 🆕 FIXED: User-specific messages
-                socket.on(`user_message_${userId}`, (data) => {
-                    console.log('📡 Received user message:', data);
-                    handleUserMessage(data);
-                });
-                
-                console.log(`✅ User-specific listeners setup complete for user ${userId}`);
             });
 
             // Global events (not user-specific)
@@ -1081,6 +1074,123 @@
             addUserBtn.addEventListener('click', addNewUser);
         }
 
+        // 🆕 IMPROVED QR Code Functions
+        function showQRCode(qrCodeUrl) {
+            console.log('🖼️ Showing QR code:', qrCodeUrl);
+            if (!qrCodeUrl) {
+                console.error('❌ No QR code URL provided');
+                showToast('❌ لم يتم توليد QR Code', 'error');
+                return;
+            }
+            
+            // Clear previous QR code
+            qrCode.innerHTML = '';
+            
+            // Create new QR code image
+            const qrImage = document.createElement('img');
+            qrImage.src = qrCodeUrl;
+            qrImage.alt = "WhatsApp QR Code";
+            qrImage.className = "w-64 h-64 mx-auto";
+            qrImage.onload = function() {
+                console.log('✅ QR code image loaded successfully');
+            };
+            qrImage.onerror = function() {
+                console.error('❌ Failed to load QR code image');
+                showToast('❌ فشل تحميل QR Code', 'error');
+            };
+            
+            qrCode.appendChild(qrImage);
+            qrOverlay.classList.remove('hidden');
+            
+            // Show notification
+            showToast('📱 يرجى مسح QR Code للاتصال', 'success');
+            
+            console.log('✅ QR code overlay shown');
+        }
+
+        // 🆕 Auto-fetch QR code on page load
+        function fetchUserQRCode() {
+            console.log('🔄 Fetching user QR code...');
+            fetch('/api/user-whatsapp-qr', {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.qrCode) {
+                    console.log('✅ QR code fetched successfully');
+                    showQRCode(data.qrCode);
+                } else {
+                    console.log('ℹ️ QR code not available yet');
+                    showToast('⏳ جاري توليد QR Code...', 'warning');
+                }
+            })
+            .catch(error => {
+                console.error('❌ Error fetching QR code:', error);
+                showToast('❌ فشل جلب QR Code', 'error');
+            });
+        }
+
+        // 🆕 Improved WhatsApp status update with auto-QR display
+        function updateWhatsAppStatus(data) {
+            console.log('🔄 Updating WhatsApp status:', data);
+            whatsappStatus.textContent = data.message;
+            
+            if (data.connected) {
+                whatsappStatus.className = 'status-connected px-3 py-1 rounded-full text-sm font-bold';
+                whatsappQrStatus.classList.add('hidden');
+                qrOverlay.classList.add('hidden'); // Hide QR when connected
+            } else {
+                whatsappStatus.className = 'status-disconnected px-3 py-1 rounded-full text-sm font-bold';
+                
+                if (data.status === 'qr-ready') {
+                    whatsappQrStatus.classList.remove('hidden');
+                    // 🆕 AUTO-SHOW QR CODE when status is qr-ready
+                    if (!qrOverlay.classList.contains('hidden')) {
+                        // QR overlay is already visible, no need to show again
+                        console.log('📱 QR overlay already visible');
+                    } else {
+                        // Fetch and show QR code automatically
+                        console.log('🔄 Auto-fetching QR code for qr-ready status');
+                        setTimeout(() => fetchUserQRCode(), 1000);
+                    }
+                } else {
+                    whatsappQrStatus.classList.add('hidden');
+                    qrOverlay.classList.add('hidden');
+                }
+            }
+        }
+
+        // 🆕 Function to check WhatsApp status
+        function checkWhatsAppStatus() {
+            fetch('/api/user-whatsapp-status', {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('📡 WhatsApp status check:', data);
+                if (data.hasQr && data.qrCode) {
+                    showQRCode(data.qrCode);
+                }
+                updateWhatsAppStatus(data);
+            })
+            .catch(error => {
+                console.error('Error checking WhatsApp status:', error);
+            });
+        }
+
         // Logout Function
         function logoutUser() {
             if (confirm('هل أنت متأكد من تسجيل الخروج؟')) {
@@ -1104,85 +1214,6 @@
             }
         }
 
-        // 🆕 USER-SPECIFIC WHATSAPP FUNCTIONS
-        function updateWhatsAppStatus(data) {
-            console.log('🔄 Updating WhatsApp status:', data);
-            whatsappStatus.textContent = data.message;
-            if (data.connected) {
-                whatsappStatus.className = 'status-connected px-3 py-1 rounded-full text-sm font-bold';
-                whatsappQrStatus.classList.add('hidden');
-            } else {
-                whatsappStatus.className = 'status-disconnected px-3 py-1 rounded-full text-sm font-bold';
-                
-                if (data.status === 'qr-ready') {
-                    whatsappQrStatus.classList.remove('hidden');
-                } else {
-                    whatsappQrStatus.classList.add('hidden');
-                }
-            }
-        }
-
-        function showQRCode(qrCodeUrl) {
-            console.log('🖼️ Showing QR code:', qrCodeUrl);
-            if (!qrCodeUrl) {
-                console.error('❌ No QR code URL provided');
-                showToast('❌ لم يتم توليد QR Code', 'error');
-                return;
-            }
-            
-            qrCode.innerHTML = `<img src="${qrCodeUrl}" alt="WhatsApp QR Code" class="w-64 h-64">`;
-            qrOverlay.classList.remove('hidden');
-            whatsappQrStatus.classList.remove('hidden');
-            
-            console.log('✅ QR code overlay shown');
-        }
-
-        function fetchUserQRCode() {
-            fetch('/api/user-whatsapp-qr', {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${authToken}`,
-                    'Content-Type': 'application/json'
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.qrCode) {
-                    showQRCode(data.qrCode);
-                } else {
-                    showToast('❌ QR Code غير متوفر حالياً', 'error');
-                }
-            })
-            .catch(error => {
-                console.error('Error fetching QR code:', error);
-                showToast('❌ فشل جلب QR Code', 'error');
-            });
-        }
-
-        function handleUserMessage(data) {
-            console.log('💬 Handling user message:', data);
-            if (currentClient && currentClient.phone === data.from) {
-                const newMessage = {
-                    id: Date.now(),
-                    message: data.message,
-                    fromMe: data.fromMe,
-                    timestamp: new Date().toISOString()
-                };
-                
-                if (!messages[currentClient.id]) {
-                    messages[currentClient.id] = [];
-                }
-                messages[currentClient.id].push(newMessage);
-                renderMessages(messages[currentClient.id]);
-                
-                if (data.fromMe) {
-                    updatePerformanceStats({
-                        aiReplies: parseInt(statAIReplies.textContent) + 1
-                    });
-                }
-            }
-        }
-        
         // User Management Functions
         function loadCurrentUser() {
             const savedUser = localStorage.getItem('currentUser');
@@ -1739,9 +1770,9 @@
             .then(data => {
                 if (data.success) {
                     showToast('📧 تم إرسال التقرير إلى المدير بنجاح', 'success');
-                } else {
+                    } else {
                     showToast('❌ ' + data.error, 'error');
-                }
+                    }
             })
             .catch(error => {
                 console.error('Error sending report:', error);
