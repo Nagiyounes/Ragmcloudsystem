@@ -1,0 +1,1508 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>رقم كلاود ERP - Smart Sales Assistant</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Fixed Socket.io CDN -->
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#007C5C',
+                        'primary-dark': '#006A4E',
+                        'primary-light': '#00B98B',
+                        luxury: {
+                            gold: '#D4AF37',
+                            'dark-bg': '#1a1f2e',
+                            'card-bg': '#2d3748',
+                            'sidebar-bg': '#2d3748'
+                        }
+                    },
+                    fontFamily: {
+                        'tajawal': ['Tajawal', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800&display=swap');
+        
+        body {
+            font-family: 'Tajawal', sans-serif;
+            background: linear-gradient(135deg, #1a1f2e 0%, #2d3748 100%);
+        }
+        
+        .glass-effect {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .luxury-card {
+            background: rgba(45, 55, 72, 0.95);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(212, 175, 55, 0.3);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+        
+        .gold-border {
+            border: 2px solid #D4AF37;
+        }
+        
+        .gradient-text {
+            background: linear-gradient(135deg, #D4AF37, #FFD700);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .btn-gold {
+            background: linear-gradient(135deg, #D4AF37, #FFD700);
+            color: #1a1f2e;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-gold:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(212, 175, 55, 0.4);
+        }
+        
+        .status-connected {
+            background: linear-gradient(135deg, #00B98B, #007C5C);
+            color: white;
+        }
+        
+        .status-disconnected {
+            background: linear-gradient(135deg, #f56565, #c53030);
+            color: white;
+        }
+        
+        .client-item {
+            transition: all 0.3s ease;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .client-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+        
+        .client-item.active {
+            background: rgba(0, 124, 92, 0.2);
+            border-right: 3px solid #00B98B;
+        }
+        
+        .unread-badge {
+            background: linear-gradient(135deg, #f56565, #c53030);
+            color: white;
+        }
+        
+        /* IMPROVED CHAT STYLES */
+        .chat-container {
+            height: calc(100vh - 280px);
+            overflow-y: auto;
+            scroll-behavior: smooth;
+            padding: 10px;
+        }
+        
+        .chat-bubble {
+            max-width: 75%;
+            padding: 8px 12px;
+            border-radius: 12px;
+            margin-bottom: 6px;
+            position: relative;
+            font-size: 14px;
+            line-height: 1.4;
+            word-wrap: break-word;
+        }
+        
+        .chat-bubble.sent {
+            background: linear-gradient(135deg, #007C5C, #00B98B);
+            margin-left: auto;
+            border-bottom-right-radius: 4px;
+        }
+        
+        .chat-bubble.received {
+            background: rgba(255, 255, 255, 0.1);
+            margin-right: auto;
+            border-bottom-left-radius: 4px;
+        }
+        
+        .message-content {
+            word-wrap: break-word;
+            line-height: 1.4;
+        }
+        
+        .chat-time {
+            text-align: left;
+            direction: ltr;
+            font-size: 11px;
+            opacity: 0.7;
+            margin-top: 2px;
+        }
+        
+        .scroll-to-bottom {
+            position: absolute;
+            bottom: 80px;
+            right: 20px;
+            background: rgba(0, 124, 92, 0.9);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            z-index: 100;
+        }
+        
+        .scroll-to-bottom.visible {
+            opacity: 1;
+        }
+        
+        .scroll-to-bottom:hover {
+            background: rgba(0, 124, 92, 1);
+            transform: scale(1.1);
+        }
+        
+        /* Client Interest Status Colors */
+        .client-status-interested {
+            border-left: 4px solid #10B981 !important;
+        }
+        
+        .client-status-busy {
+            border-left: 4px solid #F59E0B !important;
+        }
+        
+        .client-status-not-interested {
+            border-left: 4px solid #EF4444 !important;
+        }
+        
+        .client-status-no-reply {
+            border-left: 4px solid #9CA3AF !important;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-left: 5px;
+        }
+        
+        .dot-interested { background-color: #10B981; }
+        .dot-busy { background-color: #F59E0B; }
+        .dot-not-interested { background-color: #EF4444; }
+        .dot-no-reply { background-color: #9CA3AF; }
+        
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 12px 20px;
+            border-radius: 8px;
+            color: white;
+            font-weight: bold;
+            z-index: 1000;
+            transform: translateX(400px);
+            transition: transform 0.3s ease;
+            max-width: 300px;
+        }
+        
+        .toast.show {
+            transform: translateX(0);
+        }
+        
+        .toast.success {
+            background: linear-gradient(135deg, #00B98B, #007C5C);
+        }
+        
+        .toast.error {
+            background: linear-gradient(135deg, #f56565, #c53030);
+        }
+        
+        .toast.warning {
+            background: linear-gradient(135deg, #ed8936, #dd6b20);
+        }
+        
+        .qr-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        
+        .qr-container {
+            background: rgba(45, 55, 72, 0.95);
+            padding: 30px;
+            border-radius: 20px;
+            text-align: center;
+            border: 2px solid #D4AF37;
+        }
+        
+        /* Scrollbar Styling */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: linear-gradient(135deg, #D4AF37, #FFD700);
+            border-radius: 3px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(135deg, #FFD700, #D4AF37);
+        }
+        
+        /* Client Status Filter */
+        .status-filter {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .status-filter-btn {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .status-filter-btn.active {
+            transform: scale(1.05);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+        
+        .btn-all { background: #6B7280; color: white; }
+        .btn-interested { background: #10B981; color: white; }
+        .btn-busy { background: #F59E0B; color: white; }
+        .btn-not-interested { background: #EF4444; color: white; }
+        .btn-no-reply { background: #9CA3AF; color: white; }
+
+        /* NEW: Auto-report notification */
+        .auto-report-notification {
+            background: linear-gradient(135deg, #ed8936, #dd6b20);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            animation: pulse 2s infinite;
+            display: none;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+
+        /* NEW: Bot status indicator */
+        .bot-status-stopped {
+            background: linear-gradient(135deg, #f56565, #c53030) !important;
+        }
+
+        .bot-status-running {
+            background: linear-gradient(135deg, #00B98B, #007C5C) !important;
+        }
+
+        /* NEW: User Management Styles */
+        .user-management-section {
+            transition: all 0.3s ease;
+        }
+
+        .user-item {
+            transition: all 0.3s ease;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .user-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .role-admin {
+            border-left: 4px solid #D4AF37 !important;
+        }
+
+        .role-standard {
+            border-left: 4px solid #007C5C !important;
+        }
+
+        .user-active {
+            color: #10B981;
+        }
+
+        .user-inactive {
+            color: #EF4444;
+        }
+
+        /* NEW: User Switch Overlay */
+        .user-switch-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .user-switch-container {
+            background: rgba(45, 55, 72, 0.95);
+            padding: 30px;
+            border-radius: 20px;
+            text-align: center;
+            border: 2px solid #D4AF37;
+            max-width: 500px;
+            width: 90%;
+        }
+    </style>
+</head>
+<body class="text-white">
+    <!-- Toast Notifications -->
+    <div id="toastContainer" class="fixed top-4 right-4 z-50"></div>
+    
+    <!-- NEW: Auto Report Notification -->
+    <div id="autoReportNotification" class="auto-report-notification">
+        <i class="fas fa-bell mr-2"></i>
+        <span id="autoReportMessage"></span>
+    </div>
+    
+    <!-- NEW: User Switch Overlay -->
+    <div id="userSwitchOverlay" class="user-switch-overlay hidden">
+        <div class="user-switch-container">
+            <div class="flex items-center justify-center mb-4">
+                <i class="fas fa-user-shield text-3xl text-primary-light mr-3"></i>
+                <h3 class="text-xl font-bold gradient-text">تبديل المستخدم</h3>
+            </div>
+            <p class="text-gray-300 mb-4">أنت الآن تشاهد لوحة التحكم كـ: <span id="currentViewingUser" class="text-primary-light"></span></p>
+            <div class="flex space-x-3 justify-center">
+                <button id="returnToAdmin" class="btn-gold px-6 py-2 rounded-lg font-bold">
+                    <i class="fas fa-arrow-left mr-2"></i>العودة إلى حسابي
+                </button>
+                <button id="closeUserSwitch" class="bg-gray-600 hover:bg-gray-700 px-6 py-2 rounded-lg font-bold transition-colors">
+                    <i class="fas fa-times mr-2"></i>إغلاق
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- QR Overlay -->
+    <div id="qrOverlay" class="qr-overlay hidden">
+        <div class="qr-container luxury-card">
+            <div class="flex items-center justify-center mb-4">
+                <i class="fab fa-whatsapp text-3xl text-green-400 mr-3"></i>
+                <h3 class="text-xl font-bold gradient-text">Scan QR Code</h3>
+            </div>
+            <p class="text-gray-300 mb-4">Scan this QR code with WhatsApp to connect</p>
+            <div id="qrCode" class="mb-4 flex justify-center"></div>
+            <button id="closeQR" class="btn-gold px-6 py-2 rounded-lg font-bold">
+                <i class="fas fa-times mr-2"></i>إغلاق
+            </button>
+        </div>
+    </div>
+    
+    <div class="flex h-screen">
+        <!-- Left Sidebar -->
+        <div class="w-80 luxury-card rounded-r-2xl m-3 flex flex-col">
+            <!-- Header -->
+            <div class="p-6 border-b border-gray-600">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center">
+                        <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-primary-light flex items-center justify-center text-white mr-3">
+                            <i class="fas fa-cloud"></i>
+                        </div>
+                        <div>
+                            <h1 class="text-xl font-bold gradient-text">رقم كلاود</h1>
+                            <p class="text-sm text-gray-400">ERP Sales Assistant</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- User Info -->
+                <div class="flex items-center justify-between mb-4">
+                    <span class="text-sm text-gray-300">المستخدم:</span>
+                    <span id="currentUserName" class="px-3 py-1 bg-primary rounded-full text-sm font-bold">...</span>
+                </div>
+
+                <!-- User Role -->
+                <div class="flex items-center justify-between mb-4">
+                    <span class="text-sm text-gray-300">الدور:</span>
+                    <span id="currentUserRole" class="px-3 py-1 bg-purple-600 rounded-full text-sm font-bold">...</span>
+                </div>
+                
+                <!-- WhatsApp Status -->
+                <div class="flex items-center justify-between mb-4">
+                    <span class="text-sm text-gray-300">حالة الواتساب:</span>
+                    <span id="whatsappStatus" class="status-disconnected px-3 py-1 rounded-full text-sm font-bold">غير متصل</span>
+                </div>
+
+                <!-- NEW: Bot Status -->
+                <div class="flex items-center justify-between mb-4">
+                    <span class="text-sm text-gray-300">حالة البوت:</span>
+                    <span id="botStatus" class="bot-status-running px-3 py-1 rounded-full text-sm font-bold">نشط</span>
+                </div>
+                
+                <!-- NEW: Admin User Switch Button -->
+                <button id="userSwitchBtn" class="w-full bg-purple-600 hover:bg-purple-700 py-2 rounded-lg font-bold mb-2 transition-colors hidden">
+                    <i class="fas fa-user-shield mr-2"></i>تبديل المستخدم
+                </button>
+                
+                <!-- Reconnect Button -->
+                <button id="reconnectBtn" class="w-full btn-gold py-2 rounded-lg font-bold mb-2">
+                    <i class="fas fa-sync-alt mr-2"></i>إعادة الاتصال
+                </button>
+
+                <!-- NEW: Stop Bot Button -->
+                <button id="stopBotBtn" class="w-full bg-red-600 hover:bg-red-700 py-2 rounded-lg font-bold mb-2 transition-colors">
+                    <i class="fas fa-stop mr-2"></i>إيقاف البوت
+                </button>
+                
+                <!-- AI Mode Toggle -->
+                <div class="flex items-center justify-between p-3 bg-gray-700 rounded-lg">
+                    <span class="text-sm text-gray-300">وضع الذكاء الاصطناعي</span>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="aiToggle" class="sr-only peer" checked>
+                        <div class="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                    </label>
+                </div>
+                
+                <!-- AI Status -->
+                <div id="aiStatus" class="mt-2 p-2 bg-green-900 bg-opacity-20 rounded-lg text-center">
+                    <span class="text-green-400 text-sm">🤖 الذكاء الاصطناعي مفعل</span>
+                </div>
+            </div>
+            
+            <!-- NEW: User Management Section (Visible only to Admin) -->
+            <div id="userManagementSection" class="user-management-section p-6 border-b border-gray-600 hidden">
+                <h3 class="font-bold text-lg mb-3 gradient-text">إدارة المستخدمين</h3>
+                
+                <!-- Add User Form -->
+                <div class="mb-4 p-3 bg-gray-800 rounded-lg">
+                    <h4 class="font-bold text-primary-light mb-2">إضافة مستخدم جديد</h4>
+                    <input type="text" id="newUserName" placeholder="اسم المستخدم" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-sm mb-2 focus:outline-none focus:border-primary">
+                    <input type="password" id="newUserPassword" placeholder="كلمة المرور" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-sm mb-2 focus:outline-none focus:border-primary">
+                    <select id="newUserRole" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-sm mb-2 focus:outline-none focus:border-primary">
+                        <option value="standard">مستخدم عادي</option>
+                        <option value="admin">مدير</option>
+                    </select>
+                    <button id="addUserBtn" class="w-full bg-primary hover:bg-primary-dark py-2 rounded-lg font-bold transition-colors">
+                        <i class="fas fa-user-plus mr-2"></i>إضافة مستخدم
+                    </button>
+                </div>
+                
+                <!-- Users List -->
+                <div class="max-h-40 overflow-y-auto">
+                    <h4 class="font-bold text-primary-light mb-2">المستخدمين</h4>
+                    <div id="usersList">
+                        <!-- Users will be populated here -->
+                    </div>
+                </div>
+            </div>
+            
+            <!-- File Upload Section -->
+            <div class="p-6 border-b border-gray-600">
+                <h3 class="font-bold text-lg mb-3 gradient-text">رفع قاعدة العملاء</h3>
+                <input type="file" id="excelFile" accept=".xlsx,.xls" class="hidden">
+                <button id="uploadBtn" class="w-full bg-gray-700 hover:bg-gray-600 py-3 rounded-lg font-bold mb-2 transition-colors">
+                    <i class="fas fa-upload mr-2"></i>رفع ملف Excel
+                </button>
+                <div id="fileInfo" class="hidden text-sm text-gray-400 text-center p-2 bg-gray-800 rounded">
+                    <i class="fas fa-file-excel text-primary-light mr-1"></i> لم يتم رفع أي ملف
+                </div>
+            </div>
+            
+            <!-- Bulk Message Section -->
+            <div class="p-6 border-b border-gray-600">
+                <h3 class="font-bold text-lg mb-3 gradient-text">الإرسال الجماعي</h3>
+                <textarea 
+                    id="bulkMessage" 
+                    rows="4" 
+                    class="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 text-sm mb-3 resize-none focus:outline-none focus:border-primary"
+                    placeholder="اكتب الرسالة الترويجية هنا..."></textarea>
+                
+                <div class="flex items-center justify-between mb-3">
+                    <span class="text-sm text-gray-300">فاصل الزمني (ثواني):</span>
+                    <input type="number" id="sendDelay" value="40" min="40" max="120" class="w-20 bg-gray-600 border border-gray-500 rounded px-2 py-1 text-center">
+                </div>
+                
+                <button id="sendBulkBtn" class="w-full btn-gold py-3 rounded-lg font-bold mb-2">
+                    <i class="fas fa-paper-plane mr-2"></i> 🚀 إرسال عروض ترويجية
+                </button>
+                
+                <button id="retryBulkBtn" class="w-full bg-yellow-600 hover:bg-yellow-700 py-2 rounded-lg font-bold mb-2 hidden transition-colors">
+                    <i class="fas fa-redo mr-2"></i> إعادة المحاولة (طريقة بديلة)
+                </button>
+                
+                <div class="text-xs text-gray-400 text-center">
+                    سيتم الإرسال إلى <span id="clientsCount">0</span> عميل
+                </div>
+            </div>
+            
+            <!-- Reports Section -->
+            <div class="p-6">
+                <h3 class="font-bold text-lg mb-3 gradient-text">التقارير والإحصائيات</h3>
+                <button id="exportReportBtn" class="w-full bg-gray-700 hover:bg-gray-600 py-2 rounded-lg font-bold mb-2 transition-colors">
+                    <i class="fas fa-download mr-2"></i>تصدير تقرير
+                </button>
+                <button id="sendReportBtn" class="w-full bg-gray-700 hover:bg-gray-600 py-2 rounded-lg font-bold transition-colors">
+                    <i class="fas fa-envelope mr-2"></i>إرسال للمدير
+                </button>
+
+                <!-- NEW: Performance Stats -->
+                <div class="mt-4 p-3 bg-gray-800 rounded-lg">
+                    <h4 class="font-bold text-primary-light mb-2">إحصائيات اليوم</h4>
+                    <div class="grid grid-cols-2 gap-2 text-xs">
+                        <div class="flex justify-between">
+                            <span>الرسائل:</span>
+                            <span id="statMessages" class="text-primary-light">0</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>الردود الآلية:</span>
+                            <span id="statAIReplies" class="text-primary-light">0</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>العملاء:</span>
+                            <span id="statClients" class="text-primary-light">0</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>المهتمين:</span>
+                            <span id="statInterested" class="text-primary-light">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Right Chat Area -->
+        <div class="flex-1 flex flex-col m-3 luxury-card rounded-l-2xl relative">
+            <!-- Chat Header -->
+            <div class="p-6 border-b border-gray-600">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center">
+                        <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-primary-light flex items-center justify-center text-white mr-3">
+                            <i class="fas fa-user"></i>
+                        </div>
+                        <div>
+                            <h2 id="currentClientName" class="text-xl font-bold">اختر عميلاً</h2>
+                            <p id="currentClientPhone" class="text-sm text-gray-400">لم يتم اختيار عميل</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <div id="activeStatus" class="hidden">
+                            <span class="px-3 py-1 bg-green-900 bg-opacity-20 text-green-400 rounded-full text-sm">
+                                <i class="fas fa-circle text-xs mr-1"></i>نشط
+                            </span>
+                        </div>
+                        <!-- Client Status Selector -->
+                        <div id="clientStatusSelector" class="hidden">
+                            <select id="statusSelect" class="bg-gray-700 border border-gray-600 rounded-lg px-3 py-1 text-sm focus:outline-none focus:border-primary">
+                                <option value="no-reply">لم يرد</option>
+                                <option value="interested">مهتم</option>
+                                <option value="busy">مشغول</option>
+                                <option value="not-interested">غير مهتم</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Clients List / Chat Area -->
+            <div class="flex-1 flex">
+                <!-- Clients List -->
+                <div class="w-1/3 border-l border-gray-600 h-full overflow-hidden flex flex-col">
+                    <div class="p-4 border-b border-gray-600">
+                        <h3 class="font-bold text-lg gradient-text mb-2">قائمة العملاء</h3>
+                        <!-- Status Filter -->
+                        <div class="status-filter">
+                            <button class="status-filter-btn btn-all active" data-status="all">الكل</button>
+                            <button class="status-filter-btn btn-interested" data-status="interested">
+                                <span class="status-dot dot-interested"></span> مهتم
+                            </button>
+                            <button class="status-filter-btn btn-busy" data-status="busy">
+                                <span class="status-dot dot-busy"></span> مشغول
+                            </button>
+                            <button class="status-filter-btn btn-not-interested" data-status="not-interested">
+                                <span class="status-dot dot-not-interested"></span> غير مهتم
+                            </button>
+                            <button class="status-filter-btn btn-no-reply" data-status="no-reply">
+                                <span class="status-dot dot-no-reply"></span> لم يرد
+                            </button>
+                        </div>
+                    </div>
+                    <div id="clientList" class="flex-1 overflow-y-auto p-2">
+                        <!-- Clients will be populated here -->
+                    </div>
+                </div>
+                
+                <!-- Chat Messages -->
+                <div class="flex-1 flex flex-col relative">
+                    <div id="chatContainer" class="chat-container">
+                        <div class="text-center text-gray-400 mt-20">
+                            <i class="fas fa-comments text-5xl mb-4 opacity-50"></i>
+                            <p class="text-xl mb-2">مرحباً في رقم كلاود ERP!</p>
+                            <p class="text-gray-500">اختر عميلاً لبدء المحادثة</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Scroll to Bottom Button -->
+                    <button id="scrollToBottom" class="scroll-to-bottom">
+                        <i class="fas fa-chevron-down"></i>
+                    </button>
+                    
+                    <!-- Message Input -->
+                    <div class="p-4 border-t border-gray-600">
+                        <div class="flex items-center">
+                            <input 
+                                type="text" 
+                                id="messageInput" 
+                                placeholder="اكتب رسالتك هنا..." 
+                                class="flex-1 bg-gray-700 border border-gray-600 rounded-l-lg p-3 focus:outline-none focus:border-primary"
+                                disabled>
+                            <button 
+                                id="sendMessageBtn" 
+                                class="bg-primary hover:bg-primary-dark px-6 py-3 rounded-r-lg font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                disabled>
+                                <i class="fas fa-paper-plane"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let clients = [];
+        let currentClient = null;
+        let messages = {};
+        let isAIMode = true; // Default to AI mode enabled
+        let socket = null;
+        let isBulkSending = false;
+        let currentStatusFilter = 'all';
+        let isBotStopped = false; // NEW: Bot stop state
+        
+        // NEW: User management variables
+        let currentUser = null;
+        let users = [];
+        let isAdminViewingAs = false; // If admin is viewing as another user
+        let viewingAsUser = null;
+        
+        // DOM Elements
+        const qrOverlay = document.getElementById('qrOverlay');
+        const qrCode = document.getElementById('qrCode');
+        const closeQR = document.getElementById('closeQR');
+        const reconnectBtn = document.getElementById('reconnectBtn');
+        const stopBotBtn = document.getElementById('stopBotBtn');
+        const whatsappStatus = document.getElementById('whatsappStatus');
+        const botStatus = document.getElementById('botStatus');
+        const aiToggle = document.getElementById('aiToggle');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const excelFile = document.getElementById('excelFile');
+        const fileInfo = document.getElementById('fileInfo');
+        const bulkMessage = document.getElementById('bulkMessage');
+        const sendDelay = document.getElementById('sendDelay');
+        const sendBulkBtn = document.getElementById('sendBulkBtn');
+        const retryBulkBtn = document.getElementById('retryBulkBtn');
+        const clientList = document.getElementById('clientList');
+        const exportReportBtn = document.getElementById('exportReportBtn');
+        const sendReportBtn = document.getElementById('sendReportBtn');
+        const currentClientName = document.getElementById('currentClientName');
+        const currentClientPhone = document.getElementById('currentClientPhone');
+        const activeStatus = document.getElementById('activeStatus');
+        const chatContainer = document.getElementById('chatContainer');
+        const messageInput = document.getElementById('messageInput');
+        const sendMessageBtn = document.getElementById('sendMessageBtn');
+        const aiStatus = document.getElementById('aiStatus');
+        const toastContainer = document.getElementById('toastContainer');
+        const clientsCount = document.getElementById('clientsCount');
+        const scrollToBottom = document.getElementById('scrollToBottom');
+        const statusSelect = document.getElementById('statusSelect');
+        const clientStatusSelector = document.getElementById('clientStatusSelector');
+        const autoReportNotification = document.getElementById('autoReportNotification');
+        const autoReportMessage = document.getElementById('autoReportMessage');
+        
+        // NEW: Performance stats elements
+        const statMessages = document.getElementById('statMessages');
+        const statAIReplies = document.getElementById('statAIReplies');
+        const statClients = document.getElementById('statClients');
+        const statInterested = document.getElementById('statInterested');
+
+        // NEW: User Management Elements
+        const currentUserName = document.getElementById('currentUserName');
+        const currentUserRole = document.getElementById('currentUserRole');
+        const userManagementSection = document.getElementById('userManagementSection');
+        const userSwitchBtn = document.getElementById('userSwitchBtn');
+        const userSwitchOverlay = document.getElementById('userSwitchOverlay');
+        const returnToAdmin = document.getElementById('returnToAdmin');
+        const closeUserSwitch = document.getElementById('closeUserSwitch');
+        const currentViewingUser = document.getElementById('currentViewingUser');
+        const newUserName = document.getElementById('newUserName');
+        const newUserPassword = document.getElementById('newUserPassword');
+        const newUserRole = document.getElementById('newUserRole');
+        const addUserBtn = document.getElementById('addUserBtn');
+        const usersList = document.getElementById('usersList');
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeApp();
+        });
+
+        function initializeApp() {
+            try {
+                // Connect to Socket.io with error handling
+                socket = io({
+                    timeout: 10000,
+                    reconnectionAttempts: 5
+                });
+                
+                setupSocketEvents();
+                setupEventListeners();
+                loadCurrentUser();
+                loadUsers();
+                loadClients();
+                loadPerformanceStats();
+                
+                // Auto-fill promotional message for Ragmcloud ERP
+                bulkMessage.value = "🚀 نظام رقم كلاود ERP السحابي! حلول متكاملة للمحاسبة، المخزون، الموارد البشرية، والمزيد. جلسة استشارية مجانية! 📞 +966555111222 🌐 ragmcloud.sa";
+                
+            } catch (error) {
+                console.error('Failed to initialize app:', error);
+                showToast('❌ فشل تهيئة التطبيق', 'error');
+            }
+        }
+        
+        function setupSocketEvents() {
+            socket.on('connect', () => {
+                console.log('Connected to server');
+                showToast('✅ تم الاتصال بالخادم بنجاح', 'success');
+            });
+            
+            socket.on('disconnect', (reason) => {
+                console.log('Disconnected from server:', reason);
+                showToast('❌ فقد الاتصال بالخادم', 'error');
+            });
+            
+            socket.on('connect_error', (error) => {
+                console.error('Connection error:', error);
+                showToast('❌ خطأ في الاتصال بالخادم', 'error');
+            });
+            
+            socket.on('status', (data) => {
+                whatsappStatus.textContent = data.message;
+                if (data.connected) {
+                    whatsappStatus.className = 'status-connected px-3 py-1 rounded-full text-sm font-bold';
+                } else {
+                    whatsappStatus.className = 'status-disconnected px-3 py-1 rounded-full text-sm font-bold';
+                }
+            });
+
+            // NEW: Bot status event
+            socket.on('bot_status', (data) => {
+                isBotStopped = data.stopped;
+                updateBotStatusUI();
+            });
+
+            // NEW: Auto report notification
+            socket.on('auto_report_notification', (data) => {
+                showAutoReportNotification(data);
+            });
+
+            // NEW: Client status updated
+            socket.on('client_status_updated', (data) => {
+                updateClientStatus(data.clientId, data.status);
+            });
+
+            // NEW: Performance stats update
+            socket.on('performance_stats', (data) => {
+                updatePerformanceStats(data);
+            });
+        }
+        
+        function setupEventListeners() {
+            // QR Code
+            closeQR.addEventListener('click', () => {
+                qrOverlay.classList.add('hidden');
+            });
+            
+            // Reconnect
+            reconnectBtn.addEventListener('click', () => {
+                socket.emit('reconnect_whatsapp');
+                showToast('🔄 جاري إعادة الاتصال...', 'warning');
+            });
+            
+            // NEW: Stop Bot Button
+            stopBotBtn.addEventListener('click', () => {
+                if (isBotStopped) {
+                    socket.emit('start_bot');
+                    showToast('🚀 جاري تشغيل البوت...', 'success');
+                } else {
+                    socket.emit('stop_bot');
+                    showToast('🛑 جاري إيقاف البوت...', 'warning');
+                }
+            });
+            
+            // AI Mode Toggle
+            aiToggle.addEventListener('change', (e) => {
+                isAIMode = e.target.checked;
+                aiStatus.innerHTML = isAIMode ? 
+                    '<span class="text-green-400 text-sm">🤖 الذكاء الاصطناعي مفعل</span>' :
+                    '<span class="text-yellow-400 text-sm">⚠️ الذكاء الاصطناعي معطل</span>';
+                
+                showToast(isAIMode ? '🤖 تم تفعيل الذكاء الاصطناعي' : '⚠️ تم تعطيل الذكاء الاصطناعي', 'success');
+            });
+            
+            // File Upload
+            uploadBtn.addEventListener('click', () => {
+                excelFile.click();
+            });
+            
+            excelFile.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    fileInfo.classList.remove('hidden');
+                    fileInfo.innerHTML = `<i class="fas fa-file-excel text-primary-light mr-1"></i> ${file.name}`;
+                    showToast('📂 تم اختيار الملف بنجاح', 'success');
+                }
+            });
+            
+            // Bulk Message
+            sendBulkBtn.addEventListener('click', () => {
+                if (!bulkMessage.value.trim()) {
+                    showToast('❌ يرجى كتابة رسالة ترويجية', 'error');
+                    return;
+                }
+                
+                if (clients.length === 0) {
+                    showToast('❌ لا يوجد عملاء للإرسال', 'error');
+                    return;
+                }
+                
+                startBulkSending();
+            });
+            
+            retryBulkBtn.addEventListener('click', () => {
+                startBulkSending(true);
+            });
+            
+            // Message Sending
+            messageInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                }
+            });
+            
+            sendMessageBtn.addEventListener('click', sendMessage);
+            
+            // Status Filter
+            document.querySelectorAll('.status-filter-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const status = e.target.dataset.status;
+                    setStatusFilter(status);
+                });
+            });
+            
+            // Client Status Selector
+            statusSelect.addEventListener('change', (e) => {
+                if (currentClient) {
+                    updateClientStatus(currentClient.id, e.target.value);
+                }
+            });
+            
+            // Export Report
+            exportReportBtn.addEventListener('click', () => {
+                exportReport();
+            });
+            
+            // Send Report
+            sendReportBtn.addEventListener('click', () => {
+                sendReport();
+            });
+            
+            // Scroll to Bottom
+            scrollToBottom.addEventListener('click', () => {
+                scrollChatToBottom();
+            });
+            
+            // NEW: User Management Event Listeners
+            userSwitchBtn.addEventListener('click', () => {
+                userSwitchOverlay.classList.remove('hidden');
+                currentViewingUser.textContent = isAdminViewingAs ? viewingAsUser.name : currentUser.name;
+            });
+            
+            returnToAdmin.addEventListener('click', () => {
+                isAdminViewingAs = false;
+                viewingAsUser = null;
+                userSwitchOverlay.classList.add('hidden');
+                updateUserInterface();
+                showToast('✅ العودة إلى حساب المدير', 'success');
+            });
+            
+            closeUserSwitch.addEventListener('click', () => {
+                userSwitchOverlay.classList.add('hidden');
+            });
+            
+            addUserBtn.addEventListener('click', addNewUser);
+        }
+        
+        // NEW: User Management Functions
+        function loadCurrentUser() {
+            // In a real app, this would come from your backend
+            // For demo, we'll use localStorage
+            const savedUser = localStorage.getItem('currentUser');
+            if (savedUser) {
+                currentUser = JSON.parse(savedUser);
+            } else {
+                // Default admin user
+                currentUser = {
+                    id: 1,
+                    name: 'المدير',
+                    username: 'admin',
+                    role: 'admin',
+                    isActive: true
+                };
+                localStorage.setItem('currentUser', JSON.stringify(currentUser));
+            }
+            
+            updateUserInterface();
+        }
+        
+        function loadUsers() {
+            // In a real app, this would come from your backend
+            const savedUsers = localStorage.getItem('users');
+            if (savedUsers) {
+                users = JSON.parse(savedUsers);
+            } else {
+                // Default users
+                users = [
+                    {
+                        id: 1,
+                        name: 'المدير',
+                        username: 'admin',
+                        password: 'admin123',
+                        role: 'admin',
+                        isActive: true
+                    },
+                    {
+                        id: 2,
+                        name: 'محمد أحمد',
+                        username: 'mohamed',
+                        password: 'user123',
+                        role: 'standard',
+                        isActive: true
+                    }
+                ];
+                localStorage.setItem('users', JSON.stringify(users));
+            }
+            
+            renderUsersList();
+        }
+        
+        function updateUserInterface() {
+            currentUserName.textContent = currentUser.name;
+            currentUserRole.textContent = currentUser.role === 'admin' ? 'مدير' : 'مستخدم عادي';
+            
+            // Show/hide user management based on role
+            if (currentUser.role === 'admin' && !isAdminViewingAs) {
+                userManagementSection.classList.remove('hidden');
+                userSwitchBtn.classList.remove('hidden');
+            } else {
+                userManagementSection.classList.add('hidden');
+                userSwitchBtn.classList.add('hidden');
+            }
+            
+            // Update role badge color
+            currentUserRole.className = currentUser.role === 'admin' 
+                ? 'px-3 py-1 bg-purple-600 rounded-full text-sm font-bold'
+                : 'px-3 py-1 bg-primary rounded-full text-sm font-bold';
+        }
+        
+        function addNewUser() {
+            const name = newUserName.value.trim();
+            const password = newUserPassword.value.trim();
+            const role = newUserRole.value;
+            
+            if (!name || !password) {
+                showToast('❌ يرجى ملء جميع الحقول', 'error');
+                return;
+            }
+            
+            // Check if username already exists
+            if (users.find(u => u.name === name)) {
+                showToast('❌ اسم المستخدم موجود مسبقاً', 'error');
+                return;
+            }
+            
+            const newUser = {
+                id: Date.now(),
+                name: name,
+                username: name.toLowerCase().replace(/\s/g, ''),
+                password: password,
+                role: role,
+                isActive: true
+            };
+            
+            users.push(newUser);
+            localStorage.setItem('users', JSON.stringify(users));
+            
+            renderUsersList();
+            clearUserForm();
+            showToast('✅ تم إضافة المستخدم بنجاح', 'success');
+        }
+        
+        function renderUsersList() {
+            usersList.innerHTML = '';
+            
+            users.forEach(user => {
+                const userElement = document.createElement('div');
+                userElement.className = `user-item p-3 rounded-lg mb-2 ${user.role === 'admin' ? 'role-admin' : 'role-standard'} bg-gray-800`;
+                
+                userElement.innerHTML = `
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <div class="font-bold">${user.name}</div>
+                            <div class="text-xs text-gray-400">${user.role === 'admin' ? 'مدير' : 'مستخدم عادي'}</div>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <span class="text-xs ${user.isActive ? 'user-active' : 'user-inactive'}">
+                                <i class="fas fa-circle text-xs mr-1"></i>${user.isActive ? 'نشط' : 'غير نشط'}
+                            </span>
+                            ${currentUser.role === 'admin' && currentUser.id !== user.id ? `
+                                <button class="switch-to-user-btn text-xs bg-blue-600 hover:bg-blue-700 px-2 py-1 rounded transition-colors" data-user-id="${user.id}">
+                                    <i class="fas fa-eye mr-1"></i>عرض
+                                </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+                
+                usersList.appendChild(userElement);
+            });
+            
+            // Add event listeners for switch buttons
+            document.querySelectorAll('.switch-to-user-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const userId = parseInt(e.target.closest('button').dataset.userId);
+                    switchToUser(userId);
+                });
+            });
+        }
+        
+        function switchToUser(userId) {
+            const targetUser = users.find(u => u.id === userId);
+            if (targetUser) {
+                isAdminViewingAs = true;
+                viewingAsUser = targetUser;
+                userSwitchOverlay.classList.add('hidden');
+                updateUserInterface();
+                showToast(`👁️ تشاهد الآن كـ: ${targetUser.name}`, 'success');
+            }
+        }
+        
+        function clearUserForm() {
+            newUserName.value = '';
+            newUserPassword.value = '';
+            newUserRole.value = 'standard';
+        }
+        
+        // ... (rest of the existing functions remain the same)
+        
+        function loadClients() {
+            // This would normally come from your backend
+            // For demo, we'll use sample data
+            clients = [
+                {
+                    id: 1,
+                    name: 'أحمد محمد',
+                    phone: '+966500000001',
+                    status: 'no-reply',
+                    unread: 2,
+                    lastMessage: 'مرحباً، أريد الاستفسار عن الخدمات',
+                    lastMessageTime: '10:30'
+                },
+                {
+                    id: 2,
+                    name: 'سارة عبدالله',
+                    phone: '+966500000002',
+                    status: 'interested',
+                    unread: 0,
+                    lastMessage: 'شكراً على المعلومات',
+                    lastMessageTime: '09:15'
+                },
+                {
+                    id: 3,
+                    name: 'خالد أحمد',
+                    phone: '+966500000003',
+                    status: 'busy',
+                    unread: 1,
+                    lastMessage: 'سأتصل بك لاحقاً',
+                    lastMessageTime: '08:45'
+                }
+            ];
+            
+            renderClientList();
+            updateClientsCount();
+        }
+        
+        function renderClientList() {
+            clientList.innerHTML = '';
+            
+            const filteredClients = currentStatusFilter === 'all' 
+                ? clients 
+                : clients.filter(client => client.status === currentStatusFilter);
+            
+            filteredClients.forEach(client => {
+                const clientElement = document.createElement('div');
+                clientElement.className = `client-item p-3 rounded-lg mb-2 cursor-pointer client-status-${client.status} ${currentClient?.id === client.id ? 'active' : ''}`;
+                clientElement.dataset.clientId = client.id;
+                
+                clientElement.innerHTML = `
+                    <div class="flex justify-between items-start">
+                        <div class="flex-1">
+                            <div class="font-bold">${client.name}</div>
+                            <div class="text-xs text-gray-400">${client.phone}</div>
+                            <div class="text-sm mt-1 truncate">${client.lastMessage}</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-xs text-gray-500">${client.lastMessageTime}</div>
+                            ${client.unread > 0 ? `
+                                <div class="unread-badge text-xs px-2 py-1 rounded-full mt-1">${client.unread}</div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+                
+                clientElement.addEventListener('click', () => {
+                    selectClient(client);
+                });
+                
+                clientList.appendChild(clientElement);
+            });
+        }
+        
+        function selectClient(client) {
+            currentClient = client;
+            currentClientName.textContent = client.name;
+            currentClientPhone.textContent = client.phone;
+            activeStatus.classList.remove('hidden');
+            clientStatusSelector.classList.remove('hidden');
+            statusSelect.value = client.status;
+            
+            // Enable message input
+            messageInput.disabled = false;
+            sendMessageBtn.disabled = false;
+            
+            // Update active state in list
+            document.querySelectorAll('.client-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            document.querySelector(`[data-client-id="${client.id}"]`).classList.add('active');
+            
+            // Load messages for this client
+            loadMessages(client.id);
+        }
+        
+        function loadMessages(clientId) {
+            // This would normally come from your backend
+            if (!messages[clientId]) {
+                messages[clientId] = [
+                    {
+                        id: 1,
+                        content: 'مرحباً، أريد الاستفسار عن خدمات رقم كلاود ERP',
+                        type: 'received',
+                        time: '10:30'
+                    },
+                    {
+                        id: 2,
+                        content: 'أهلاً وسهلاً! نظام رقم كلاود ERP يوفر حلول متكاملة للمحاسبة، المخزون، الموارد البشرية، والمزيد. كيف يمكنني مساعدتك؟',
+                        type: 'sent',
+                        time: '10:31'
+                    }
+                ];
+            }
+            
+            renderMessages(messages[clientId]);
+        }
+        
+        function renderMessages(messages) {
+            chatContainer.innerHTML = '';
+            
+            messages.forEach(message => {
+                const messageElement = document.createElement('div');
+                messageElement.className = `chat-bubble ${message.type === 'sent' ? 'sent' : 'received'}`;
+                
+                messageElement.innerHTML = `
+                    <div class="message-content">${message.content}</div>
+                    <div class="chat-time">${message.time}</div>
+                `;
+                
+                chatContainer.appendChild(messageElement);
+            });
+            
+            scrollChatToBottom();
+        }
+        
+        function sendMessage() {
+            const message = messageInput.value.trim();
+            if (!message || !currentClient) return;
+            
+            // Add message to UI
+            const newMessage = {
+                id: Date.now(),
+                content: message,
+                type: 'sent',
+                time: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })
+            };
+            
+            if (!messages[currentClient.id]) {
+                messages[currentClient.id] = [];
+            }
+            messages[currentClient.id].push(newMessage);
+            
+            renderMessages(messages[currentClient.id]);
+            
+            // Clear input
+            messageInput.value = '';
+            
+            // Simulate AI response if enabled
+            if (isAIMode) {
+                setTimeout(() => {
+                    const aiResponse = {
+                        id: Date.now() + 1,
+                        content: 'شكراً لرسالتك! هذا رد تلقائي من نظام رقم كلاود ERP. فريق الدعم سيرد عليك قريباً.',
+                        type: 'received',
+                        time: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })
+                    };
+                    
+                    messages[currentClient.id].push(aiResponse);
+                    renderMessages(messages[currentClient.id]);
+                    
+                    // Update performance stats
+                    updatePerformanceStats({
+                        aiReplies: parseInt(statAIReplies.textContent) + 1,
+                        messages: parseInt(statMessages.textContent) + 2
+                    });
+                    
+                }, 2000);
+            }
+            
+            // Update performance stats
+            updatePerformanceStats({
+                messages: parseInt(statMessages.textContent) + 1
+            });
+        }
+        
+        function startBulkSending(isRetry = false) {
+            if (isBulkSending) {
+                showToast('⚠️ جاري الإرسال بالفعل', 'warning');
+                return;
+            }
+            
+            isBulkSending = true;
+            sendBulkBtn.disabled = true;
+            sendBulkBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> جاري الإرسال...';
+            
+            const delay = parseInt(sendDelay.value) * 1000; // Convert to milliseconds
+            let sentCount = 0;
+            const totalClients = clients.length;
+            
+            showToast(`🚀 بدء الإرسال الجماعي إلى ${totalClients} عميل`, 'success');
+            
+            const sendInterval = setInterval(() => {
+                if (sentCount >= totalClients) {
+                    clearInterval(sendInterval);
+                    isBulkSending = false;
+                    sendBulkBtn.disabled = false;
+                    sendBulkBtn.innerHTML = '<i class="fas fa-paper-plane mr-2"></i> 🚀 إرسال عروض ترويجية';
+                    showToast(`✅ تم إرسال ${sentCount} رسالة بنجاح`, 'success');
+                    return;
+                }
+                
+                // Simulate sending
+                sentCount++;
+                console.log(`Sent promotional message to client ${sentCount}`);
+                
+                // Update performance stats
+                updatePerformanceStats({
+                    messages: parseInt(statMessages.textContent) + 1
+                });
+                
+            }, delay);
+        }
+        
+        function updateClientStatus(clientId, newStatus) {
+            const client = clients.find(c => c.id === clientId);
+            if (client) {
+                client.status = newStatus;
+                renderClientList();
+                
+                // Update performance stats if status changed to interested
+                if (newStatus === 'interested') {
+                    updatePerformanceStats({
+                        interested: parseInt(statInterested.textContent) + 1
+                    });
+                }
+                
+                showToast(`✅ تم تحديث حالة العميل إلى: ${getStatusText(newStatus)}`, 'success');
+            }
+        }
+        
+        function getStatusText(status) {
+            const statusMap = {
+                'interested': 'مهتم',
+                'busy': 'مشغول',
+                'not-interested': 'غير مهتم',
+                'no-reply': 'لم يرد'
+            };
+            return statusMap[status] || status;
+        }
+        
+        function setStatusFilter(status) {
+            currentStatusFilter = status;
+            
+            // Update active state of filter buttons
+            document.querySelectorAll('.status-filter-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.querySelector(`[data-status="${status}"]`).classList.add('active');
+            
+            renderClientList();
+        }
+        
+        function updateClientsCount() {
+            clientsCount.textContent = clients.length;
+            statClients.textContent = clients.length;
+        }
+        
+        function scrollChatToBottom() {
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+        
+        function updatePerformanceStats(stats) {
+            if (stats.messages !== undefined) statMessages.textContent = stats.messages;
+            if (stats.aiReplies !== undefined) statAIReplies.textContent = stats.aiReplies;
+            if (stats.clients !== undefined) statClients.textContent = stats.clients;
+            if (stats.interested !== undefined) statInterested.textContent = stats.interested;
+        }
+        
+        function loadPerformanceStats() {
+            // Load from localStorage or set defaults
+            const savedStats = localStorage.getItem('performanceStats');
+            if (savedStats) {
+                updatePerformanceStats(JSON.parse(savedStats));
+            } else {
+                updatePerformanceStats({
+                    messages: 0,
+                    aiReplies: 0,
+                    clients: clients.length,
+                    interested: clients.filter(c => c.status === 'interested').length
+                });
+            }
+        }
+        
+        function exportReport() {
+            const report = {
+                date: new Date().toLocaleDateString('ar-EG'),
+                totalClients: clients.length,
+                interestedClients: clients.filter(c => c.status === 'interested').length,
+                totalMessages: parseInt(statMessages.textContent),
+                aiReplies: parseInt(statAIReplies.textContent)
+            };
+            
+            const dataStr = JSON.stringify(report, null, 2);
+            const dataBlob = new Blob([dataStr], { type: 'application/json' });
+            
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(dataBlob);
+            link.download = `ragmcloud-report-${new Date().toISOString().split('T')[0]}.json`;
+            link.click();
+            
+            showToast('📊 تم تصدير التقرير بنجاح', 'success');
+        }
+        
+        function sendReport() {
+            showToast('📧 جاري إرسال التقرير إلى المدير...', 'success');
+            // In a real app, this would send the report via email or message
+        }
+        
+        function showToast(message, type = 'success') {
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            
+            toastContainer.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.classList.add('show');
+            }, 100);
+            
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => {
+                    toastContainer.removeChild(toast);
+                }, 300);
+            }, 4000);
+        }
+        
+        function showAutoReportNotification(data) {
+            autoReportMessage.textContent = data.message;
+            autoReportNotification.style.display = 'block';
+            
+            setTimeout(() => {
+                autoReportNotification.style.display = 'none';
+            }, 5000);
+        }
+        
+        function updateBotStatusUI() {
+            if (isBotStopped) {
+                botStatus.textContent = 'متوقف';
+                botStatus.className = 'bot-status-stopped px-3 py-1 rounded-full text-sm font-bold';
+                stopBotBtn.innerHTML = '<i class="fas fa-play mr-2"></i>تشغيل البوت';
+            } else {
+                botStatus.textContent = 'نشط';
+                botStatus.className = 'bot-status-running px-3 py-1 rounded-full text-sm font-bold';
+                stopBotBtn.innerHTML = '<i class="fas fa-stop mr-2"></i>إيقاف البوت';
+            }
+        }
+        
+        // Chat scroll detection
+        chatContainer.addEventListener('scroll', () => {
+            const scrollThreshold = 100;
+            const isNearBottom = chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight < scrollThreshold;
+            
+            if (isNearBottom) {
+                scrollToBottom.classList.remove('visible');
+            } else {
+                scrollToBottom.classList.add('visible');
+            }
+        });
+    </script>
+</body>
+</html>
