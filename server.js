@@ -2444,9 +2444,9 @@ io.on('connection', (socket) => {
 // Initialize users and performance data
 initializeUsers();
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    console.log(`🚀 Server running on http://localhost:${PORT}`);
+const PORT = process.env.PORT || 10000;
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Server running on port ${PORT}`);
     console.log('🏢 Company:', ragmcloudCompanyInfo.name);
     console.log('📞 Phone:', ragmcloudCompanyInfo.phone);
     console.log('🌐 Website:', ragmcloudCompanyInfo.website);
@@ -2463,3 +2463,4 @@ server.listen(PORT, () => {
     console.log('☁️  CLOUD-OPTIMIZED WHATSAPP: ENABLED');
     console.log('📱 QR CODE FIXED: FRONTEND WILL NOW RECEIVE QR CODES');
 });
+
