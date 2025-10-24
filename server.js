@@ -266,7 +266,7 @@ const AI_SYSTEM_PROMPT = `أنت مساعد ذكي ومحترف تمثل شرك�
 // 🆕 MULTI-USER WHATSAPP FUNCTIONS
 // =============================================
 
-// 🆕 Initialize WhatsApp Client for a Specific User
+// 🆕 IMPROVED WhatsApp Client with Better Cloud Support
 function initializeUserWhatsApp(userId) {
     console.log(`🔄 Starting WhatsApp for user ${userId}...`);
     
@@ -290,10 +290,11 @@ function initializeUserWhatsApp(userId) {
         
         userWhatsAppSessions.set(userId, userSession);
 
-        // Create WhatsApp client with user-specific session
+        // 🆕 IMPROVED WhatsApp Client Configuration for Cloud
         userSession.client = new Client({
             authStrategy: new LocalAuth({ 
-                clientId: `ragmcloud-user-${userId}` // 🆕 Unique session per user
+                clientId: `ragmcloud-user-${userId}`,
+                dataPath: `./sessions/user-${userId}` // Separate sessions per user
             }),
             puppeteer: {
                 headless: true,
@@ -304,8 +305,24 @@ function initializeUserWhatsApp(userId) {
                     '--disable-accelerated-2d-canvas',
                     '--no-first-run',
                     '--no-zygote',
-                    '--disable-gpu'
-                ]
+                    '--disable-gpu',
+                    '--single-process', // 🆕 Important for cloud
+                    '--no-zygote',
+                    '--disable-setuid-sandbox',
+                    '--disable-web-security',
+                    '--disable-features=VizDisplayCompositor',
+                    '--disable-ipc-flooding-protection',
+                    '--disable-background-timer-throttling',
+                    '--disable-backgrounding-occluded-windows',
+                    '--disable-renderer-backgrounding',
+                    '--disable-back-forward-cache',
+                    '--disable-component-extensions-with-background-pages'
+                ],
+                executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || null // 🆕 For cloud environments
+            },
+            webVersionCache: {
+                type: 'remote',
+                remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html' // 🆕 Fixed version
             }
         });
 
@@ -325,10 +342,13 @@ function initializeUserWhatsApp(userId) {
                     io.emit(`user_status_${userId}`, { 
                         connected: false, 
                         message: 'يرجى مسح QR Code',
-                        status: 'qr-ready'
+                        status: 'qr-ready',
+                        hasQr: true // 🆕 Added flag
                     });
                     
                     console.log(`✅ QR code generated for user ${userId}`);
+                } else {
+                    console.error(`❌ QR code generation failed for user ${userId}:`, err);
                 }
             });
         });
@@ -343,7 +363,8 @@ function initializeUserWhatsApp(userId) {
             io.emit(`user_status_${userId}`, { 
                 connected: true, 
                 message: 'واتساب متصل ✅',
-                status: 'connected'
+                status: 'connected',
+                hasQr: false
             });
             
             console.log(`✅ User ${userId} WhatsApp connected successfully`);
@@ -394,7 +415,8 @@ function initializeUserWhatsApp(userId) {
             io.emit(`user_status_${userId}`, { 
                 connected: false, 
                 message: 'فشل المصادقة',
-                status: 'auth-failed'
+                status: 'auth-failed',
+                hasQr: false
             });
         });
 
@@ -407,28 +429,38 @@ function initializeUserWhatsApp(userId) {
             io.emit(`user_status_${userId}`, { 
                 connected: false, 
                 message: 'جارٍ إعادة الاتصال...',
-                status: 'disconnected'
+                status: 'disconnected',
+                hasQr: false
             });
             
-            // Auto-reconnect after 5 seconds
+            // Auto-reconnect after 10 seconds
             setTimeout(() => {
                 console.log(`🔄 Attempting reconnection for user ${userId}...`);
                 initializeUserWhatsApp(userId);
-            }, 5000);
+            }, 10000);
         });
 
-        // Start initialization
+        // 🆕 Better Error Handling
+        userSession.client.on('error', (error) => {
+            console.error(`❌ WhatsApp error for user ${userId}:`, error);
+        });
+
+        // Start initialization with better error handling
         userSession.client.initialize().catch(error => {
             console.log(`⚠️ WhatsApp init failed for user ${userId}:`, error.message);
-            // Retry after 10 seconds
-            setTimeout(() => initializeUserWhatsApp(userId), 10000);
+            
+            // Retry after 15 seconds with exponential backoff
+            setTimeout(() => {
+                console.log(`🔄 Retrying WhatsApp initialization for user ${userId}...`);
+                initializeUserWhatsApp(userId);
+            }, 15000);
         });
         
         return userSession;
         
     } catch (error) {
         console.log(`❌ Error creating WhatsApp client for user ${userId}:`, error.message);
-        setTimeout(() => initializeUserWhatsApp(userId), 10000);
+        setTimeout(() => initializeUserWhatsApp(userId), 15000);
         return null;
     }
 }
@@ -2392,4 +2424,5 @@ server.listen(PORT, () => {
     console.log('📊 AUTO-REPORT AFTER 30 MESSAGES: ENABLED');
     console.log('💰 CORRECT PACKAGES: 1000, 1800, 2700, 3000 ريال');
     console.log('🎉 MULTI-USER ARCHITECTURE: COMPLETED');
+    console.log('☁️  CLOUD-OPTIMIZED WHATSAPP: ENABLED');
 });
