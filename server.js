@@ -2299,55 +2299,6 @@ io.on('connection', (socket) => {
     console.log('Client connected');
     
     // Handle user authentication for socket
-    socket.on('authenticate', (token) => {
-        try {
-            const decoded = verifyToken(token);
-            if (!decoded) {
-                socket.emit('auth_error', { error: 'Token غير صالح' });
-                return;
-            }
-            
-            const user = users.find(u => u.id === decoded.userId && u.isActive);
-            if (!user) {
-                socket.emit('auth_error', { error: 'المستخدم غير موجود' });
-                return;
-            }
-            
-            socket.userId = user.id;
-            console.log(`🔐 Socket authenticated for user ${user.name}`);
-            
-            // Send user-specific initial data
-            const userSession = getUserWhatsAppSession(user.id);
-            if (userSession) {
-                socket.emit(`user_status_${user.id}`, { 
-                    connected: userSession.isConnected, 
-                    message: userSession.isConnected ? 'واتساب متصل ✅' : 
-                            userSession.status === 'qr-ready' ? 'يرجى مسح QR Code' :
-                            'جارٍ الاتصال...',
-                    status: userSession.status,
-                    hasQr: !!userSession.qrCode,
-                    userId: user.id
-                });
-                
-                if (userSession.qrCode) {
-                    socket.emit(`user_qr_${user.id}`, { 
-                        qrCode: userSession.qrCode,
-                        userId: user.id,
-                        timestamp: new Date().toISOString()
-                    });
-                }
-                
-                socket.emit(`user_bot_status_${user.id}`, { 
-                    stopped: userSession.isBotStopped,
-                    userId: user.id 
-                });
-            }
-            
-        } catch (error) {
-            socket.emit('auth_error', { error: 'خطأ في المصادقة' });
-        }
-    });
-
     // Handle user-specific bot toggle
     socket.on('user_toggle_bot', (data) => {
         if (!socket.userId) {
@@ -2363,7 +2314,58 @@ io.on('connection', (socket) => {
             });
         }
     });
-
+// In your socket.io connection event, add this:
+socket.on('authenticate', (token) => {
+    try {
+        const decoded = verifyToken(token);
+        if (!decoded) {
+            socket.emit('auth_error', { error: 'Token غير صالح' });
+            return;
+        }
+        
+        const user = users.find(u => u.id === decoded.userId && u.isActive);
+        if (!user) {
+            socket.emit('auth_error', { error: 'المستخدم غير موجود' });
+            return;
+        }
+        
+        socket.userId = user.id;
+        console.log(`🔐 Socket authenticated for user ${user.name}`);
+        
+        // 🆕 CRITICAL: Send authentication success
+        socket.emit('authenticated', { 
+            userId: user.id, 
+            username: user.username 
+        });
+        
+        // Send user-specific initial data
+        const userSession = getUserWhatsAppSession(user.id);
+        if (userSession) {
+            socket.emit(`user_status_${user.id}`, { 
+                connected: userSession.isConnected, 
+                message: userSession.isConnected ? 'واتساب متصل ✅' : 
+                        userSession.status === 'qr-ready' ? 'يرجى مسح QR Code' :
+                        'جارٍ الاتصال...',
+                status: userSession.status,
+                hasQr: !!userSession.qrCode,
+                userId: user.id
+            });
+            
+            // 🆕 CRITICAL: If QR code already exists, send it immediately
+            if (userSession.qrCode) {
+                console.log(`📱 Sending existing QR code to user ${user.id}`);
+                socket.emit(`user_qr_${user.id}`, { 
+                    qrCode: userSession.qrCode,
+                    userId: user.id,
+                    timestamp: new Date().toISOString()
+                });
+            }
+        }
+        
+    } catch (error) {
+        socket.emit('auth_error', { error: 'خطأ في المصادقة' });
+    }
+});
     // Handle client status update
     socket.on('update_client_status', (data) => {
         updateClientStatus(data.phone, data.status);
