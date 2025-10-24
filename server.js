@@ -326,7 +326,7 @@ function initializeUserWhatsApp(userId) {
             }
         });
 
-        // 🆕 QR Code Generation (User-specific)
+        // 🆕 FIXED QR Code Generation (User-specific)
         userSession.client.on('qr', (qr) => {
             console.log(`📱 QR CODE RECEIVED for user ${userId}`);
             qrcode.generate(qr, { small: true });
@@ -337,18 +337,37 @@ function initializeUserWhatsApp(userId) {
                     userSession.qrCode = url;
                     userSession.status = 'qr-ready';
                     
-                    // 🆕 Emit user-specific QR code
-                    io.emit(`user_qr_${userId}`, url);
-                    io.emit(`user_status_${userId}`, { 
-                        connected: false, 
-                        message: 'يرجى مسح QR Code',
-                        status: 'qr-ready',
-                        hasQr: true // 🆕 Added flag
+                    console.log(`✅ QR code generated for user ${userId}`);
+                    console.log(`📡 Emitting QR to user_qr_${userId}`);
+                    
+                    // 🆕 FIXED: Emit to ALL connected clients for this user
+                    io.emit(`user_qr_${userId}`, { 
+                        qrCode: url,
+                        userId: userId,
+                        timestamp: new Date().toISOString()
                     });
                     
-                    console.log(`✅ QR code generated for user ${userId}`);
+                    // 🆕 FIXED: Also emit status update
+                    io.emit(`user_status_${userId}`, { 
+                        connected: false, 
+                        message: 'يرجى مسح QR Code للاتصال',
+                        status: 'qr-ready',
+                        hasQr: true,
+                        userId: userId
+                    });
+                    
                 } else {
                     console.error(`❌ QR code generation failed for user ${userId}:`, err);
+                    
+                    // 🆕 FIXED: Emit error to frontend
+                    io.emit(`user_status_${userId}`, { 
+                        connected: false, 
+                        message: 'فشل توليد QR Code',
+                        status: 'error',
+                        hasQr: false,
+                        userId: userId,
+                        error: err.message
+                    });
                 }
             });
         });
@@ -364,7 +383,8 @@ function initializeUserWhatsApp(userId) {
                 connected: true, 
                 message: 'واتساب متصل ✅',
                 status: 'connected',
-                hasQr: false
+                hasQr: false,
+                userId: userId
             });
             
             console.log(`✅ User ${userId} WhatsApp connected successfully`);
@@ -390,7 +410,8 @@ function initializeUserWhatsApp(userId) {
                     from: clientPhone,
                     message: message.body,
                     timestamp: new Date(),
-                    fromMe: false
+                    fromMe: false,
+                    userId: userId
                 });
 
                 // Update client last message
@@ -416,7 +437,8 @@ function initializeUserWhatsApp(userId) {
                 connected: false, 
                 message: 'فشل المصادقة',
                 status: 'auth-failed',
-                hasQr: false
+                hasQr: false,
+                userId: userId
             });
         });
 
@@ -430,7 +452,8 @@ function initializeUserWhatsApp(userId) {
                 connected: false, 
                 message: 'جارٍ إعادة الاتصال...',
                 status: 'disconnected',
-                hasQr: false
+                hasQr: false,
+                userId: userId
             });
             
             // Auto-reconnect after 10 seconds
@@ -552,7 +575,8 @@ async function processUserIncomingMessage(userId, message, from) {
             from: clientPhone,
             message: aiResponse,
             timestamp: new Date(),
-            fromMe: true
+            fromMe: true,
+            userId: userId
         });
         
         console.log(`✅ User ${userId} auto-reply sent to ${clientPhone}`);
@@ -608,7 +632,7 @@ function toggleUserBot(userId, stop) {
         console.log(`🤖 User ${userId} bot ${stop ? 'stopped' : 'started'}`);
         
         // Emit user-specific bot status
-        io.emit(`user_bot_status_${userId}`, { stopped: stop });
+        io.emit(`user_bot_status_${userId}`, { stopped: stop, userId: userId });
         
         return true;
     }
@@ -2300,14 +2324,23 @@ io.on('connection', (socket) => {
                     message: userSession.isConnected ? 'واتساب متصل ✅' : 
                             userSession.status === 'qr-ready' ? 'يرجى مسح QR Code' :
                             'جارٍ الاتصال...',
-                    status: userSession.status
+                    status: userSession.status,
+                    hasQr: !!userSession.qrCode,
+                    userId: user.id
                 });
                 
                 if (userSession.qrCode) {
-                    socket.emit(`user_qr_${user.id}`, userSession.qrCode);
+                    socket.emit(`user_qr_${user.id}`, { 
+                        qrCode: userSession.qrCode,
+                        userId: user.id,
+                        timestamp: new Date().toISOString()
+                    });
                 }
                 
-                socket.emit(`user_bot_status_${user.id}`, { stopped: userSession.isBotStopped });
+                socket.emit(`user_bot_status_${user.id}`, { 
+                    stopped: userSession.isBotStopped,
+                    userId: user.id 
+                });
             }
             
         } catch (error) {
@@ -2324,7 +2357,10 @@ io.on('connection', (socket) => {
         
         const success = toggleUserBot(socket.userId, data.stop);
         if (success) {
-            io.emit(`user_bot_status_${socket.userId}`, { stopped: data.stop });
+            io.emit(`user_bot_status_${socket.userId}`, { 
+                stopped: data.stop,
+                userId: socket.userId 
+            });
         }
     });
 
@@ -2425,4 +2461,5 @@ server.listen(PORT, () => {
     console.log('💰 CORRECT PACKAGES: 1000, 1800, 2700, 3000 ريال');
     console.log('🎉 MULTI-USER ARCHITECTURE: COMPLETED');
     console.log('☁️  CLOUD-OPTIMIZED WHATSAPP: ENABLED');
+    console.log('📱 QR CODE FIXED: FRONTEND WILL NOW RECEIVE QR CODES');
 });
