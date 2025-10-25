@@ -34,7 +34,7 @@ app.use((req, res, next) => {
 });
 
 // Create required directories
-const directories = ['uploads', 'memory', 'tmp', 'reports', 'sessions', 'data', 'memory/training'];
+const directories = ['uploads', 'memory', 'tmp', 'reports', 'sessions', 'data'];
 directories.forEach(dir => {
     if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
@@ -221,8 +221,8 @@ const ragmcloudCompanyInfo = {
     ]
 };
 
-// DEFAULT AI System Prompt (will be overridden by saved prompt)
-const DEFAULT_AI_SYSTEM_PROMPT = `أنت مساعد ذكي ومحترف تمثل شركة "رقم كلاود" المتخصصة في أنظمة ERP السحابية. أنت بائع مقنع ومحاسب خبير.
+// AI System Prompt
+const AI_SYSTEM_PROMPT = `أنت مساعد ذكي ومحترف تمثل شركة "رقم كلاود" المتخصصة في أنظمة ERP السحابية. أنت بائع مقنع ومحاسب خبير.
 
 🔹 **هويتك:**
 - أنت بائع محترف ومحاسب متمرس
@@ -262,26 +262,6 @@ const DEFAULT_AI_SYSTEM_PROMPT = `أنت مساعد ذكي ومحترف تمثل
 
 تذكر: أنت بائع محترف هدفك مساعدة العملاء في اختيار النظام المناسب لشركاتهم.`;
 
-// 🆕 GLOBAL AI SYSTEM PROMPT (Load from file on startup)
-let AI_SYSTEM_PROMPT = loadAIPromptFromFile();
-
-// 🆕 Function to load AI prompt from file
-function loadAIPromptFromFile() {
-    try {
-        if (fs.existsSync('./memory/ai_prompt.txt')) {
-            const savedPrompt = fs.readFileSync('./memory/ai_prompt.txt', 'utf8');
-            console.log('✅ Loaded AI prompt from file');
-            return savedPrompt;
-        } else {
-            console.log('ℹ️ Using default AI prompt');
-            return DEFAULT_AI_SYSTEM_PROMPT;
-        }
-    } catch (error) {
-        console.error('❌ Error loading AI prompt:', error);
-        return DEFAULT_AI_SYSTEM_PROMPT;
-    }
-}
-
 // =============================================
 // 🆕 ENHANCEMENT 1: MANUAL CLIENT STATUS ASSIGNMENT
 // =============================================
@@ -291,12 +271,6 @@ app.post('/api/update-client-status', authenticateUser, async (req, res) => {
     try {
         const { phone, status } = req.body;
         const userId = req.user.id;
-        
-        console.log('🔄 Updating client status:', { phone, status, userId });
-        
-        if (!phone || !status) {
-            return res.status(400).json({ error: 'رقم الهاتف والحالة مطلوبان' });
-        }
         
         // Update client status in memory
         let clients = [];
@@ -324,7 +298,6 @@ app.post('/api/update-client-status', authenticateUser, async (req, res) => {
             res.status(404).json({ error: 'العميل غير موجود' });
         }
     } catch (error) {
-        console.error('❌ Error updating client status:', error);
         res.status(500).json({ error: 'فشل تحديث الحالة' });
     }
 });
@@ -436,8 +409,6 @@ app.put('/api/ai-prompt', authenticateUser, authorizeAdmin, (req, res) => {
     try {
         const { prompt } = req.body;
         
-        console.log('🔄 Updating AI prompt:', prompt ? 'Content received' : 'No content');
-        
         if (!prompt) {
             return res.status(400).json({ error: 'النص المطلوب مطلوب' });
         }
@@ -445,19 +416,17 @@ app.put('/api/ai-prompt', authenticateUser, authorizeAdmin, (req, res) => {
         // Save AI prompt to file
         fs.writeFileSync('./memory/ai_prompt.txt', prompt);
         
-        // Update global AI prompt for ALL users
+        // Update in-memory prompt
         AI_SYSTEM_PROMPT = prompt;
-        
-        console.log('✅ AI prompt updated globally for all users');
         
         res.json({ 
             success: true, 
-            message: 'تم تحديث نص الذكاء الاصطناعي بنجاح لجميع المستخدمين' 
+            message: 'تم تحديث نص الذكاء الاصطناعي بنجاح' 
         });
         
     } catch (error) {
         console.error('Update AI prompt error:', error);
-        res.status(500).json({ error: 'خطأ في تحديث النص: ' + error.message });
+        res.status(500).json({ error: 'خطأ في تحديث النص' });
     }
 });
 
@@ -489,22 +458,18 @@ app.post('/api/ai-training', authenticateUser, authorizeAdmin, upload.single('tr
             return res.status(400).json({ error: 'نوع الملف غير مدعوم' });
         }
         
-        // Save training data to memory with timestamp
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const trainingFile = `./memory/training/training_${timestamp}_${fileName}.txt`;
+        // Save training data to memory
+        const trainingFile = `./memory/training_${Date.now()}.txt`;
         fs.writeFileSync(trainingFile, trainingData);
         
         // Clean up uploaded file
         fs.unlinkSync(filePath);
         
-        console.log(`✅ Training file saved: ${trainingFile}`);
-        
         res.json({ 
             success: true, 
             message: `تم رفع ملف التدريب بنجاح: ${fileName}`,
             fileName: fileName,
-            dataLength: trainingData.length,
-            savedPath: trainingFile
+            dataLength: trainingData.length
         });
         
     } catch (error) {
@@ -515,20 +480,26 @@ app.post('/api/ai-training', authenticateUser, authorizeAdmin, upload.single('tr
             fs.unlinkSync(req.file.path);
         }
         
-        res.status(500).json({ error: 'فشل رفع ملف التدريب: ' + error.message });
+        res.status(500).json({ error: 'فشل رفع ملف التدريب' });
     }
 });
 
 // 🆕 Get current AI prompt
 app.get('/api/ai-prompt', authenticateUser, authorizeAdmin, (req, res) => {
     try {
+        let currentPrompt = AI_SYSTEM_PROMPT;
+        
+        // Try to load from file if exists
+        if (fs.existsSync('./memory/ai_prompt.txt')) {
+            currentPrompt = fs.readFileSync('./memory/ai_prompt.txt', 'utf8');
+        }
+        
         res.json({ 
             success: true, 
-            prompt: AI_SYSTEM_PROMPT 
+            prompt: currentPrompt 
         });
         
     } catch (error) {
-        console.error('Error getting AI prompt:', error);
         res.status(500).json({ error: 'خطأ في جلب النص' });
     }
 });
@@ -1825,7 +1796,7 @@ function exportReportToFile(userId = null) {
         
         // Ensure reports directory exists
         if (!fs.existsSync(path.join(__dirname, 'reports'))) {
-            fs.mkdirSync(path.join(__dirname, 'reports', { recursive: true });
+            fs.mkdirSync(path.join(__dirname, 'reports'), { recursive: true });
         }
         
         fs.writeFileSync(filePath, report, 'utf8');
@@ -2569,11 +2540,8 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log('☁️  CLOUD-OPTIMIZED WHATSAPP: ENABLED');
     console.log('📱 QR CODE FIXED: FRONTEND WILL NOW RECEIVE QR CODES');
     console.log('🆕 ENHANCEMENTS COMPLETED:');
-    console.log('   ✅ Manual Client Status Assignment - FIXED');
-    console.log('   ✅ Real User Identity in AI Responses - FIXED');
-    console.log('   ✅ Enhanced User Management - FIXED');
-    console.log('   ✅ AI Training Portal - FIXED');
-    console.log('   ✅ GLOBAL AI Training - Admin changes affect ALL users');
-    console.log('   ✅ PERMANENT AI Storage - Training survives server restarts');
-    console.log('   ✅ REAL-TIME Updates - Changes apply immediately');
+    console.log('   ✅ Manual Client Status Assignment');
+    console.log('   ✅ Real User Identity in AI Responses');
+    console.log('   ✅ Enhanced User Management');
+    console.log('   ✅ AI Training Portal');
 });
