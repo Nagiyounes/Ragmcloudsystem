@@ -102,7 +102,7 @@
             color: white;
         }
         
-        /* IMPROVED CHAT STYLES */
+        /* FIXED: Chat container on LEFT side */
         .chat-container {
             height: calc(100vh - 280px);
             overflow-y: auto;
@@ -415,6 +415,17 @@
         .role-badge {
             display: none !important;
         }
+
+        /* FIXED: Chat layout - Messages on LEFT, Clients on RIGHT */
+        .chat-area {
+            order: 1;
+        }
+        
+        .clients-area {
+            order: 2;
+            border-left: 1px solid rgba(255, 255, 255, 0.1);
+            border-right: none;
+        }
     </style>
 </head>
 <body class="text-white">
@@ -478,16 +489,10 @@
                     </div>
                 </div>
                 
-                <!-- User Info -->
+                <!-- User Info - FIXED: Removed Role Label -->
                 <div class="flex items-center justify-between mb-4">
                     <span class="text-sm text-gray-300">المستخدم:</span>
                     <span id="currentUserName" class="px-3 py-1 bg-primary rounded-full text-sm font-bold">...</span>
-                </div>
-
-                <!-- User Role - FIXED: Removed purple badge -->
-                <div class="flex items-center justify-between mb-4">
-                    <span class="text-sm text-gray-300">الدور:</span>
-                    <span id="currentUserRole" class="px-3 py-1 bg-primary rounded-full text-sm font-bold">...</span>
                 </div>
                 
                 <!-- WhatsApp Status -->
@@ -649,7 +654,7 @@
             </div>
         </div>
         
-        <!-- Right Chat Area -->
+        <!-- FIXED: Right Chat Area - Messages on LEFT, Clients on RIGHT -->
         <div class="flex-1 flex flex-col m-3 luxury-card rounded-l-2xl relative">
             <!-- Chat Header -->
             <div class="p-6 border-b border-gray-600">
@@ -682,36 +687,10 @@
                 </div>
             </div>
             
-            <!-- Clients List / Chat Area -->
+            <!-- FIXED: Chat Area Layout - Messages LEFT, Clients RIGHT -->
             <div class="flex-1 flex">
-                <!-- Clients List -->
-                <div class="w-1/3 border-l border-gray-600 h-full overflow-hidden flex flex-col">
-                    <div class="p-4 border-b border-gray-600">
-                        <h3 class="font-bold text-lg gradient-text mb-2">قائمة العملاء</h3>
-                        <!-- Status Filter -->
-                        <div class="status-filter">
-                            <button class="status-filter-btn btn-all active" data-status="all">الكل</button>
-                            <button class="status-filter-btn btn-interested" data-status="interested">
-                                <span class="status-dot dot-interested"></span> مهتم
-                            </button>
-                            <button class="status-filter-btn btn-busy" data-status="busy">
-                                <span class="status-dot dot-busy"></span> مشغول
-                            </button>
-                            <button class="status-filter-btn btn-not-interested" data-status="not-interested">
-                                <span class="status-dot dot-not-interested"></span> غير مهتم
-                            </button>
-                            <button class="status-filter-btn btn-no-reply" data-status="no-reply">
-                                <span class="status-dot dot-no-reply"></span> لم يرد
-                            </button>
-                        </div>
-                    </div>
-                    <div id="clientList" class="flex-1 overflow-y-auto p-2">
-                        <!-- Clients will be populated here -->
-                    </div>
-                </div>
-                
-                <!-- Chat Messages -->
-                <div class="flex-1 flex flex-col relative">
+                <!-- FIXED: Chat Messages on LEFT side -->
+                <div class="flex-1 flex flex-col relative chat-area">
                     <div id="chatContainer" class="chat-container">
                         <div class="text-center text-gray-400 mt-20">
                             <i class="fas fa-comments text-5xl mb-4 opacity-50"></i>
@@ -741,6 +720,32 @@
                                 <i class="fas fa-paper-plane"></i>
                             </button>
                         </div>
+                    </div>
+                </div>
+                
+                <!-- FIXED: Clients List on RIGHT side -->
+                <div class="w-1/3 border-r border-gray-600 h-full overflow-hidden flex flex-col clients-area">
+                    <div class="p-4 border-b border-gray-600">
+                        <h3 class="font-bold text-lg gradient-text mb-2">قائمة العملاء</h3>
+                        <!-- Status Filter -->
+                        <div class="status-filter">
+                            <button class="status-filter-btn btn-all active" data-status="all">الكل</button>
+                            <button class="status-filter-btn btn-interested" data-status="interested">
+                                <span class="status-dot dot-interested"></span> مهتم
+                            </button>
+                            <button class="status-filter-btn btn-busy" data-status="busy">
+                                <span class="status-dot dot-busy"></span> مشغول
+                            </button>
+                            <button class="status-filter-btn btn-not-interested" data-status="not-interested">
+                                <span class="status-dot dot-not-interested"></span> غير مهتم
+                            </button>
+                            <button class="status-filter-btn btn-no-reply" data-status="no-reply">
+                                <span class="status-dot dot-no-reply"></span> لم يرد
+                            </button>
+                        </div>
+                    </div>
+                    <div id="clientList" class="flex-1 overflow-y-auto p-2">
+                        <!-- Clients will be populated here -->
                     </div>
                 </div>
             </div>
@@ -810,7 +815,6 @@
 
         // User Management Elements
         const currentUserName = document.getElementById('currentUserName');
-        const currentUserRole = document.getElementById('currentUserRole');
         const userManagementSection = document.getElementById('userManagementSection');
         const userSwitchBtn = document.getElementById('userSwitchBtn');
         const userSwitchOverlay = document.getElementById('userSwitchOverlay');
@@ -845,9 +849,9 @@
                 
                 setupSocketEvents();
                 setupEventListeners();
-                loadCurrentUser(); // This will trigger authentication
+                loadCurrentUser();
                 
-                // 🆕 Auto-check WhatsApp status on load
+                // Auto-check WhatsApp status on load
                 setTimeout(() => {
                     checkWhatsAppStatus();
                 }, 2000);
@@ -877,13 +881,13 @@
                 console.log('✅ Socket authenticated for user:', userData);
                 const userId = currentUser.id;
                 
-                // 🆕 FIXED: User-specific WhatsApp status
+                // User-specific WhatsApp status
                 socket.on(`user_status_${userId}`, (data) => {
                     console.log('📡 Received user status:', data);
                     updateWhatsAppStatus(data);
                 });
 
-                // 🆕 FIXED: User-specific QR code with auto-display
+                // User-specific QR code
                 socket.on(`user_qr_${userId}`, (data) => {
                     console.log('📡 Received QR code for user:', userId);
                     if (data.qrCode) {
@@ -891,14 +895,14 @@
                     }
                 });
 
-                // 🆕 FIXED: User-specific bot status
+                // User-specific bot status
                 socket.on(`user_bot_status_${userId}`, (data) => {
                     console.log('📡 Received bot status:', data);
                     isBotStopped = data.stopped;
                     updateBotStatusUI();
                 });
 
-                // 🆕 FIXED: User-specific messages
+                // FIXED: User-specific messages - NOW WORKING PROPERLY
                 socket.on(`user_message_${userId}`, (data) => {
                     console.log('📡 Received user message:', data);
                     handleUserMessage(data);
@@ -925,7 +929,7 @@
                 }, 2000);
             });
 
-            // Global events (not user-specific)
+            // Global events
             socket.on('bot_status', (data) => {
                 isBotStopped = data.stopped;
                 updateBotStatusUI();
@@ -1093,7 +1097,7 @@
             addUserBtn.addEventListener('click', addNewUser);
         }
 
-        // 🆕 IMPROVED QR Code Functions
+        // FIXED: QR Code Functions
         function showQRCode(qrCodeUrl) {
             console.log('🖼️ Showing QR code:', qrCodeUrl);
             if (!qrCodeUrl) {
@@ -1102,10 +1106,8 @@
                 return;
             }
             
-            // Clear previous QR code
             qrCode.innerHTML = '';
             
-            // Create new QR code image
             const qrImage = document.createElement('img');
             qrImage.src = qrCodeUrl;
             qrImage.alt = "WhatsApp QR Code";
@@ -1121,13 +1123,11 @@
             qrCode.appendChild(qrImage);
             qrOverlay.classList.remove('hidden');
             
-            // Show notification
             showToast('📱 يرجى مسح QR Code للاتصال', 'success');
             
             console.log('✅ QR code overlay shown');
         }
 
-        // 🆕 Auto-fetch QR code on page load
         function fetchUserQRCode() {
             console.log('🔄 Fetching user QR code...');
             fetch('/api/user-whatsapp-qr', {
@@ -1158,7 +1158,6 @@
             });
         }
 
-        // 🆕 Improved WhatsApp status update with auto-QR display
         function updateWhatsAppStatus(data) {
             console.log('🔄 Updating WhatsApp status:', data);
             whatsappStatus.textContent = data.message;
@@ -1166,18 +1165,15 @@
             if (data.connected) {
                 whatsappStatus.className = 'status-connected px-3 py-1 rounded-full text-sm font-bold';
                 whatsappQrStatus.classList.add('hidden');
-                qrOverlay.classList.add('hidden'); // Hide QR when connected
+                qrOverlay.classList.add('hidden');
             } else {
                 whatsappStatus.className = 'status-disconnected px-3 py-1 rounded-full text-sm font-bold';
                 
                 if (data.status === 'qr-ready') {
                     whatsappQrStatus.classList.remove('hidden');
-                    // 🆕 AUTO-SHOW QR CODE when status is qr-ready
                     if (!qrOverlay.classList.contains('hidden')) {
-                        // QR overlay is already visible, no need to show again
                         console.log('📱 QR overlay already visible');
                     } else {
-                        // Fetch and show QR code automatically
                         console.log('🔄 Auto-fetching QR code for qr-ready status');
                         setTimeout(() => fetchUserQRCode(), 1000);
                     }
@@ -1188,7 +1184,6 @@
             }
         }
 
-        // 🆕 Function to check WhatsApp status
         function checkWhatsAppStatus() {
             fetch('/api/user-whatsapp-status', {
                 method: 'GET',
@@ -1210,23 +1205,164 @@
             });
         }
 
-        // Logout Function
+        // FIXED: Customer Selection and Message Loading
+        function selectClient(client) {
+            console.log('🟢 SELECTING CLIENT:', client.name, 'Phone:', client.phone);
+            
+            currentClient = client;
+            currentClientName.textContent = client.name;
+            currentClientPhone.textContent = client.phone;
+            activeStatus.classList.remove('hidden');
+            clientStatusSelector.classList.remove('hidden');
+            statusSelect.value = client.status;
+            
+            messageInput.disabled = false;
+            sendMessageBtn.disabled = false;
+            
+            // Update active client in UI
+            document.querySelectorAll('.client-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            document.querySelector(`[data-client-id="${client.id}"]`).classList.add('active');
+            
+            // FIXED: Load messages for this client
+            console.log('🔄 Loading messages for client:', client.phone);
+            loadMessages(client.phone);
+        }
+        
+        // FIXED: Message Loading Function
+        function loadMessages(clientPhone) {
+            console.log('📞 API CALL: Loading messages for phone:', clientPhone);
+            
+            fetch(`/api/client-messages/${clientPhone}`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => {
+                console.log('📡 Response status:', response.status);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('✅ Messages loaded successfully:', data);
+                if (data.success) {
+                    messages[clientPhone] = data.messages;
+                    console.log(`📨 Rendering ${data.messages.length} messages`);
+                    renderMessages(data.messages);
+                } else {
+                    console.error('❌ Failed to load messages:', data);
+                    showToast('❌ فشل تحميل الرسائل', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('❌ Error loading messages:', error);
+                showToast('❌ خطأ في تحميل الرسائل', 'error');
+            });
+        }
+        
+        // FIXED: Message Rendering Function
+        function renderMessages(messages) {
+            console.log('🎨 Rendering messages in container:', messages);
+            
+            // Clear chat container
+            chatContainer.innerHTML = '';
+            
+            if (!messages || messages.length === 0) {
+                chatContainer.innerHTML = `
+                    <div class="text-center text-gray-400 mt-20">
+                        <i class="fas fa-comments text-5xl mb-4 opacity-50"></i>
+                        <p class="text-gray-500">لا توجد رسائل بعد</p>
+                    </div>
+                `;
+                console.log('ℹ️ No messages to display');
+                return;
+            }
+            
+            // Create and append message elements
+            messages.forEach(message => {
+                const messageElement = document.createElement('div');
+                messageElement.className = `chat-bubble ${message.fromMe ? 'sent' : 'received'}`;
+                
+                messageElement.innerHTML = `
+                    <div class="message-content">${message.message}</div>
+                    <div class="chat-time">${new Date(message.timestamp).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</div>
+                `;
+                
+                chatContainer.appendChild(messageElement);
+            });
+            
+            console.log('✅ Messages rendered successfully');
+            scrollChatToBottom();
+        }
+
+        // FIXED: Handle incoming real-time messages
+        function handleUserMessage(data) {
+            console.log('💬 HANDLING REAL-TIME MESSAGE:', data);
+            
+            if (currentClient && data.from === currentClient.phone) {
+                // If this message is for the currently selected client
+                const newMessage = {
+                    message: data.message,
+                    fromMe: data.fromMe,
+                    timestamp: data.timestamp
+                };
+                
+                if (!messages[currentClient.phone]) {
+                    messages[currentClient.phone] = [];
+                }
+                messages[currentClient.phone].push(newMessage);
+                renderMessages(messages[currentClient.phone]);
+            }
+        }
+
+        function sendMessage() {
+            const message = messageInput.value.trim();
+            if (!message || !currentClient) return;
+            
+            console.log('📤 Sending message to:', currentClient.phone);
+            
+            socket.emit('send_message', {
+                to: currentClient.phone,
+                message: message
+            });
+            
+            const newMessage = {
+                id: Date.now(),
+                message: message,
+                fromMe: true,
+                timestamp: new Date().toISOString()
+            };
+            
+            if (!messages[currentClient.phone]) {
+                messages[currentClient.phone] = [];
+            }
+            messages[currentClient.phone].push(newMessage);
+            
+            renderMessages(messages[currentClient.phone]);
+            messageInput.value = '';
+            
+            updatePerformanceStats({
+                messages: parseInt(statMessages.textContent) + 1
+            });
+        }
+
         function logoutUser() {
             if (confirm('هل أنت متأكد من تسجيل الخروج؟')) {
-                // Clear localStorage
                 localStorage.removeItem('authToken');
                 localStorage.removeItem('currentUser');
                 localStorage.removeItem('performanceStats');
                 
-                // Disconnect socket
                 if (socket) {
                     socket.disconnect();
                 }
                 
-                // Show logout message
                 showToast('👋 تم تسجيل الخروج بنجاح', 'success');
                 
-                // Redirect to login page
                 setTimeout(() => {
                     window.location.href = '/';
                 }, 1500);
@@ -1240,7 +1376,6 @@
                 currentUser = JSON.parse(savedUser);
                 updateUserInterface();
                 
-                // 🆕 CRITICAL: Authenticate socket AFTER user is loaded
                 if (socket && socket.connected) {
                     console.log('🔐 Authenticating socket for user:', currentUser.id);
                     socket.emit('authenticate', authToken);
@@ -1260,7 +1395,6 @@
                         localStorage.setItem('currentUser', JSON.stringify(currentUser));
                         updateUserInterface();
                         
-                        // 🆕 CRITICAL: Authenticate socket AFTER user is loaded
                         if (socket && socket.connected) {
                             console.log('🔐 Authenticating socket for user:', currentUser.id);
                             socket.emit('authenticate', authToken);
@@ -1302,14 +1436,12 @@
             if (!currentUser) return;
             
             currentUserName.textContent = currentUser.name;
-            currentUserRole.textContent = currentUser.role === 'admin' ? 'مدير' : 'مستخدم عادي';
-            
-            // FIXED: Remove purple badge - always use primary color
-            currentUserRole.className = 'px-3 py-1 bg-primary rounded-full text-sm font-bold';
             
             if (currentUser.role === 'admin' && !isAdminViewingAs) {
                 userManagementSection.classList.remove('hidden');
                 userSwitchBtn.classList.remove('hidden');
+                // FIXED: Load users immediately when admin logs in
+                loadUsers();
             } else {
                 userManagementSection.classList.add('hidden');
                 userSwitchBtn.classList.add('hidden');
@@ -1395,7 +1527,6 @@
         function switchToUser(userId) {
             const targetUser = users.find(u => u.id === userId);
             if (targetUser) {
-                // Call API to switch user
                 fetch('/api/switch-to-user', {
                     method: 'POST',
                     headers: {
@@ -1407,11 +1538,8 @@
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
-                        // Store new token and user
                         localStorage.setItem('authToken', data.token);
                         localStorage.setItem('currentUser', JSON.stringify(data.user));
-                        
-                        // Redirect to dashboard with new user context
                         window.location.href = '/dashboard';
                     } else {
                         showToast('❌ ' + data.error, 'error');
@@ -1482,12 +1610,23 @@
             });
         }
         
+        // FIXED: Client List Rendering with proper click events
         function renderClientList() {
             clientList.innerHTML = '';
             
             const filteredClients = currentStatusFilter === 'all' 
                 ? clients 
                 : clients.filter(client => client.status === currentStatusFilter);
+            
+            if (filteredClients.length === 0) {
+                clientList.innerHTML = `
+                    <div class="text-center text-gray-400 p-4">
+                        <i class="fas fa-users text-2xl mb-2 opacity-50"></i>
+                        <p>لا يوجد عملاء</p>
+                    </div>
+                `;
+                return;
+            }
             
             filteredClients.forEach(client => {
                 const clientElement = document.createElement('div');
@@ -1510,107 +1649,13 @@
                     </div>
                 `;
                 
+                // FIXED: Proper click event listener
                 clientElement.addEventListener('click', () => {
+                    console.log('🟢 CLIENT CLICKED:', client.name);
                     selectClient(client);
                 });
                 
                 clientList.appendChild(clientElement);
-            });
-        }
-        
-        function selectClient(client) {
-            currentClient = client;
-            currentClientName.textContent = client.name;
-            currentClientPhone.textContent = client.phone;
-            activeStatus.classList.remove('hidden');
-            clientStatusSelector.classList.remove('hidden');
-            statusSelect.value = client.status;
-            
-            messageInput.disabled = false;
-            sendMessageBtn.disabled = false;
-            
-            document.querySelectorAll('.client-item').forEach(item => {
-                item.classList.remove('active');
-            });
-            document.querySelector(`[data-client-id="${client.id}"]`).classList.add('active');
-            
-            loadMessages(client.id);
-        }
-        
-        function loadMessages(clientId) {
-            fetch(`/api/client-messages/${clientId}`, {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${authToken}`,
-                    'Content-Type': 'application/json'
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    messages[clientId] = data.messages;
-                    renderMessages(messages[clientId]);
-                }
-            })
-            .catch(error => {
-                console.error('Error loading messages:', error);
-            });
-        }
-        
-        function renderMessages(messages) {
-            chatContainer.innerHTML = '';
-            
-            if (messages.length === 0) {
-                chatContainer.innerHTML = `
-                    <div class="text-center text-gray-400 mt-20">
-                        <i class="fas fa-comments text-5xl mb-4 opacity-50"></i>
-                        <p class="text-gray-500">لا توجد رسائل بعد</p>
-                    </div>
-                `;
-                return;
-            }
-            
-            messages.forEach(message => {
-                const messageElement = document.createElement('div');
-                messageElement.className = `chat-bubble ${message.fromMe ? 'sent' : 'received'}`;
-                
-                messageElement.innerHTML = `
-                    <div class="message-content">${message.message}</div>
-                    <div class="chat-time">${new Date(message.timestamp).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</div>
-                `;
-                
-                chatContainer.appendChild(messageElement);
-            });
-            
-            scrollChatToBottom();
-        }
-        
-        function sendMessage() {
-            const message = messageInput.value.trim();
-            if (!message || !currentClient) return;
-            
-            socket.emit('send_message', {
-                to: currentClient.phone,
-                message: message
-            });
-            
-            const newMessage = {
-                id: Date.now(),
-                message: message,
-                fromMe: true,
-                timestamp: new Date().toISOString()
-            };
-            
-            if (!messages[currentClient.id]) {
-                messages[currentClient.id] = [];
-            }
-            messages[currentClient.id].push(newMessage);
-            
-            renderMessages(messages[currentClient.id]);
-            messageInput.value = '';
-            
-            updatePerformanceStats({
-                messages: parseInt(statMessages.textContent) + 1
             });
         }
         
