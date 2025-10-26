@@ -410,77 +410,6 @@
             transform: translateY(-2px);
             box-shadow: 0 4px 20px rgba(245, 101, 101, 0.4);
         }
-
-        /* NEW: Manual Status Buttons */
-        .status-buttons {
-            display: flex;
-            gap: 4px;
-            margin-top: 8px;
-            flex-wrap: wrap;
-        }
-
-        .status-btn {
-            padding: 4px 8px;
-            border-radius: 6px;
-            font-size: 10px;
-            border: none;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            color: white;
-            font-weight: bold;
-        }
-
-        .status-btn:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-        }
-
-        .status-btn.interested { background: #10B981; }
-        .status-btn.not-interested { background: #EF4444; }
-        .status-btn.busy { background: #F59E0B; }
-        .status-btn.no-reply { background: #9CA3AF; }
-
-        /* NEW: AI Training Portal Styles */
-        .ai-training-section {
-            transition: all 0.3s ease;
-        }
-
-        .training-editor {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 8px;
-            padding: 12px;
-            font-family: 'Courier New', monospace;
-            font-size: 12px;
-            line-height: 1.4;
-            color: #e2e8f0;
-            resize: vertical;
-            min-height: 200px;
-        }
-
-        .training-editor:focus {
-            outline: none;
-            border-color: #00B98B;
-        }
-
-        .file-upload-area {
-            border: 2px dashed rgba(255, 255, 255, 0.3);
-            border-radius: 8px;
-            padding: 20px;
-            text-align: center;
-            transition: all 0.3s ease;
-            cursor: pointer;
-        }
-
-        .file-upload-area:hover {
-            border-color: #00B98B;
-            background: rgba(0, 185, 139, 0.1);
-        }
-
-        .file-upload-area.dragover {
-            border-color: #00B98B;
-            background: rgba(0, 185, 139, 0.2);
-        }
     </style>
 </head>
 <body class="text-white">
@@ -632,34 +561,6 @@
                     <h4 class="font-bold text-primary-light mb-2">المستخدمين</h4>
                     <div id="usersList">
                         <!-- Users will be populated here -->
-                    </div>
-                </div>
-            </div>
-
-            <!-- NEW: AI Training Portal Section (Visible only to Admin) -->
-            <div id="aiTrainingSection" class="ai-training-section p-6 border-b border-gray-600 hidden">
-                <h3 class="font-bold text-lg mb-3 gradient-text">تدريب الذكاء الاصطناعي</h3>
-                
-                <!-- AI System Prompt Editor -->
-                <div class="mb-4 p-3 bg-gray-800 rounded-lg">
-                    <h4 class="font-bold text-primary-light mb-2">نظام الذكاء الاصطناعي</h4>
-                    <textarea id="aiSystemPrompt" class="training-editor w-full" placeholder="اكتب أو عدل نظام الذكاء الاصطناعي هنا..."></textarea>
-                    <button id="saveAiPromptBtn" class="w-full bg-primary hover:bg-primary-dark py-2 rounded-lg font-bold mt-2 transition-colors">
-                        <i class="fas fa-save mr-2"></i>حفظ النظام
-                    </button>
-                </div>
-                
-                <!-- Training Documents Upload -->
-                <div class="p-3 bg-gray-800 rounded-lg">
-                    <h4 class="font-bold text-primary-light mb-2">رفع وثائق التدريب</h4>
-                    <div id="trainingFileUpload" class="file-upload-area">
-                        <i class="fas fa-cloud-upload-alt text-3xl text-primary-light mb-2"></i>
-                        <p class="text-sm text-gray-300">اسحب وأفلت الملفات هنا أو انقر للاختيار</p>
-                        <p class="text-xs text-gray-400 mt-1">يدعم: TXT, PDF, DOCX</p>
-                        <input type="file" id="trainingFileInput" class="hidden" accept=".txt,.pdf,.docx">
-                    </div>
-                    <div id="trainingFileInfo" class="hidden text-sm text-gray-400 text-center p-2 bg-gray-700 rounded mt-2">
-                        <i class="fas fa-file mr-1"></i> لم يتم رفع أي ملف
                     </div>
                 </div>
             </div>
@@ -910,14 +811,6 @@
         const newUserRole = document.getElementById('newUserRole');
         const addUserBtn = document.getElementById('addUserBtn');
         const usersList = document.getElementById('usersList');
-
-        // NEW: AI Training Portal Elements
-        const aiTrainingSection = document.getElementById('aiTrainingSection');
-        const aiSystemPrompt = document.getElementById('aiSystemPrompt');
-        const saveAiPromptBtn = document.getElementById('saveAiPromptBtn');
-        const trainingFileUpload = document.getElementById('trainingFileUpload');
-        const trainingFileInput = document.getElementById('trainingFileInput');
-        const trainingFileInfo = document.getElementById('trainingFileInfo');
 
         // Initialize
         document.addEventListener('DOMContentLoaded', function() {
@@ -1179,234 +1072,6 @@
             });
             
             addUserBtn.addEventListener('click', addNewUser);
-
-            // NEW: AI Training Portal Event Listeners
-            saveAiPromptBtn.addEventListener('click', saveAiSystemPrompt);
-            trainingFileUpload.addEventListener('click', () => {
-                trainingFileInput.click();
-            });
-            trainingFileInput.addEventListener('change', handleTrainingFileUpload);
-            
-            // NEW: Drag and drop for training files
-            trainingFileUpload.addEventListener('dragover', (e) => {
-                e.preventDefault();
-                trainingFileUpload.classList.add('dragover');
-            });
-            
-            trainingFileUpload.addEventListener('dragleave', () => {
-                trainingFileUpload.classList.remove('dragover');
-            });
-            
-            trainingFileUpload.addEventListener('drop', (e) => {
-                e.preventDefault();
-                trainingFileUpload.classList.remove('dragover');
-                const files = e.dataTransfer.files;
-                if (files.length > 0) {
-                    handleTrainingFileUpload({ target: { files: files } });
-                }
-            });
-        }
-
-        // 🆕 ENHANCEMENT: Manual Status Assignment
-        function renderClientList() {
-            clientList.innerHTML = '';
-            
-            const filteredClients = currentStatusFilter === 'all' 
-                ? clients 
-                : clients.filter(client => client.status === currentStatusFilter);
-            
-            filteredClients.forEach(client => {
-                const clientElement = document.createElement('div');
-                clientElement.className = `client-item p-3 rounded-lg mb-2 cursor-pointer client-status-${client.status} ${currentClient?.id === client.id ? 'active' : ''}`;
-                clientElement.dataset.clientId = client.id;
-                
-                clientElement.innerHTML = `
-                    <div class="flex justify-between items-start">
-                        <div class="flex-1">
-                            <div class="font-bold">${client.name}</div>
-                            <div class="text-xs text-gray-400">${client.phone}</div>
-                            <div class="text-sm mt-1 truncate">${client.lastMessage}</div>
-                            <!-- NEW: Manual Status Buttons -->
-                            <div class="status-buttons">
-                                <button class="status-btn interested" data-status="interested">
-                                    <i class="fas fa-thumbs-up mr-1"></i>مهتم
-                                </button>
-                                <button class="status-btn not-interested" data-status="not-interested">
-                                    <i class="fas fa-thumbs-down mr-1"></i>غير مهتم
-                                </button>
-                                <button class="status-btn busy" data-status="busy">
-                                    <i class="fas fa-clock mr-1"></i>مشغول
-                                </button>
-                                <button class="status-btn no-reply" data-status="no-reply">
-                                    <i class="fas fa-comment-slash mr-1"></i>لم يرد
-                                </button>
-                            </div>
-                        </div>
-                        <div class="text-right">
-                            <div class="text-xs text-gray-500">${new Date(client.lastActivity).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</div>
-                            ${client.unread > 0 ? `
-                                <div class="unread-badge text-xs px-2 py-1 rounded-full mt-1">${client.unread}</div>
-                            ` : ''}
-                        </div>
-                    </div>
-                `;
-                
-                clientElement.addEventListener('click', () => {
-                    selectClient(client);
-                });
-                
-                // NEW: Add event listeners for manual status buttons
-                const statusButtons = clientElement.querySelectorAll('.status-btn');
-                statusButtons.forEach(btn => {
-                    btn.addEventListener('click', (e) => {
-                        e.stopPropagation(); // Prevent triggering client selection
-                        const status = btn.dataset.status;
-                        updateClientStatus(client.phone, status);
-                    });
-                });
-                
-                clientList.appendChild(clientElement);
-            });
-        }
-
-        // 🆕 ENHANCEMENT: Manual Status Update
-        function updateClientStatus(phone, status) {
-            fetch('/api/update-client-status', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${authToken}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    phone: phone,
-                    status: status
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showToast(`✅ ${data.message}`, 'success');
-                    
-                    // Update local client data
-                    const client = clients.find(c => c.phone === phone);
-                    if (client) {
-                        client.status = status;
-                        renderClientList();
-                        
-                        if (currentClient && currentClient.phone === phone) {
-                            statusSelect.value = status;
-                        }
-                    }
-                } else {
-                    showToast(`❌ ${data.error}`, 'error');
-                }
-            })
-            .catch(error => {
-                console.error('Error updating client status:', error);
-                showToast('❌ فشل تحديث الحالة', 'error');
-            });
-        }
-
-        // 🆕 ENHANCEMENT: AI Training Portal Functions
-        function loadAiSystemPrompt() {
-            if (currentUser && currentUser.role === 'admin') {
-                fetch('/api/ai-prompt', {
-                    method: 'GET',
-                    headers: {
-                        'Authorization': `Bearer ${authToken}`,
-                        'Content-Type': 'application/json'
-                    }
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        aiSystemPrompt.value = data.prompt;
-                    showToast('✅ تم تحميل نظام الذكاء الاصطناعي', 'success');
-                    } else {
-                    showToast('❌ فشل تحميل النظام', 'error');
-                    }
-                })
-                .catch(error => {
-                    console.error('Error loading AI prompt:', error);
-                    showToast('❌ فشل تحميل النظام', 'error');
-                });
-            }
-        }
-
-        function saveAiSystemPrompt() {
-            const prompt = aiSystemPrompt.value.trim();
-            if (!prompt) {
-                showToast('❌ يرجى كتابة نص النظام', 'error');
-                return;
-            }
-
-            fetch('/api/ai-prompt', {
-                method: 'PUT',
-                headers: {
-                    'Authorization': `Bearer ${authToken}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    prompt: prompt
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showToast('✅ تم حفظ نظام الذكاء الاصطناعي', 'success');
-                } else {
-                    showToast('❌ ' + data.error, 'error');
-                }
-            })
-            .catch(error => {
-                console.error('Error saving AI prompt:', error);
-                showToast('❌ فشل حفظ النظام', 'error');
-            });
-        }
-
-        function handleTrainingFileUpload(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-
-            // Validate file type
-            const allowedTypes = ['.txt', '.pdf', '.docx'];
-            const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
-            
-            if (!allowedTypes.includes(fileExtension)) {
-                showToast('❌ نوع الملف غير مدعوم', 'error');
-                return;
-            }
-
-            // Update file info
-            trainingFileInfo.classList.remove('hidden');
-            trainingFileInfo.innerHTML = `<i class="fas fa-file mr-1"></i> ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
-
-            // Upload file
-            const formData = new FormData();
-            formData.append('trainingFile', file);
-
-            fetch('/api/ai-training', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${authToken}`
-                },
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showToast(`✅ ${data.message}`, 'success');
-                    trainingFileInfo.innerHTML += ' - ✅ تم الرفع';
-                } else {
-                    showToast('❌ ' + data.error, 'error');
-                    trainingFileInfo.innerHTML += ' - ❌ فشل الرفع';
-                }
-            })
-            .catch(error => {
-                console.error('Error uploading training file:', error);
-                showToast('❌ فشل رفع ملف التدريب', 'error');
-                trainingFileInfo.innerHTML += ' - ❌ فشل الرفع';
-            });
         }
 
         // 🆕 IMPROVED QR Code Functions
@@ -1623,12 +1288,9 @@
             if (currentUser.role === 'admin' && !isAdminViewingAs) {
                 userManagementSection.classList.remove('hidden');
                 userSwitchBtn.classList.remove('hidden');
-                aiTrainingSection.classList.remove('hidden'); // NEW: Show AI Training for admin
-                loadAiSystemPrompt(); // NEW: Load AI prompt for admin
             } else {
                 userManagementSection.classList.add('hidden');
                 userSwitchBtn.classList.add('hidden');
-                aiTrainingSection.classList.add('hidden'); // NEW: Hide AI Training for non-admin
             }
             
             currentUserRole.className = currentUser.role === 'admin' 
@@ -1781,6 +1443,42 @@
             });
         }
         
+        function renderClientList() {
+            clientList.innerHTML = '';
+            
+            const filteredClients = currentStatusFilter === 'all' 
+                ? clients 
+                : clients.filter(client => client.status === currentStatusFilter);
+            
+            filteredClients.forEach(client => {
+                const clientElement = document.createElement('div');
+                clientElement.className = `client-item p-3 rounded-lg mb-2 cursor-pointer client-status-${client.status} ${currentClient?.id === client.id ? 'active' : ''}`;
+                clientElement.dataset.clientId = client.id;
+                
+                clientElement.innerHTML = `
+                    <div class="flex justify-between items-start">
+                        <div class="flex-1">
+                            <div class="font-bold">${client.name}</div>
+                            <div class="text-xs text-gray-400">${client.phone}</div>
+                            <div class="text-sm mt-1 truncate">${client.lastMessage}</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-xs text-gray-500">${new Date(client.lastActivity).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</div>
+                            ${client.unread > 0 ? `
+                                <div class="unread-badge text-xs px-2 py-1 rounded-full mt-1">${client.unread}</div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+                
+                clientElement.addEventListener('click', () => {
+                    selectClient(client);
+                });
+                
+                clientList.appendChild(clientElement);
+            });
+        }
+        
         function selectClient(client) {
             currentClient = client;
             currentClientName.textContent = client.name;
@@ -1912,7 +1610,7 @@
             .then(data => {
                 if (data.success) {
                     showToast(`🚀 ${data.message}`, 'success');
-                    isBulkSending = true;
+                isBulkSending = true;
                     sendBulkBtn.disabled = true;
                     sendBulkBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> جاري الإرسال...';
                 } else {
@@ -1933,6 +1631,37 @@
             } else {
                 console.error(`❌ Failed to send to ${data.client}: ${data.error}`);
             }
+        }
+        
+        function updateClientStatus(clientId, newStatus) {
+            const client = clients.find(c => c.id === clientId);
+            if (client) {
+                socket.emit('update_client_status', {
+                    phone: client.phone,
+                    status: newStatus
+                });
+                
+                client.status = newStatus;
+                renderClientList();
+                
+                if (newStatus === 'interested') {
+                    updatePerformanceStats({
+                        interested: parseInt(statInterested.textContent) + 1
+                    });
+                }
+                
+                showToast(`✅ تم تحديث حالة العميل إلى: ${getStatusText(newStatus)}`, 'success');
+            }
+        }
+        
+        function getStatusText(status) {
+            const statusMap = {
+                'interested': 'مهتم',
+                'busy': 'مشغول',
+                'not-interested': 'غير مهتم',
+                'no-reply': 'لم يرد'
+            };
+            return statusMap[status] || status;
         }
         
         function setStatusFilter(status) {
@@ -2088,24 +1817,6 @@
                 botStatus.textContent = 'نشط';
                 botStatus.className = 'bot-status-running px-3 py-1 rounded-full text-sm font-bold';
                 stopBotBtn.innerHTML = '<i class="fas fa-stop mr-2"></i>إيقاف البوت';
-            }
-        }
-        
-        function handleUserMessage(data) {
-            // Handle incoming messages from clients
-            if (currentClient && currentClient.phone === data.from) {
-                const newMessage = {
-                    id: Date.now(),
-                    message: data.message,
-                    fromMe: false,
-                    timestamp: new Date().toISOString()
-                };
-                
-                if (!messages[currentClient.id]) {
-                    messages[currentClient.id] = [];
-                }
-                messages[currentClient.id].push(newMessage);
-                renderMessages(messages[currentClient.id]);
             }
         }
         
