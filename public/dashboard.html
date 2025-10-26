@@ -419,12 +419,18 @@
         /* FIXED: Chat layout - Messages on LEFT, Clients on RIGHT */
         .chat-area {
             order: 1;
+            border-left: 1px solid rgba(255, 255, 255, 0.1);
         }
         
         .clients-area {
             order: 2;
-            border-left: 1px solid rgba(255, 255, 255, 0.1);
             border-right: none;
+        }
+
+        /* FIXED: Main content area layout */
+        .main-content-area {
+            display: flex;
+            flex-direction: row;
         }
     </style>
 </head>
@@ -473,7 +479,7 @@
     </div>
     
     <div class="flex h-screen">
-        <!-- Left Sidebar -->
+        <!-- Left Sidebar - UNCHANGED -->
         <div class="w-80 luxury-card rounded-r-2xl m-3 flex flex-col">
             <!-- Header -->
             <div class="p-6 border-b border-gray-600">
@@ -654,7 +660,7 @@
             </div>
         </div>
         
-        <!-- FIXED: Right Chat Area - Messages on LEFT, Clients on RIGHT -->
+        <!-- FIXED: Main Content Area - Chat on LEFT, Clients on RIGHT -->
         <div class="flex-1 flex flex-col m-3 luxury-card rounded-l-2xl relative">
             <!-- Chat Header -->
             <div class="p-6 border-b border-gray-600">
@@ -687,8 +693,8 @@
                 </div>
             </div>
             
-            <!-- FIXED: Chat Area Layout - Messages LEFT, Clients RIGHT -->
-            <div class="flex-1 flex">
+            <!-- FIXED: Main Content Layout - Chat LEFT, Clients RIGHT -->
+            <div class="flex-1 flex main-content-area">
                 <!-- FIXED: Chat Messages on LEFT side -->
                 <div class="flex-1 flex flex-col relative chat-area">
                     <div id="chatContainer" class="chat-container">
@@ -710,7 +716,7 @@
                             <input 
                                 type="text" 
                                 id="messageInput" 
-                                placeholder="اكتب رسالتك هنا..." 
+                                placeholder="اكتب رسائلك هنا..." 
                                 class="flex-1 bg-gray-700 border border-gray-600 rounded-l-lg p-3 focus:outline-none focus:border-primary"
                                 disabled>
                             <button 
@@ -724,7 +730,7 @@
                 </div>
                 
                 <!-- FIXED: Clients List on RIGHT side -->
-                <div class="w-1/3 border-r border-gray-600 h-full overflow-hidden flex flex-col clients-area">
+                <div class="w-1/3 h-full overflow-hidden flex flex-col clients-area">
                     <div class="p-4 border-b border-gray-600">
                         <h3 class="font-bold text-lg gradient-text mb-2">قائمة العملاء</h3>
                         <!-- Status Filter -->
@@ -833,206 +839,219 @@
         });
 
         function initializeApp() {
-            // Check authentication
-            checkAuthentication();
-            
-            // Initialize Socket.IO
-            initializeSocket();
-            
-            // Setup event listeners
-            setupEventListeners();
-            
-            // Load initial data
-            loadInitialData();
-        }
-
-        function checkAuthentication() {
-            authToken = localStorage.getItem('authToken');
-            if (!authToken) {
-                window.location.href = '/login';
-                return;
-            }
-            
-            // Decode token to get user info (in a real app, this would be verified by the server)
             try {
-                const payload = JSON.parse(atob(authToken.split('.')[1]));
-                currentUser = payload;
-                updateUserInterface();
+                // Get auth token from localStorage
+                authToken = localStorage.getItem('authToken');
+                if (!authToken) {
+                    window.location.href = '/';
+                    return;
+                }
+
+                // Connect to Socket.io with authentication
+                socket = io({
+                    timeout: 10000,
+                    reconnectionAttempts: 5
+                });
+                
+                setupSocketEvents();
+                setupEventListeners();
+                loadCurrentUser();
+                
+                // Auto-check WhatsApp status on load
+                setTimeout(() => {
+                    checkWhatsAppStatus();
+                }, 2000);
+                
+                // Auto-fill promotional message
+                bulkMessage.value = "🚀 نظام رقم كلاود ERP السحابي! حلول متكاملة للمحاسبة، المخزون، الموارد البشرية، والمزيد. جلسة استشارية مجانية! 📞 +966555111222 🌐 ragmcloud.sa";
+                
             } catch (error) {
-                console.error('Invalid token:', error);
-                logout();
+                console.error('Failed to initialize app:', error);
+                showToast('❌ فشل تهيئة التطبيق', 'error');
             }
         }
-
-        function updateUserInterface() {
-            if (!currentUser) return;
-            
-            currentUserName.textContent = currentUser.username;
-            
-            // Show/hide admin features
-            if (currentUser.role === 'admin') {
-                userManagementSection.classList.remove('hidden');
-                userSwitchBtn.classList.remove('hidden');
-            } else {
-                userManagementSection.classList.add('hidden');
-                userSwitchBtn.classList.add('hidden');
-            }
-            
-            // Update viewing mode
-            if (isAdminViewingAs && viewingAsUser) {
-                currentViewingUser.textContent = viewingAsUser.username;
-                userSwitchOverlay.classList.remove('hidden');
-            }
-        }
-
-        function initializeSocket() {
-            socket = io({
-                auth: {
-                    token: authToken
+        
+        function setupSocketEvents() {
+            socket.on('connect', () => {
+                console.log('✅ Connected to server');
+                showToast('✅ تم الاتصال بالخادم بنجاح', 'success');
+                
+                // Authenticate socket connection
+                if (currentUser) {
+                    console.log('🔐 Authenticating socket for user:', currentUser.id);
+                    socket.emit('authenticate', authToken);
                 }
             });
+            
+            socket.on('authenticated', (userData) => {
+                console.log('✅ Socket authenticated for user:', userData);
+                const userId = currentUser.id;
+                
+                // User-specific WhatsApp status
+                socket.on(`user_status_${userId}`, (data) => {
+                    console.log('📡 Received user status:', data);
+                    updateWhatsAppStatus(data);
+                });
 
-            socket.on('connect', () => {
-                console.log('Connected to server');
-                showToast('تم الاتصال بالخادم بنجاح', 'success');
+                // User-specific QR code
+                socket.on(`user_qr_${userId}`, (data) => {
+                    console.log('📡 Received QR code for user:', userId);
+                    if (data.qrCode) {
+                        showQRCode(data.qrCode);
+                    }
+                });
+
+                // User-specific bot status
+                socket.on(`user_bot_status_${userId}`, (data) => {
+                    console.log('📡 Received bot status:', data);
+                    isBotStopped = data.stopped;
+                    updateBotStatusUI();
+                });
+
+                // FIXED: User-specific messages - NOW WORKING PROPERLY
+                socket.on(`user_message_${userId}`, (data) => {
+                    console.log('📡 Received user message:', data);
+                    handleUserMessage(data);
+                });
+                
+                console.log(`✅ User-specific listeners setup complete for user ${userId}`);
+            });
+            
+            socket.on('disconnect', (reason) => {
+                console.log('Disconnected from server:', reason);
+                showToast('❌ فقد الاتصال بالخادم', 'error');
+            });
+            
+            socket.on('connect_error', (error) => {
+                console.error('Connection error:', error);
+                showToast('❌ خطأ في الاتصال بالخادم', 'error');
+            });
+            
+            socket.on('auth_error', (error) => {
+                console.error('Authentication error:', error);
+                showToast('❌ خطأ في المصادقة، جاري إعادة التوجيه...', 'error');
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 2000);
             });
 
-            socket.on('disconnect', () => {
-                console.log('Disconnected from server');
-                showToast('تم قطع الاتصال بالخادم', 'error');
+            // Global events
+            socket.on('bot_status', (data) => {
+                isBotStopped = data.stopped;
+                updateBotStatusUI();
             });
 
-            socket.on('whatsapp_status', (data) => {
-                updateWhatsAppStatus(data.status, data.message);
-            });
-
-            socket.on('qr_code', (qr) => {
-                showQRCode(qr);
-            });
-
-            socket.on('clients_updated', (data) => {
-                clients = data.clients;
-                updateClientsList();
-                updateClientsCount();
-            });
-
-            socket.on('message_received', (data) => {
-                handleIncomingMessage(data);
-            });
-
-            socket.on('message_sent', (data) => {
-                handleOutgoingMessage(data);
-            });
-
-            socket.on('bulk_progress', (data) => {
-                updateBulkProgress(data);
-            });
-
-            socket.on('bulk_complete', (data) => {
-                handleBulkComplete(data);
-            });
-
-            socket.on('ai_response', (data) => {
-                handleAIResponse(data);
+            socket.on('auto_report_notification', (data) => {
+                showAutoReportNotification(data);
             });
 
             socket.on('client_status_updated', (data) => {
                 updateClientStatus(data.clientId, data.status);
             });
 
-            socket.on('user_switched', (data) => {
-                handleUserSwitch(data);
-            });
-
-            socket.on('users_updated', (data) => {
-                users = data.users;
-                updateUsersList();
-            });
-
-            socket.on('bot_status', (data) => {
-                updateBotStatus(data.status);
-            });
-
-            socket.on('auto_report', (data) => {
-                showAutoReport(data.message);
-            });
-
             socket.on('performance_stats', (data) => {
                 updatePerformanceStats(data);
             });
 
-            socket.on('error', (error) => {
-                showToast(error.message, 'error');
+            socket.on('bulk_progress', (data) => {
+                handleBulkProgress(data);
+            });
+
+            socket.on('clients_updated', (data) => {
+                clients = data;
+                renderClientList();
+                updateClientsCount();
             });
         }
-
+        
         function setupEventListeners() {
             // QR Code
             closeQR.addEventListener('click', () => {
                 qrOverlay.classList.add('hidden');
             });
 
+            // WhatsApp QR Status Button
+            whatsappQrStatus.addEventListener('click', () => {
+                fetchUserQRCode();
+            });
+            
             // Reconnect
             reconnectBtn.addEventListener('click', () => {
-                socket.emit('reconnect_whatsapp');
-                showToast('جاري إعادة الاتصال بالواتساب...', 'warning');
+                socket.emit('user_reconnect_whatsapp');
+                showToast('🔄 جاري إعادة الاتصال...', 'warning');
             });
 
             // Disconnect WhatsApp
             disconnectWhatsAppBtn.addEventListener('click', () => {
-                socket.emit('disconnect_whatsapp');
-                showToast('جاري قطع اتصال الواتساب...', 'warning');
+                if (confirm('هل أنت متأكد من قطع اتصال الواتساب؟')) {
+                    socket.emit('user_disconnect_whatsapp');
+                    showToast('🔌 جاري قطع اتصال الواتساب...', 'warning');
+                }
             });
-
-            // Stop Bot
+            
+            // Stop Bot Button
             stopBotBtn.addEventListener('click', () => {
-                isBotStopped = !isBotStopped;
-                socket.emit(isBotStopped ? 'stop_bot' : 'start_bot');
-                showToast(isBotStopped ? 'تم إيقاف البوت' : 'تم تشغيل البوت', 'success');
-                updateBotStatus(isBotStopped ? 'stopped' : 'running');
+                const newState = !isBotStopped;
+                socket.emit('user_toggle_bot', { stop: newState });
+                showToast(newState ? '🛑 جاري إيقاف البوت...' : '🚀 جاري تشغيل البوت...', newState ? 'warning' : 'success');
             });
 
-            // Logout
-            logoutBtn.addEventListener('click', logout);
-
-            // AI Toggle
+            // Logout Button
+            logoutBtn.addEventListener('click', () => {
+                logoutUser();
+            });
+            
+            // AI Mode Toggle
             aiToggle.addEventListener('change', (e) => {
                 isAIMode = e.target.checked;
-                aiStatus.innerHTML = isAIMode 
-                    ? '<span class="text-green-400 text-sm">🤖 الذكاء الاصطناعي مفعل</span>'
-                    : '<span class="text-yellow-400 text-sm">⚠️ الذكاء الاصطناعي معطل</span>';
-                showToast(isAIMode ? 'تم تفعيل الذكاء الاصطناعي' : 'تم تعطيل الذكاء الاصطناعي', 'success');
+                aiStatus.innerHTML = isAIMode ? 
+                    '<span class="text-green-400 text-sm">🤖 الذكاء الاصطناعي مفعل</span>' :
+                    '<span class="text-yellow-400 text-sm">⚠️ الذكاء الاصطناعي معطل</span>';
+                
+                showToast(isAIMode ? '🤖 تم تفعيل الذكاء الاصطناعي' : '⚠️ تم تعطيل الذكاء الاصطناعي', 'success');
             });
-
+            
             // File Upload
             uploadBtn.addEventListener('click', () => {
                 excelFile.click();
             });
-
-            excelFile.addEventListener('change', handleFileUpload);
-
-            // Bulk Messaging
-            sendBulkBtn.addEventListener('click', startBulkSending);
-            retryBulkBtn.addEventListener('click', retryBulkSending);
-
-            // Reports
-            exportReportBtn.addEventListener('click', exportReport);
-            sendReportBtn.addEventListener('click', sendReport);
-
-            // Message Input
+            
+            excelFile.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    uploadExcelFile(file);
+                }
+            });
+            
+            // Bulk Message
+            sendBulkBtn.addEventListener('click', () => {
+                if (!bulkMessage.value.trim()) {
+                    showToast('❌ يرجى كتابة رسالة ترويجية', 'error');
+                    return;
+                }
+                
+                if (clients.length === 0) {
+                    showToast('❌ لا يوجد عملاء للإرسال', 'error');
+                    return;
+                }
+                
+                startBulkSending();
+            });
+            
+            retryBulkBtn.addEventListener('click', () => {
+                startBulkSending(true);
+            });
+            
+            // Message Sending
             messageInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
                     sendMessage();
                 }
             });
-
+            
             sendMessageBtn.addEventListener('click', sendMessage);
-
-            // Scroll to Bottom
-            scrollToBottom.addEventListener('click', () => {
-                chatContainer.scrollTop = chatContainer.scrollHeight;
-            });
-
+            
             // Status Filter
             document.querySelectorAll('.status-filter-btn').forEach(btn => {
                 btn.addEventListener('click', (e) => {
@@ -1040,55 +1059,822 @@
                     setStatusFilter(status);
                 });
             });
-
+            
             // Client Status Selector
             statusSelect.addEventListener('change', (e) => {
                 if (currentClient) {
                     updateClientStatus(currentClient.id, e.target.value);
                 }
             });
-
-            // WhatsApp QR Status
-            whatsappQrStatus.addEventListener('click', () => {
-                socket.emit('get_qr_code');
+            
+            // Export Report
+            exportReportBtn.addEventListener('click', () => {
+                exportReport();
             });
-
-            // User Management
+            
+            // Send Report
+            sendReportBtn.addEventListener('click', () => {
+                sendReport();
+            });
+            
+            // Scroll to Bottom
+            scrollToBottom.addEventListener('click', () => {
+                scrollChatToBottom();
+            });
+            
+            // User Management Event Listeners
             userSwitchBtn.addEventListener('click', () => {
-                socket.emit('get_users');
                 userSwitchOverlay.classList.remove('hidden');
+                currentViewingUser.textContent = isAdminViewingAs ? viewingAsUser.name : currentUser.name;
             });
-
+            
             returnToAdmin.addEventListener('click', () => {
-                socket.emit('switch_user', { targetUserId: currentUser.id });
+                isAdminViewingAs = false;
+                viewingAsUser = null;
+                userSwitchOverlay.classList.add('hidden');
+                updateUserInterface();
+                showToast('✅ العودة إلى حساب المدير', 'success');
             });
-
+            
             closeUserSwitch.addEventListener('click', () => {
                 userSwitchOverlay.classList.add('hidden');
             });
-
+            
             addUserBtn.addEventListener('click', addNewUser);
         }
 
-        function loadInitialData() {
-            // Request initial data from server
-            socket.emit('get_clients');
-            socket.emit('get_users');
-            socket.emit('get_performance_stats');
+        // FIXED: QR Code Functions
+        function showQRCode(qrCodeUrl) {
+            console.log('🖼️ Showing QR code:', qrCodeUrl);
+            if (!qrCodeUrl) {
+                console.error('❌ No QR code URL provided');
+                showToast('❌ لم يتم توليد QR Code', 'error');
+                return;
+            }
+            
+            qrCode.innerHTML = '';
+            
+            const qrImage = document.createElement('img');
+            qrImage.src = qrCodeUrl;
+            qrImage.alt = "WhatsApp QR Code";
+            qrImage.className = "w-64 h-64 mx-auto";
+            qrImage.onload = function() {
+                console.log('✅ QR code image loaded successfully');
+            };
+            qrImage.onerror = function() {
+                console.error('❌ Failed to load QR code image');
+                showToast('❌ فشل تحميل QR Code', 'error');
+            };
+            
+            qrCode.appendChild(qrImage);
+            qrOverlay.classList.remove('hidden');
+            
+            showToast('📱 يرجى مسح QR Code للاتصال', 'success');
+            
+            console.log('✅ QR code overlay shown');
         }
 
-        // ... (rest of the JavaScript functions remain the same as in the original)
+        function fetchUserQRCode() {
+            console.log('🔄 Fetching user QR code...');
+            fetch('/api/user-whatsapp-qr', {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.qrCode) {
+                    console.log('✅ QR code fetched successfully');
+                    showQRCode(data.qrCode);
+                } else {
+                    console.log('ℹ️ QR code not available yet');
+                    showToast('⏳ جاري توليد QR Code...', 'warning');
+                }
+            })
+            .catch(error => {
+                console.error('❌ Error fetching QR code:', error);
+                showToast('❌ فشل جلب QR Code', 'error');
+            });
+        }
 
-        // Utility functions
-        function showToast(message, type = 'info') {
+        function updateWhatsAppStatus(data) {
+            console.log('🔄 Updating WhatsApp status:', data);
+            whatsappStatus.textContent = data.message;
+            
+            if (data.connected) {
+                whatsappStatus.className = 'status-connected px-3 py-1 rounded-full text-sm font-bold';
+                whatsappQrStatus.classList.add('hidden');
+                qrOverlay.classList.add('hidden');
+            } else {
+                whatsappStatus.className = 'status-disconnected px-3 py-1 rounded-full text-sm font-bold';
+                
+                if (data.status === 'qr-ready') {
+                    whatsappQrStatus.classList.remove('hidden');
+                    if (!qrOverlay.classList.contains('hidden')) {
+                        console.log('📱 QR overlay already visible');
+                    } else {
+                        console.log('🔄 Auto-fetching QR code for qr-ready status');
+                        setTimeout(() => fetchUserQRCode(), 1000);
+                    }
+                } else {
+                    whatsappQrStatus.classList.add('hidden');
+                    qrOverlay.classList.add('hidden');
+                }
+            }
+        }
+
+        function checkWhatsAppStatus() {
+            fetch('/api/user-whatsapp-status', {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('📡 WhatsApp status check:', data);
+                if (data.hasQr && data.qrCode) {
+                    showQRCode(data.qrCode);
+                }
+                updateWhatsAppStatus(data);
+            })
+            .catch(error => {
+                console.error('Error checking WhatsApp status:', error);
+            });
+        }
+
+        // FIXED: Customer Selection and Message Loading
+        function selectClient(client) {
+            console.log('🟢 SELECTING CLIENT:', client.name, 'Phone:', client.phone);
+            
+            currentClient = client;
+            currentClientName.textContent = client.name;
+            currentClientPhone.textContent = client.phone;
+            activeStatus.classList.remove('hidden');
+            clientStatusSelector.classList.remove('hidden');
+            statusSelect.value = client.status;
+            
+            messageInput.disabled = false;
+            sendMessageBtn.disabled = false;
+            
+            // Update active client in UI
+            document.querySelectorAll('.client-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            document.querySelector(`[data-client-id="${client.id}"]`).classList.add('active');
+            
+            // FIXED: Load messages for this client
+            console.log('🔄 Loading messages for client:', client.phone);
+            loadMessages(client.phone);
+        }
+        
+        // FIXED: Message Loading Function
+        function loadMessages(clientPhone) {
+            console.log('📞 API CALL: Loading messages for phone:', clientPhone);
+            
+            fetch(`/api/client-messages/${clientPhone}`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => {
+                console.log('📡 Response status:', response.status);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('✅ Messages loaded successfully:', data);
+                if (data.success) {
+                    messages[clientPhone] = data.messages;
+                    console.log(`📨 Rendering ${data.messages.length} messages`);
+                    renderMessages(data.messages);
+                } else {
+                    console.error('❌ Failed to load messages:', data);
+                    showToast('❌ فشل تحميل الرسائل', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('❌ Error loading messages:', error);
+                showToast('❌ خطأ في تحميل الرسائل', 'error');
+            });
+        }
+        
+        // FIXED: Message Rendering Function
+        function renderMessages(messages) {
+            console.log('🎨 Rendering messages in container:', messages);
+            
+            // Clear chat container
+            chatContainer.innerHTML = '';
+            
+            if (!messages || messages.length === 0) {
+                chatContainer.innerHTML = `
+                    <div class="text-center text-gray-400 mt-20">
+                        <i class="fas fa-comments text-5xl mb-4 opacity-50"></i>
+                        <p class="text-gray-500">لا توجد رسائل بعد</p>
+                    </div>
+                `;
+                console.log('ℹ️ No messages to display');
+                return;
+            }
+            
+            // Create and append message elements
+            messages.forEach(message => {
+                const messageElement = document.createElement('div');
+                messageElement.className = `chat-bubble ${message.fromMe ? 'sent' : 'received'}`;
+                
+                messageElement.innerHTML = `
+                    <div class="message-content">${message.message}</div>
+                    <div class="chat-time">${new Date(message.timestamp).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</div>
+                `;
+                
+                chatContainer.appendChild(messageElement);
+            });
+            
+            console.log('✅ Messages rendered successfully');
+            scrollChatToBottom();
+        }
+
+        // FIXED: Handle incoming real-time messages
+        function handleUserMessage(data) {
+            console.log('💬 HANDLING REAL-TIME MESSAGE:', data);
+            
+            if (currentClient && data.from === currentClient.phone) {
+                // If this message is for the currently selected client
+                const newMessage = {
+                    message: data.message,
+                    fromMe: data.fromMe,
+                    timestamp: data.timestamp
+                };
+                
+                if (!messages[currentClient.phone]) {
+                    messages[currentClient.phone] = [];
+                }
+                messages[currentClient.phone].push(newMessage);
+                renderMessages(messages[currentClient.phone]);
+            }
+        }
+
+        function sendMessage() {
+            const message = messageInput.value.trim();
+            if (!message || !currentClient) return;
+            
+            console.log('📤 Sending message to:', currentClient.phone);
+            
+            socket.emit('send_message', {
+                to: currentClient.phone,
+                message: message
+            });
+            
+            const newMessage = {
+                id: Date.now(),
+                message: message,
+                fromMe: true,
+                timestamp: new Date().toISOString()
+            };
+            
+            if (!messages[currentClient.phone]) {
+                messages[currentClient.phone] = [];
+            }
+            messages[currentClient.phone].push(newMessage);
+            
+            renderMessages(messages[currentClient.phone]);
+            messageInput.value = '';
+            
+            updatePerformanceStats({
+                messages: parseInt(statMessages.textContent) + 1
+            });
+        }
+
+        function logoutUser() {
+            if (confirm('هل أنت متأكد من تسجيل الخروج؟')) {
+                localStorage.removeItem('authToken');
+                localStorage.removeItem('currentUser');
+                localStorage.removeItem('performanceStats');
+                
+                if (socket) {
+                    socket.disconnect();
+                }
+                
+                showToast('👋 تم تسجيل الخروج بنجاح', 'success');
+                
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 1500);
+            }
+        }
+
+        // User Management Functions
+        function loadCurrentUser() {
+            const savedUser = localStorage.getItem('currentUser');
+            if (savedUser) {
+                currentUser = JSON.parse(savedUser);
+                updateUserInterface();
+                
+                if (socket && socket.connected) {
+                    console.log('🔐 Authenticating socket for user:', currentUser.id);
+                    socket.emit('authenticate', authToken);
+                }
+            } else {
+                fetch('/api/me', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        currentUser = data.user;
+                        localStorage.setItem('currentUser', JSON.stringify(currentUser));
+                        updateUserInterface();
+                        
+                        if (socket && socket.connected) {
+                            console.log('🔐 Authenticating socket for user:', currentUser.id);
+                            socket.emit('authenticate', authToken);
+                        }
+                    } else {
+                        window.location.href = '/';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading user:', error);
+                    window.location.href = '/';
+                });
+            }
+        }
+        
+        function loadUsers() {
+            if (currentUser && currentUser.role === 'admin') {
+                fetch('/api/users', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        users = data.users;
+                        renderUsersList();
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading users:', error);
+                });
+            }
+        }
+        
+        function updateUserInterface() {
+            if (!currentUser) return;
+            
+            currentUserName.textContent = currentUser.name;
+            
+            if (currentUser.role === 'admin' && !isAdminViewingAs) {
+                userManagementSection.classList.remove('hidden');
+                userSwitchBtn.classList.remove('hidden');
+                // FIXED: Load users immediately when admin logs in
+                loadUsers();
+            } else {
+                userManagementSection.classList.add('hidden');
+                userSwitchBtn.classList.add('hidden');
+            }
+        }
+        
+        function addNewUser() {
+            const name = newUserName.value.trim();
+            const password = newUserPassword.value.trim();
+            const role = newUserRole.value;
+            
+            if (!name || !password) {
+                showToast('❌ يرجى ملء جميع الحقول', 'error');
+                return;
+            }
+            
+            fetch('/api/users', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    name: name,
+                    username: name.toLowerCase().replace(/\s/g, ''),
+                    password: password,
+                    role: role
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast('✅ تم إضافة المستخدم بنجاح', 'success');
+                    clearUserForm();
+                    loadUsers();
+                } else {
+                    showToast('❌ ' + data.error, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error adding user:', error);
+                showToast('❌ فشل إضافة المستخدم', 'error');
+            });
+        }
+        
+        function renderUsersList() {
+            usersList.innerHTML = '';
+            
+            users.forEach(user => {
+                const userElement = document.createElement('div');
+                userElement.className = `user-item p-3 rounded-lg mb-2 ${user.role === 'admin' ? 'role-admin' : 'role-standard'} bg-gray-800`;
+                
+                userElement.innerHTML = `
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <div class="font-bold">${user.name}</div>
+                            <div class="text-xs text-gray-400">${user.role === 'admin' ? 'مدير' : 'مستخدم عادي'}</div>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <span class="text-xs ${user.isActive ? 'user-active' : 'user-inactive'}">
+                                <i class="fas fa-circle text-xs mr-1"></i>${user.isActive ? 'نشط' : 'غير نشط'}
+                            </span>
+                            ${currentUser.role === 'admin' && currentUser.id !== user.id ? `
+                                <button class="switch-to-user-btn text-xs bg-blue-600 hover:bg-blue-700 px-2 py-1 rounded transition-colors" data-user-id="${user.id}">
+                                    <i class="fas fa-eye mr-1"></i>عرض
+                                </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+                
+                usersList.appendChild(userElement);
+            });
+            
+            document.querySelectorAll('.switch-to-user-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const userId = parseInt(e.target.closest('button').dataset.userId);
+                    switchToUser(userId);
+                });
+            });
+        }
+        
+        function switchToUser(userId) {
+            const targetUser = users.find(u => u.id === userId);
+            if (targetUser) {
+                fetch('/api/switch-to-user', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ userId: userId })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        localStorage.setItem('authToken', data.token);
+                        localStorage.setItem('currentUser', JSON.stringify(data.user));
+                        window.location.href = '/dashboard';
+                    } else {
+                        showToast('❌ ' + data.error, 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error switching user:', error);
+                    showToast('❌ فشل تبديل المستخدم', 'error');
+                });
+            }
+        }
+        
+        function clearUserForm() {
+            newUserName.value = '';
+            newUserPassword.value = '';
+            newUserRole.value = 'standard';
+        }
+
+        function uploadExcelFile(file) {
+            const formData = new FormData();
+            formData.append('excelFile', file);
+            
+            fetch('/api/upload-excel', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`
+                },
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    fileInfo.classList.remove('hidden');
+                    fileInfo.innerHTML = `<i class="fas fa-file-excel text-primary-light mr-1"></i> ${file.name} (${data.count} عميل)`;
+                    showToast(`✅ ${data.message}`, 'success');
+                    
+                    clients = data.clients;
+                    renderClientList();
+                    updateClientsCount();
+                } else {
+                    showToast('❌ ' + data.error, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error uploading file:', error);
+                showToast('❌ فشل رفع الملف', 'error');
+            });
+        }
+        
+        function loadClients() {
+            fetch('/api/clients', {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    clients = data.clients;
+                    renderClientList();
+                    updateClientsCount();
+                }
+            })
+            .catch(error => {
+                console.error('Error loading clients:', error);
+            });
+        }
+        
+        // FIXED: Client List Rendering with proper click events
+        function renderClientList() {
+            clientList.innerHTML = '';
+            
+            const filteredClients = currentStatusFilter === 'all' 
+                ? clients 
+                : clients.filter(client => client.status === currentStatusFilter);
+            
+            if (filteredClients.length === 0) {
+                clientList.innerHTML = `
+                    <div class="text-center text-gray-400 p-4">
+                        <i class="fas fa-users text-2xl mb-2 opacity-50"></i>
+                        <p>لا يوجد عملاء</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            filteredClients.forEach(client => {
+                const clientElement = document.createElement('div');
+                clientElement.className = `client-item p-3 rounded-lg mb-2 cursor-pointer client-status-${client.status} ${currentClient?.id === client.id ? 'active' : ''}`;
+                clientElement.dataset.clientId = client.id;
+                
+                clientElement.innerHTML = `
+                    <div class="flex justify-between items-start">
+                        <div class="flex-1">
+                            <div class="font-bold">${client.name}</div>
+                            <div class="text-xs text-gray-400">${client.phone}</div>
+                            <div class="text-sm mt-1 truncate">${client.lastMessage}</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-xs text-gray-500">${new Date(client.lastActivity).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</div>
+                            ${client.unread > 0 ? `
+                                <div class="unread-badge text-xs px-2 py-1 rounded-full mt-1">${client.unread}</div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+                
+                // FIXED: Proper click event listener
+                clientElement.addEventListener('click', () => {
+                    console.log('🟢 CLIENT CLICKED:', client.name);
+                    selectClient(client);
+                });
+                
+                clientList.appendChild(clientElement);
+            });
+        }
+        
+        function startBulkSending(isRetry = false) {
+            if (isBulkSending) {
+                showToast('⚠️ جاري الإرسال بالفعل', 'warning');
+                return;
+            }
+            
+            const message = bulkMessage.value.trim();
+            const delay = parseInt(sendDelay.value);
+            
+            if (!message) {
+                showToast('❌ يرجى كتابة رسالة ترويجية', 'error');
+                return;
+            }
+            
+            if (clients.length === 0) {
+                showToast('❌ لا يوجد عملاء للإرسال', 'error');
+                return;
+            }
+            
+            fetch('/api/send-bulk', {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    message: message,
+                    delay: delay,
+                    clients: clients
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast(`🚀 ${data.message}`, 'success');
+                isBulkSending = true;
+                    sendBulkBtn.disabled = true;
+                    sendBulkBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> جاري الإرسال...';
+                } else {
+                    showToast('❌ ' + data.error, 'error');
+                    }
+            })
+            .catch(error => {
+                console.error('Error sending bulk messages:', error);
+                showToast('❌ فشل الإرسال الجماعي', 'error');
+            });
+        }
+
+        function handleBulkProgress(data) {
+            if (data.type === 'start') {
+                showToast(`🚀 بدء الإرسال إلى ${data.total} عميل`, 'success');
+            } else if (data.success) {
+                console.log(`✅ Sent to ${data.client}: ${data.clientPhone}`);
+            } else {
+                console.error(`❌ Failed to send to ${data.client}: ${data.error}`);
+            }
+        }
+        
+        function updateClientStatus(clientId, newStatus) {
+            const client = clients.find(c => c.id === clientId);
+            if (client) {
+                socket.emit('update_client_status', {
+                    phone: client.phone,
+                    status: newStatus
+                });
+                
+                client.status = newStatus;
+                renderClientList();
+                
+                if (newStatus === 'interested') {
+                    updatePerformanceStats({
+                        interested: parseInt(statInterested.textContent) + 1
+                    });
+                }
+                
+                showToast(`✅ تم تحديث حالة العميل إلى: ${getStatusText(newStatus)}`, 'success');
+            }
+        }
+        
+        function getStatusText(status) {
+            const statusMap = {
+                'interested': 'مهتم',
+                'busy': 'مشغول',
+                'not-interested': 'غير مهتم',
+                'no-reply': 'لم يرد'
+            };
+            return statusMap[status] || status;
+        }
+        
+        function setStatusFilter(status) {
+            currentStatusFilter = status;
+            
+            document.querySelectorAll('.status-filter-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.querySelector(`[data-status="${status}"]`).classList.add('active');
+            
+            renderClientList();
+        }
+        
+        function updateClientsCount() {
+            clientsCount.textContent = clients.length;
+            statClients.textContent = clients.length;
+        }
+        
+        function scrollChatToBottom() {
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+        
+        function updatePerformanceStats(stats) {
+            if (stats.messages !== undefined) statMessages.textContent = stats.messages;
+            if (stats.aiReplies !== undefined) statAIReplies.textContent = stats.aiReplies;
+            if (stats.clients !== undefined) statClients.textContent = stats.clients;
+            if (stats.interested !== undefined) statInterested.textContent = stats.interested;
+            
+            const currentStats = {
+                messages: parseInt(statMessages.textContent),
+                aiReplies: parseInt(statAIReplies.textContent),
+                clients: parseInt(statClients.textContent),
+                interested: parseInt(statInterested.textContent)
+            };
+            localStorage.setItem('performanceStats', JSON.stringify(currentStats));
+        }
+        
+        function loadPerformanceStats() {
+            fetch('/api/employee-performance', {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const perf = data.performance.dailyStats;
+                    updatePerformanceStats({
+                        messages: perf.messagesSent,
+                        aiReplies: perf.aiRepliesSent,
+                        clients: perf.clientsContacted,
+                        interested: perf.interestedClients
+                    });
+                }
+            })
+            .catch(error => {
+                console.error('Error loading performance stats:', error);
+                const savedStats = localStorage.getItem('performanceStats');
+                if (savedStats) {
+                    updatePerformanceStats(JSON.parse(savedStats));
+                }
+            });
+        }
+        
+        function exportReport() {
+            fetch('/api/export-report', {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`
+                }
+            })
+            .then(response => {
+                if (response.ok) {
+                    return response.blob();
+                }
+                throw new Error('Export failed');
+            })
+            .then(blob => {
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = `ragmcloud-report-${new Date().toISOString().split('T')[0]}.txt`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                showToast('📊 تم تصدير التقرير بنجاح', 'success');
+            })
+            .catch(error => {
+                console.error('Error exporting report:', error);
+                showToast('❌ فشل تصدير التقرير', 'error');
+            });
+        }
+        
+        function sendReport() {
+            fetch('/api/send-to-manager', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast('📧 تم إرسال التقرير إلى المدير بنجاح', 'success');
+                    } else {
+                    showToast('❌ ' + data.error, 'error');
+                    }
+            })
+            .catch(error => {
+                console.error('Error sending report:', error);
+                showToast('❌ فشل إرسال التقرير', 'error');
+            });
+        }
+        
+        function showToast(message, type = 'success') {
             const toast = document.createElement('div');
             toast.className = `toast ${type}`;
-            toast.innerHTML = `
-                <div class="flex items-center">
-                    <i class="fas fa-${type === 'success' ? 'check' : type === 'error' ? 'exclamation-triangle' : 'info-circle'} mr-2"></i>
-                    <span>${message}</span>
-                </div>
-            `;
+            toast.textContent = message;
+            
             toastContainer.appendChild(toast);
             
             setTimeout(() => {
@@ -1098,26 +1884,48 @@
             setTimeout(() => {
                 toast.classList.remove('show');
                 setTimeout(() => {
-                    toast.remove();
+                    toastContainer.removeChild(toast);
                 }, 300);
             }, 4000);
         }
-
-        function formatTime(date) {
-            return new Date(date).toLocaleTimeString('ar-EG', {
-                hour: '2-digit',
-                minute: '2-digit'
-            });
+        
+        function showAutoReportNotification(data) {
+            autoReportMessage.textContent = data.message;
+            autoReportNotification.style.display = 'block';
+            
+            setTimeout(() => {
+                autoReportNotification.style.display = 'none';
+            }, 5000);
         }
-
-        function logout() {
-            localStorage.removeItem('authToken');
-            window.location.href = '/login';
+        
+        function updateBotStatusUI() {
+            if (isBotStopped) {
+                botStatus.textContent = 'متوقف';
+                botStatus.className = 'bot-status-stopped px-3 py-1 rounded-full text-sm font-bold';
+                stopBotBtn.innerHTML = '<i class="fas fa-play mr-2"></i>تشغيل البوت';
+            } else {
+                botStatus.textContent = 'نشط';
+                botStatus.className = 'bot-status-running px-3 py-1 rounded-full text-sm font-bold';
+                stopBotBtn.innerHTML = '<i class="fas fa-stop mr-2"></i>إيقاف البوت';
+            }
         }
+        
+        // Chat scroll detection
+        chatContainer.addEventListener('scroll', () => {
+            const scrollThreshold = 100;
+            const isNearBottom = chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight < scrollThreshold;
+            
+            if (isNearBottom) {
+                scrollToBottom.classList.remove('visible');
+            } else {
+                scrollToBottom.classList.add('visible');
+            }
+        });
 
-        // Add other functions here (handleFileUpload, startBulkSending, etc.)
-        // These remain the same as in the original implementation
-
+        // Load initial data
+        loadClients();
+        loadUsers();
+        loadPerformanceStats();
     </script>
 </body>
 </html>
