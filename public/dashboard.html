@@ -1340,6 +1340,8 @@
                 return;
             }
 
+            console.log('🔄 Saving AI prompt:', prompt.substring(0, 50) + '...'); // Debug log
+
             fetch('/api/ai-prompt', {
                 method: 'PUT',
                 headers: {
@@ -1350,8 +1352,15 @@
                     prompt: prompt
                 })
             })
-            .then(response => response.json())
+            .then(response => {
+                console.log('📡 Response status:', response.status); // Debug log
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
             .then(data => {
+                console.log('📡 Response data:', data); // Debug log
                 if (data.success) {
                     showToast('✅ تم حفظ نظام الذكاء الاصطناعي', 'success');
                 } else {
@@ -1359,8 +1368,8 @@
                 }
             })
             .catch(error => {
-                console.error('Error saving AI prompt:', error);
-                showToast('❌ فشل حفظ النظام', 'error');
+                console.error('❌ Error saving AI prompt:', error);
+                showToast('❌ فشل حفظ النظام: ' + error.message, 'error');
             });
         }
 
