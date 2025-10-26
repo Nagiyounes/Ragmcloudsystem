@@ -942,6 +942,7 @@
                 setupSocketEvents();
                 setupEventListeners();
                 loadCurrentUser(); // This will trigger authentication
+                loadUsers(); // Load users list automatically
                 
                 // 🆕 Auto-check WhatsApp status on load
                 setTimeout(() => {
@@ -1340,27 +1341,16 @@
                 return;
             }
 
-            console.log('🔄 Saving AI prompt:', prompt.substring(0, 50) + '...'); // Debug log
-
             fetch('/api/ai-prompt', {
                 method: 'PUT',
                 headers: {
                     'Authorization': `Bearer ${authToken}`,
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({
-                    prompt: prompt
-                })
+                body: JSON.stringify({ prompt: prompt })
             })
-            .then(response => {
-                console.log('📡 Response status:', response.status); // Debug log
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                return response.json();
-            })
+            .then(response => response.json())
             .then(data => {
-                console.log('📡 Response data:', data); // Debug log
                 if (data.success) {
                     showToast('✅ تم حفظ نظام الذكاء الاصطناعي', 'success');
                 } else {
@@ -1368,8 +1358,8 @@
                 }
             })
             .catch(error => {
-                console.error('❌ Error saving AI prompt:', error);
-                showToast('❌ فشل حفظ النظام: ' + error.message, 'error');
+                console.error('Error saving AI prompt:', error);
+                showToast('❌ فشل حفظ النظام', 'error');
             });
         }
 
@@ -1570,6 +1560,14 @@
                     console.log('🔐 Authenticating socket for user:', currentUser.id);
                     socket.emit('authenticate', authToken);
                 }
+                
+                // Load users list if admin
+                if (currentUser && currentUser.role === 'admin') {
+                    loadUsers();
+                }
+                // Load other data
+                loadClients();
+                loadPerformanceStats();
             } else {
                 fetch('/api/me', {
                     method: 'GET',
@@ -1590,6 +1588,14 @@
                             console.log('🔐 Authenticating socket for user:', currentUser.id);
                             socket.emit('authenticate', authToken);
                         }
+                        
+                        // Load users list if admin
+                        if (currentUser && currentUser.role === 'admin') {
+                            loadUsers();
+                        }
+                        // Load other data
+                        loadClients();
+                        loadPerformanceStats();
                     } else {
                         window.location.href = '/';
                     }
