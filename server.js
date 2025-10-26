@@ -41,6 +41,105 @@ directories.forEach(dir => {
     }
 });
 
+// =============================================
+// 🆕 CRITICAL FIX: CREATE MISSING FILES ON STARTUP
+// =============================================
+
+// 🆕 Create users.json if missing
+function initializeUsersFile() {
+    const usersFile = './data/users.json';
+    if (!fs.existsSync(usersFile)) {
+        const defaultPassword = bcrypt.hashSync('admin123', 10);
+        const defaultUsers = [
+            {
+                id: 1,
+                name: 'المدير',
+                username: 'admin',
+                password: defaultPassword,
+                role: 'admin',
+                isActive: true,
+                createdAt: new Date().toISOString(),
+                lastLogin: null
+            },
+            {
+                id: 2,
+                name: 'محمد أحمد',
+                username: 'mohamed',
+                password: bcrypt.hashSync('user123', 10),
+                role: 'standard',
+                isActive: true,
+                createdAt: new Date().toISOString(),
+                lastLogin: null
+            }
+        ];
+        fs.writeFileSync(usersFile, JSON.stringify(defaultUsers, null, 2));
+        console.log('✅ Created default users.json file');
+    }
+}
+
+// 🆕 Create ai_prompt.txt if missing
+function initializeAIPromptFile() {
+    const aiPromptFile = './memory/ai_prompt.txt';
+    if (!fs.existsSync(aiPromptFile)) {
+        const defaultPrompt = `أنت مساعد ذكي ومحترف تمثل شركة "رقم كلاود" المتخصصة في أنظمة ERP السحابية. أنت بائع مقنع ومحاسب خبير.
+
+🔹 **هويتك:**
+- أنت بائع محترف ومحاسب متمرس
+- تركيزك على بيع أنظمة ERP وخدمات رقم كلاود فقط
+- لا تجيب على أسئلة خارج نطاق تخصصك
+
+🔹 **معلومات الشركة:**
+الاسم: رقم كلاود (Ragmcloud ERP)
+الموقع: https://ragmcloud.sa  
+الهاتف: +966555111222
+المقر: الرياض - حي المغرزات
+
+🔹 **باقات الأسعار (سنوية):**
+• الباقة الأساسية: 1000 ريال (مستخدم واحد)
+• الباقة المتقدمة: 1800 ريال (مستخدمين) 
+• الباقة الاحترافية: 2700 ريال (3 مستخدمين)
+• الباقة المميزة: 3000 ريال (3 مستخدمين)
+
+🔹 **قواعد الرد الإلزامية:**
+1. **لا تجيب أبداً على:** أسئلة شخصية، سياسة، أديان، برامج أخرى، منافسين
+2. **إذا سألك عن شيء خارج تخصصك:** قل "أعتذر، هذا السؤال خارج نطاق تخصصي في أنظمة ERP"
+3. **كن مقنعاً:** ركز على فوائد النظام للعميل
+4. **اسأل عن نشاط العميل:** لتعرف أي باقة تناسبه
+5. **شجع على التواصل:** وجه العميل للاتصال بفريق المبيعات
+
+🔹 **نماذج الردود المقنعة:**
+- "نظامنا بيوفر عليك 50% من وقتك اليومي في المتابعة المحاسبية"
+- "بتقدر تتابع كل فروعك من مكان واحد بدون ما تحتاج تروح لكل فرع"
+- "التقارير بتكون جاهزة بشكل فوري علشان تتابع أداء شركتك"
+- "جرب النظام مجاناً لمدة 7 أيام وتشوف الفرق بنفسك"
+
+🔹 **كيفية التعامل مع الأسئلة:**
+- اسأل عن طبيعة نشاط العميل أولاً
+- حدد التحديات التي يواجهها
+- اقترح الباقة المناسبة لاحتياجاته
+- وجهه للاتصال بفريق المبيعات للتسجيل
+
+تذكر: أنت بائع محترف هدفك مساعدة العملاء في اختيار النظام المناسب لشركاتهم.`;
+        
+        fs.writeFileSync(aiPromptFile, defaultPrompt);
+        console.log('✅ Created default ai_prompt.txt file');
+    }
+}
+
+// 🆕 Create clients.json if missing
+function initializeClientsFile() {
+    const clientsFile = './memory/clients.json';
+    if (!fs.existsSync(clientsFile)) {
+        fs.writeFileSync(clientsFile, JSON.stringify([], null, 2));
+        console.log('✅ Created empty clients.json file');
+    }
+}
+
+// Initialize all required files
+initializeUsersFile();
+initializeAIPromptFile();
+initializeClientsFile();
+
 // Configure multer for file uploads
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
@@ -58,17 +157,6 @@ const upload = multer({ storage: storage });
 
 // 🆕 User WhatsApp Sessions Management
 const userWhatsAppSessions = new Map(); // Key: userId, Value: session object
-
-// Session object structure:
-// {
-//   client: null, // The WhatsApp Web.js client instance
-//   qrCode: null, // Current QR code string
-//   status: 'disconnected', // 'disconnected', 'qr-ready', 'authenticating', 'connected'
-//   isConnected: false,
-//   isBotStopped: false,
-//   clientReplyTimers: new Map(), // User-specific reply timers
-//   importedClients: new Set(), // User-specific imported clients
-// }
 
 // NEW: User Management Variables
 let users = [];
@@ -221,47 +309,6 @@ const ragmcloudCompanyInfo = {
     ]
 };
 
-// DEFAULT AI System Prompt (will be overridden by saved prompt)
-const DEFAULT_AI_SYSTEM_PROMPT = `أنت مساعد ذكي ومحترف تمثل شركة "رقم كلاود" المتخصصة في أنظمة ERP السحابية. أنت بائع مقنع ومحاسب خبير.
-
-🔹 **هويتك:**
-- أنت بائع محترف ومحاسب متمرس
-- تركيزك على بيع أنظمة ERP وخدمات رقم كلاود فقط
-- لا تجيب على أسئلة خارج نطاق تخصصك
-
-🔹 **معلومات الشركة:**
-الاسم: رقم كلاود (Ragmcloud ERP)
-الموقع: https://ragmcloud.sa  
-الهاتف: +966555111222
-المقر: الرياض - حي المغرزات
-
-🔹 **باقات الأسعار (سنوية):**
-• الباقة الأساسية: 1000 ريال (مستخدم واحد)
-• الباقة المتقدمة: 1800 ريال (مستخدمين) 
-• الباقة الاحترافية: 2700 ريال (3 مستخدمين)
-• الباقة المميزة: 3000 ريال (3 مستخدمين)
-
-🔹 **قواعد الرد الإلزامية:**
-1. **لا تجيب أبداً على:** أسئلة شخصية، سياسة، أديان، برامج أخرى، منافسين
-2. **إذا سألك عن شيء خارج تخصصك:** قل "أعتذر، هذا السؤال خارج نطاق تخصصي في أنظمة ERP"
-3. **كن مقنعاً:** ركز على فوائد النظام للعميل
-4. **اسأل عن نشاط العميل:** لتعرف أي باقة تناسبه
-5. **شجع على التواصل:** وجه العميل للاتصال بفريق المبيعات
-
-🔹 **نماذج الردود المقنعة:**
-- "نظامنا بيوفر عليك 50% من وقتك اليومي في المتابعة المحاسبية"
-- "بتقدر تتابع كل فروعك من مكان واحد بدون ما تحتاج تروح لكل فرع"
-- "التقارير بتكون جاهزة بشكل فوري علشان تتابع أداء شركتك"
-- "جرب النظام مجاناً لمدة 7 أيام وتشوف الفرق بنفسك"
-
-🔹 **كيفية التعامل مع الأسئلة:**
-- اسأل عن طبيعة نشاط العميل أولاً
-- حدد التحديات التي يواجهها
-- اقترح الباقة المناسبة لاحتياجاته
-- وجهه للاتصال بفريق المبيعات للتسجيل
-
-تذكر: أنت بائع محترف هدفك مساعدة العملاء في اختيار النظام المناسب لشركاتهم.`;
-
 // 🆕 GLOBAL AI SYSTEM PROMPT (Load from file on startup)
 let AI_SYSTEM_PROMPT = loadAIPromptFromFile();
 
@@ -355,7 +402,7 @@ app.put('/api/ai-prompt', authenticateUser, authorizeAdmin, (req, res) => {
     try {
         const { prompt } = req.body;
         
-        console.log('🔄 Updating AI prompt:', prompt ? 'Content received' : 'No content');
+        console.log('🔄 Updating AI prompt:', prompt ? `Content length: ${prompt.length}` : 'No content');
         
         if (!prompt || prompt.trim() === '') {
             return res.status(400).json({ error: 'النص المطلوب مطلوب' });
@@ -2595,4 +2642,5 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log('   ✅ PERMANENT AI Storage - Training survives server restarts');
     console.log('   ✅ REAL-TIME Updates - Changes apply immediately');
     console.log('   ✅ Phone Number Formatting - Consistent across all functions');
+    console.log('   ✅ AUTO-FILE CREATION - Missing files created automatically');
 });
