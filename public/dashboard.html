@@ -102,12 +102,21 @@
             color: white;
         }
         
-        /* IMPROVED CHAT STYLES */
+        /* FIXED CHAT STYLES - Improved layout */
+        .chat-area-container {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            position: relative;
+        }
+        
         .chat-container {
-            height: calc(100vh - 280px);
+            flex: 1;
             overflow-y: auto;
             scroll-behavior: smooth;
             padding: 10px;
+            display: flex;
+            flex-direction: column;
         }
         
         .chat-bubble {
@@ -119,17 +128,18 @@
             font-size: 14px;
             line-height: 1.4;
             word-wrap: break-word;
+            align-self: flex-start;
         }
         
         .chat-bubble.sent {
             background: linear-gradient(135deg, #007C5C, #00B98B);
-            margin-left: auto;
+            align-self: flex-end;
             border-bottom-right-radius: 4px;
         }
         
         .chat-bubble.received {
             background: rgba(255, 255, 255, 0.1);
-            margin-right: auto;
+            align-self: flex-start;
             border-bottom-left-radius: 4px;
         }
         
@@ -673,7 +683,7 @@
             </div>
             
             <!-- Clients List / Chat Area -->
-            <div class="flex-1 flex">
+            <div class="flex-1 flex overflow-hidden">
                 <!-- Clients List -->
                 <div class="w-1/3 border-l border-gray-600 h-full overflow-hidden flex flex-col">
                     <div class="p-4 border-b border-gray-600">
@@ -701,7 +711,7 @@
                 </div>
                 
                 <!-- Chat Messages -->
-                <div class="flex-1 flex flex-col relative">
+                <div class="flex-1 flex flex-col relative chat-area-container">
                     <div id="chatContainer" class="chat-container">
                         <div class="text-center text-gray-400 mt-20">
                             <i class="fas fa-comments text-5xl mb-4 opacity-50"></i>
