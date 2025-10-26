@@ -410,6 +410,11 @@
             transform: translateY(-2px);
             box-shadow: 0 4px 20px rgba(245, 101, 101, 0.4);
         }
+
+        /* FIXED: Remove purple manager badge */
+        .role-badge {
+            display: none !important;
+        }
     </style>
 </head>
 <body class="text-white">
@@ -479,10 +484,10 @@
                     <span id="currentUserName" class="px-3 py-1 bg-primary rounded-full text-sm font-bold">...</span>
                 </div>
 
-                <!-- User Role -->
+                <!-- User Role - FIXED: Removed purple badge -->
                 <div class="flex items-center justify-between mb-4">
                     <span class="text-sm text-gray-300">الدور:</span>
-                    <span id="currentUserRole" class="px-3 py-1 bg-purple-600 rounded-full text-sm font-bold">...</span>
+                    <span id="currentUserRole" class="px-3 py-1 bg-primary rounded-full text-sm font-bold">...</span>
                 </div>
                 
                 <!-- WhatsApp Status -->
@@ -504,7 +509,7 @@
                 </div>
                 
                 <!-- NEW: Admin User Switch Button -->
-                <button id="userSwitchBtn" class="w-full bg-purple-600 hover:bg-purple-700 py-2 rounded-lg font-bold mb-2 transition-colors hidden">
+                <button id="userSwitchBtn" class="w-full bg-primary hover:bg-primary-dark py-2 rounded-lg font-bold mb-2 transition-colors hidden">
                     <i class="fas fa-user-shield mr-2"></i>تبديل المستخدم
                 </button>
                 
@@ -513,8 +518,13 @@
                     <i class="fas fa-sync-alt mr-2"></i>إعادة الاتصال
                 </button>
 
+                <!-- NEW: Disconnect WhatsApp Button -->
+                <button id="disconnectWhatsAppBtn" class="w-full bg-red-600 hover:bg-red-700 py-2 rounded-lg font-bold mb-2 transition-colors">
+                    <i class="fas fa-plug mr-2"></i>قطع اتصال الواتساب
+                </button>
+
                 <!-- NEW: Stop Bot Button -->
-                <button id="stopBotBtn" class="w-full bg-red-600 hover:bg-red-700 py-2 rounded-lg font-bold mb-2 transition-colors">
+                <button id="stopBotBtn" class="w-full bg-yellow-600 hover:bg-yellow-700 py-2 rounded-lg font-bold mb-2 transition-colors">
                     <i class="fas fa-stop mr-2"></i>إيقاف البوت
                 </button>
 
@@ -760,6 +770,7 @@
         const qrCode = document.getElementById('qrCode');
         const closeQR = document.getElementById('closeQR');
         const reconnectBtn = document.getElementById('reconnectBtn');
+        const disconnectWhatsAppBtn = document.getElementById('disconnectWhatsAppBtn');
         const stopBotBtn = document.getElementById('stopBotBtn');
         const logoutBtn = document.getElementById('logoutBtn');
         const whatsappStatus = document.getElementById('whatsappStatus');
@@ -958,6 +969,14 @@
             reconnectBtn.addEventListener('click', () => {
                 socket.emit('user_reconnect_whatsapp');
                 showToast('🔄 جاري إعادة الاتصال...', 'warning');
+            });
+
+            // Disconnect WhatsApp
+            disconnectWhatsAppBtn.addEventListener('click', () => {
+                if (confirm('هل أنت متأكد من قطع اتصال الواتساب؟')) {
+                    socket.emit('user_disconnect_whatsapp');
+                    showToast('🔌 جاري قطع اتصال الواتساب...', 'warning');
+                }
             });
             
             // Stop Bot Button
@@ -1285,6 +1304,9 @@
             currentUserName.textContent = currentUser.name;
             currentUserRole.textContent = currentUser.role === 'admin' ? 'مدير' : 'مستخدم عادي';
             
+            // FIXED: Remove purple badge - always use primary color
+            currentUserRole.className = 'px-3 py-1 bg-primary rounded-full text-sm font-bold';
+            
             if (currentUser.role === 'admin' && !isAdminViewingAs) {
                 userManagementSection.classList.remove('hidden');
                 userSwitchBtn.classList.remove('hidden');
@@ -1292,10 +1314,6 @@
                 userManagementSection.classList.add('hidden');
                 userSwitchBtn.classList.add('hidden');
             }
-            
-            currentUserRole.className = currentUser.role === 'admin' 
-                ? 'px-3 py-1 bg-purple-600 rounded-full text-sm font-bold'
-                : 'px-3 py-1 bg-primary rounded-full text-sm font-bold';
         }
         
         function addNewUser() {
@@ -1303,534 +1321,4 @@
             const password = newUserPassword.value.trim();
             const role = newUserRole.value;
             
-            if (!name || !password) {
-                showToast('❌ يرجى ملء جميع الحقول', 'error');
-                return;
-            }
-            
-            fetch('/api/users', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${authToken}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    name: name,
-                    username: name.toLowerCase().replace(/\s/g, ''),
-                    password: password,
-                    role: role
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showToast('✅ تم إضافة المستخدم بنجاح', 'success');
-                    clearUserForm();
-                    loadUsers();
-                } else {
-                    showToast('❌ ' + data.error, 'error');
-                }
-            })
-            .catch(error => {
-                console.error('Error adding user:', error);
-                showToast('❌ فشل إضافة المستخدم', 'error');
-            });
-        }
-        
-        function renderUsersList() {
-            usersList.innerHTML = '';
-            
-            users.forEach(user => {
-                const userElement = document.createElement('div');
-                userElement.className = `user-item p-3 rounded-lg mb-2 ${user.role === 'admin' ? 'role-admin' : 'role-standard'} bg-gray-800`;
-                
-                userElement.innerHTML = `
-                    <div class="flex justify-between items-center">
-                        <div>
-                            <div class="font-bold">${user.name}</div>
-                            <div class="text-xs text-gray-400">${user.role === 'admin' ? 'مدير' : 'مستخدم عادي'}</div>
-                        </div>
-                        <div class="flex items-center space-x-2">
-                            <span class="text-xs ${user.isActive ? 'user-active' : 'user-inactive'}">
-                                <i class="fas fa-circle text-xs mr-1"></i>${user.isActive ? 'نشط' : 'غير نشط'}
-                            </span>
-                            ${currentUser.role === 'admin' && currentUser.id !== user.id ? `
-                                <button class="switch-to-user-btn text-xs bg-blue-600 hover:bg-blue-700 px-2 py-1 rounded transition-colors" data-user-id="${user.id}">
-                                    <i class="fas fa-eye mr-1"></i>عرض
-                                </button>
-                            ` : ''}
-                        </div>
-                    </div>
-                `;
-                
-                usersList.appendChild(userElement);
-            });
-            
-            document.querySelectorAll('.switch-to-user-btn').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    const userId = parseInt(e.target.closest('button').dataset.userId);
-                    switchToUser(userId);
-                });
-            });
-        }
-        
-        function switchToUser(userId) {
-            const targetUser = users.find(u => u.id === userId);
-            if (targetUser) {
-                isAdminViewingAs = true;
-                viewingAsUser = targetUser;
-                userSwitchOverlay.classList.add('hidden');
-                updateUserInterface();
-                showToast(`👁️ تشاهد الآن كـ: ${targetUser.name}`, 'success');
-            }
-        }
-        
-        function clearUserForm() {
-            newUserName.value = '';
-            newUserPassword.value = '';
-            newUserRole.value = 'standard';
-        }
-
-        function uploadExcelFile(file) {
-            const formData = new FormData();
-            formData.append('excelFile', file);
-            
-            fetch('/api/upload-excel', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${authToken}`
-                },
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    fileInfo.classList.remove('hidden');
-                    fileInfo.innerHTML = `<i class="fas fa-file-excel text-primary-light mr-1"></i> ${file.name} (${data.count} عميل)`;
-                    showToast(`✅ ${data.message}`, 'success');
-                    
-                    clients = data.clients;
-                    renderClientList();
-                    updateClientsCount();
-                } else {
-                    showToast('❌ ' + data.error, 'error');
-                }
-            })
-            .catch(error => {
-                console.error('Error uploading file:', error);
-                showToast('❌ فشل رفع الملف', 'error');
-            });
-        }
-        
-        function loadClients() {
-            fetch('/api/clients', {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${authToken}`,
-                    'Content-Type': 'application/json'
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    clients = data.clients;
-                    renderClientList();
-                    updateClientsCount();
-                }
-            })
-            .catch(error => {
-                console.error('Error loading clients:', error);
-            });
-        }
-        
-        function renderClientList() {
-            clientList.innerHTML = '';
-            
-            const filteredClients = currentStatusFilter === 'all' 
-                ? clients 
-                : clients.filter(client => client.status === currentStatusFilter);
-            
-            filteredClients.forEach(client => {
-                const clientElement = document.createElement('div');
-                clientElement.className = `client-item p-3 rounded-lg mb-2 cursor-pointer client-status-${client.status} ${currentClient?.id === client.id ? 'active' : ''}`;
-                clientElement.dataset.clientId = client.id;
-                
-                clientElement.innerHTML = `
-                    <div class="flex justify-between items-start">
-                        <div class="flex-1">
-                            <div class="font-bold">${client.name}</div>
-                            <div class="text-xs text-gray-400">${client.phone}</div>
-                            <div class="text-sm mt-1 truncate">${client.lastMessage}</div>
-                        </div>
-                        <div class="text-right">
-                            <div class="text-xs text-gray-500">${new Date(client.lastActivity).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</div>
-                            ${client.unread > 0 ? `
-                                <div class="unread-badge text-xs px-2 py-1 rounded-full mt-1">${client.unread}</div>
-                            ` : ''}
-                        </div>
-                    </div>
-                `;
-                
-                clientElement.addEventListener('click', () => {
-                    selectClient(client);
-                });
-                
-                clientList.appendChild(clientElement);
-            });
-        }
-        
-        function selectClient(client) {
-            currentClient = client;
-            currentClientName.textContent = client.name;
-            currentClientPhone.textContent = client.phone;
-            activeStatus.classList.remove('hidden');
-            clientStatusSelector.classList.remove('hidden');
-            statusSelect.value = client.status;
-            
-            messageInput.disabled = false;
-            sendMessageBtn.disabled = false;
-            
-            document.querySelectorAll('.client-item').forEach(item => {
-                item.classList.remove('active');
-            });
-            document.querySelector(`[data-client-id="${client.id}"]`).classList.add('active');
-            
-            loadMessages(client.id);
-        }
-        
-        function loadMessages(clientId) {
-            fetch(`/api/client-messages/${clientId}`, {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${authToken}`,
-                    'Content-Type': 'application/json'
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    messages[clientId] = data.messages;
-                    renderMessages(messages[clientId]);
-                }
-            })
-            .catch(error => {
-                console.error('Error loading messages:', error);
-            });
-        }
-        
-        function renderMessages(messages) {
-            chatContainer.innerHTML = '';
-            
-            if (messages.length === 0) {
-                chatContainer.innerHTML = `
-                    <div class="text-center text-gray-400 mt-20">
-                        <i class="fas fa-comments text-5xl mb-4 opacity-50"></i>
-                        <p class="text-gray-500">لا توجد رسائل بعد</p>
-                    </div>
-                `;
-                return;
-            }
-            
-            messages.forEach(message => {
-                const messageElement = document.createElement('div');
-                messageElement.className = `chat-bubble ${message.fromMe ? 'sent' : 'received'}`;
-                
-                messageElement.innerHTML = `
-                    <div class="message-content">${message.message}</div>
-                    <div class="chat-time">${new Date(message.timestamp).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</div>
-                `;
-                
-                chatContainer.appendChild(messageElement);
-            });
-            
-            scrollChatToBottom();
-        }
-        
-        function sendMessage() {
-            const message = messageInput.value.trim();
-            if (!message || !currentClient) return;
-            
-            socket.emit('send_message', {
-                to: currentClient.phone,
-                message: message
-            });
-            
-            const newMessage = {
-                id: Date.now(),
-                message: message,
-                fromMe: true,
-                timestamp: new Date().toISOString()
-            };
-            
-            if (!messages[currentClient.id]) {
-                messages[currentClient.id] = [];
-            }
-            messages[currentClient.id].push(newMessage);
-            
-            renderMessages(messages[currentClient.id]);
-            messageInput.value = '';
-            
-            updatePerformanceStats({
-                messages: parseInt(statMessages.textContent) + 1
-            });
-        }
-        
-        function startBulkSending(isRetry = false) {
-            if (isBulkSending) {
-                showToast('⚠️ جاري الإرسال بالفعل', 'warning');
-                return;
-            }
-            
-            const message = bulkMessage.value.trim();
-            const delay = parseInt(sendDelay.value);
-            
-            if (!message) {
-                showToast('❌ يرجى كتابة رسالة ترويجية', 'error');
-                return;
-            }
-            
-            if (clients.length === 0) {
-                showToast('❌ لا يوجد عملاء للإرسال', 'error');
-                return;
-            }
-            
-            fetch('/api/send-bulk', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${authToken}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    message: message,
-                    delay: delay,
-                    clients: clients
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showToast(`🚀 ${data.message}`, 'success');
-                isBulkSending = true;
-                    sendBulkBtn.disabled = true;
-                    sendBulkBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> جاري الإرسال...';
-                } else {
-                    showToast('❌ ' + data.error, 'error');
-                    }
-            })
-            .catch(error => {
-                console.error('Error sending bulk messages:', error);
-                showToast('❌ فشل الإرسال الجماعي', 'error');
-            });
-        }
-
-        function handleBulkProgress(data) {
-            if (data.type === 'start') {
-                showToast(`🚀 بدء الإرسال إلى ${data.total} عميل`, 'success');
-            } else if (data.success) {
-                console.log(`✅ Sent to ${data.client}: ${data.clientPhone}`);
-            } else {
-                console.error(`❌ Failed to send to ${data.client}: ${data.error}`);
-            }
-        }
-        
-        function updateClientStatus(clientId, newStatus) {
-            const client = clients.find(c => c.id === clientId);
-            if (client) {
-                socket.emit('update_client_status', {
-                    phone: client.phone,
-                    status: newStatus
-                });
-                
-                client.status = newStatus;
-                renderClientList();
-                
-                if (newStatus === 'interested') {
-                    updatePerformanceStats({
-                        interested: parseInt(statInterested.textContent) + 1
-                    });
-                }
-                
-                showToast(`✅ تم تحديث حالة العميل إلى: ${getStatusText(newStatus)}`, 'success');
-            }
-        }
-        
-        function getStatusText(status) {
-            const statusMap = {
-                'interested': 'مهتم',
-                'busy': 'مشغول',
-                'not-interested': 'غير مهتم',
-                'no-reply': 'لم يرد'
-            };
-            return statusMap[status] || status;
-        }
-        
-        function setStatusFilter(status) {
-            currentStatusFilter = status;
-            
-            document.querySelectorAll('.status-filter-btn').forEach(btn => {
-                btn.classList.remove('active');
-            });
-            document.querySelector(`[data-status="${status}"]`).classList.add('active');
-            
-            renderClientList();
-        }
-        
-        function updateClientsCount() {
-            clientsCount.textContent = clients.length;
-            statClients.textContent = clients.length;
-        }
-        
-        function scrollChatToBottom() {
-            chatContainer.scrollTop = chatContainer.scrollHeight;
-        }
-        
-        function updatePerformanceStats(stats) {
-            if (stats.messages !== undefined) statMessages.textContent = stats.messages;
-            if (stats.aiReplies !== undefined) statAIReplies.textContent = stats.aiReplies;
-            if (stats.clients !== undefined) statClients.textContent = stats.clients;
-            if (stats.interested !== undefined) statInterested.textContent = stats.interested;
-            
-            const currentStats = {
-                messages: parseInt(statMessages.textContent),
-                aiReplies: parseInt(statAIReplies.textContent),
-                clients: parseInt(statClients.textContent),
-                interested: parseInt(statInterested.textContent)
-            };
-            localStorage.setItem('performanceStats', JSON.stringify(currentStats));
-        }
-        
-        function loadPerformanceStats() {
-            fetch('/api/employee-performance', {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${authToken}`,
-                    'Content-Type': 'application/json'
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    const perf = data.performance.dailyStats;
-                    updatePerformanceStats({
-                        messages: perf.messagesSent,
-                        aiReplies: perf.aiRepliesSent,
-                        clients: perf.clientsContacted,
-                        interested: perf.interestedClients
-                    });
-                }
-            })
-            .catch(error => {
-                console.error('Error loading performance stats:', error);
-                const savedStats = localStorage.getItem('performanceStats');
-                if (savedStats) {
-                    updatePerformanceStats(JSON.parse(savedStats));
-                }
-            });
-        }
-        
-        function exportReport() {
-            fetch('/api/export-report', {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${authToken}`
-                }
-            })
-            .then(response => {
-                if (response.ok) {
-                    return response.blob();
-                }
-                throw new Error('Export failed');
-            })
-            .then(blob => {
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.style.display = 'none';
-                a.href = url;
-                a.download = `ragmcloud-report-${new Date().toISOString().split('T')[0]}.txt`;
-                document.body.appendChild(a);
-                a.click();
-                window.URL.revokeObjectURL(url);
-                showToast('📊 تم تصدير التقرير بنجاح', 'success');
-            })
-            .catch(error => {
-                console.error('Error exporting report:', error);
-                showToast('❌ فشل تصدير التقرير', 'error');
-            });
-        }
-        
-        function sendReport() {
-            fetch('/api/send-to-manager', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${authToken}`,
-                    'Content-Type': 'application/json'
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showToast('📧 تم إرسال التقرير إلى المدير بنجاح', 'success');
-                    } else {
-                    showToast('❌ ' + data.error, 'error');
-                    }
-            })
-            .catch(error => {
-                console.error('Error sending report:', error);
-                showToast('❌ فشل إرسال التقرير', 'error');
-            });
-        }
-        
-        function showToast(message, type = 'success') {
-            const toast = document.createElement('div');
-            toast.className = `toast ${type}`;
-            toast.textContent = message;
-            
-            toastContainer.appendChild(toast);
-            
-            setTimeout(() => {
-                toast.classList.add('show');
-            }, 100);
-            
-            setTimeout(() => {
-                toast.classList.remove('show');
-                setTimeout(() => {
-                    toastContainer.removeChild(toast);
-                }, 300);
-            }, 4000);
-        }
-        
-        function showAutoReportNotification(data) {
-            autoReportMessage.textContent = data.message;
-            autoReportNotification.style.display = 'block';
-            
-            setTimeout(() => {
-                autoReportNotification.style.display = 'none';
-            }, 5000);
-        }
-        
-        function updateBotStatusUI() {
-            if (isBotStopped) {
-                botStatus.textContent = 'متوقف';
-                botStatus.className = 'bot-status-stopped px-3 py-1 rounded-full text-sm font-bold';
-                stopBotBtn.innerHTML = '<i class="fas fa-play mr-2"></i>تشغيل البوت';
-            } else {
-                botStatus.textContent = 'نشط';
-                botStatus.className = 'bot-status-running px-3 py-1 rounded-full text-sm font-bold';
-                stopBotBtn.innerHTML = '<i class="fas fa-stop mr-2"></i>إيقاف البوت';
-            }
-        }
-        
-        // Chat scroll detection
-        chatContainer.addEventListener('scroll', () => {
-            const scrollThreshold = 100;
-            const isNearBottom = chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight < scrollThreshold;
-            
-            if (isNearBottom) {
-                scrollToBottom.classList.remove('visible');
-            } else {
-                scrollToBottom.classList.add('visible');
-            }
-        });
-    </script>
-</body>
-</html>
+            if (!name || !password)
