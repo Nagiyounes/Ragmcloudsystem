@@ -1,975 +1,1836 @@
-const express = require('express');
-const http = require('http');
-const socketIo = require('socket.io');
-const path = require('path');
-const mysql = require('mysql2/promise');
-const multer = require('multer');
-const { Client, LocalAuth } = require('whatsapp-web.js');
-const qrcode = require('qrcode');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-const xlsx = require('xlsx');
-
-const app = express();
-const server = http.createServer(app);
-const io = socketIo(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  }
-});
-
-// Middleware
-app.use(express.json());
-app.use(express.static('public'));
-
-// Database configuration
-const dbConfig = {
-  host: 'localhost',
-  user: 'root',
-  password: '',
-  database: 'ragmcloud_erp'
-};
-
-// JWT Secret
-const JWT_SECRET = 'your-secret-key-here';
-
-// Store user sessions and WhatsApp clients
-const userSessions = new Map();
-
-// Authentication Middleware
-const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-
-  if (!token) {
-    return res.status(401).json({ success: false, error: 'Access token required' });
-  }
-
-  jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (err) {
-      return res.status(403).json({ success: false, error: 'Invalid token' });
-    }
-    req.user = user;
-    next();
-  });
-};
-
-// Database connection pool
-const createPool = () => {
-  return mysql.createPool({
-    ...dbConfig,
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0
-  });
-};
-
-let pool;
-
-// Initialize database connection
-async function initializeDatabase() {
-  try {
-    pool = createPool();
-    
-    // Create tables if they don't exist
-    await pool.execute(`
-      CREATE TABLE IF NOT EXISTS users (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        name VARCHAR(255) NOT NULL,
-        username VARCHAR(255) UNIQUE NOT NULL,
-        password VARCHAR(255) NOT NULL,
-        role ENUM('admin', 'standard') DEFAULT 'standard',
-        isActive BOOLEAN DEFAULT true,
-        createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    await pool.execute(`
-      CREATE TABLE IF NOT EXISTS clients (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        user_id INT,
-        name VARCHAR(255) NOT NULL,
-        phone VARCHAR(20) NOT NULL,
-        status ENUM('interested', 'busy', 'not-interested', 'no-reply') DEFAULT 'no-reply',
-        lastMessage TEXT,
-        lastActivity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        unread INT DEFAULT 0,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-      )
-    `);
-
-    await pool.execute(`
-      CREATE TABLE IF NOT EXISTS messages (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        user_id INT,
-        client_phone VARCHAR(20) NOT NULL,
-        message TEXT NOT NULL,
-        fromMe BOOLEAN DEFAULT false,
-        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-      )
-    `);
-
-    await pool.execute(`
-      CREATE TABLE IF NOT EXISTS performance_stats (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        user_id INT,
-        date DATE NOT NULL,
-        messagesSent INT DEFAULT 0,
-        aiRepliesSent INT DEFAULT 0,
-        clientsContacted INT DEFAULT 0,
-        interestedClients INT DEFAULT 0,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-        UNIQUE KEY unique_user_date (user_id, date)
-      )
-    `);
-
-    console.log('✅ Database initialized successfully');
-  } catch (error) {
-    console.error('❌ Database initialization failed:', error);
-  }
-}
-
-// Initialize WhatsApp client for a user
-async function initializeWhatsAppClient(userId) {
-  try {
-    console.log(`🔄 Initializing WhatsApp client for user ${userId}`);
-    
-    const client = new Client({
-      authStrategy: new LocalAuth({ 
-        clientId: `user-${userId}`,
-        dataPath: './whatsapp-auth'
-      }),
-      puppeteer: {
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
-      }
-    });
-
-    let qrCodeSent = false;
-
-    client.on('qr', async (qr) => {
-      console.log(`📱 QR Code generated for user ${userId}`);
-      
-      try {
-        const qrCodeUrl = await qrcode.toDataURL(qr);
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>رقم كلاود ERP - Smart Sales Assistant</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Fixed Socket.io CDN -->
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#007C5C',
+                        'primary-dark': '#006A4E',
+                        'primary-light': '#00B98B',
+                        luxury: {
+                            gold: '#D4AF37',
+                            'dark-bg': '#1a1f2e',
+                            'card-bg': '#2d3748',
+                            'sidebar-bg': '#2d3748'
+                        }
+                    },
+                    fontFamily: {
+                        'tajawal': ['Tajawal', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800&display=swap');
         
-        // Store QR code in session
-        if (userSessions.has(userId)) {
-          userSessions.get(userId).qrCode = qrCodeUrl;
+        body {
+            font-family: 'Tajawal', sans-serif;
+            background: linear-gradient(135deg, #1a1f2e 0%, #2d3748 100%);
         }
         
-        // Emit QR code to specific user
-        io.to(`user_${userId}`).emit(`user_qr_${userId}`, {
-          qrCode: qrCodeUrl,
-          message: 'QR Code ready for scanning'
-        });
-        
-        qrCodeSent = true;
-        console.log(`✅ QR Code sent to user ${userId}`);
-      } catch (error) {
-        console.error(`❌ Error generating QR code for user ${userId}:`, error);
-      }
-    });
-
-    client.on('ready', () => {
-      console.log(`✅ WhatsApp client ready for user ${userId}`);
-      
-      // Update user session
-      if (userSessions.has(userId)) {
-        userSessions.get(userId).whatsappReady = true;
-        userSessions.get(userId).qrCode = null;
-      }
-      
-      // Emit ready status to specific user
-      io.to(`user_${userId}`).emit(`user_status_${userId}`, {
-        connected: true,
-        message: 'WhatsApp Connected',
-        status: 'connected'
-      });
-    });
-
-    client.on('authenticated', () => {
-      console.log(`🔐 WhatsApp authenticated for user ${userId}`);
-    });
-
-    client.on('auth_failure', (error) => {
-      console.error(`❌ WhatsApp auth failure for user ${userId}:`, error);
-      
-      io.to(`user_${userId}`).emit(`user_status_${userId}`, {
-        connected: false,
-        message: 'Authentication Failed',
-        status: 'auth_failed'
-      });
-    });
-
-    client.on('disconnected', (reason) => {
-      console.log(`❌ WhatsApp disconnected for user ${userId}:`, reason);
-      
-      // Update user session
-      if (userSessions.has(userId)) {
-        userSessions.get(userId).whatsappReady = false;
-      }
-      
-      io.to(`user_${userId}`).emit(`user_status_${userId}`, {
-        connected: false,
-        message: 'WhatsApp Disconnected',
-        status: 'disconnected'
-      });
-      
-      // Reinitialize after disconnect
-      setTimeout(() => {
-        if (userSessions.has(userId) && !userSessions.get(userId).whatsappReady) {
-          console.log(`🔄 Reinitializing WhatsApp for user ${userId} after disconnect`);
-          initializeWhatsAppClient(userId);
+        .glass-effect {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
         }
-      }, 5000);
-    });
-
-    client.on('message', async (message) => {
-      try {
-        console.log(`📨 Message received for user ${userId}:`, message.body);
         
-        // Save received message to database
-        const [result] = await pool.execute(
-          'INSERT INTO messages (user_id, client_phone, message, fromMe) VALUES (?, ?, ?, ?)',
-          [userId, message.from, message.body, false]
-        );
-
-        // Update client last message and activity
-        await updateClientLastMessage(userId, message.from, message.body);
-
-        // Emit message to specific user
-        io.to(`user_${userId}`).emit(`user_message_${userId}`, {
-          clientPhone: message.from,
-          message: message.body,
-          fromMe: false,
-          timestamp: new Date()
-        });
-
-        // Handle AI replies if enabled
-        const userSession = userSessions.get(userId);
-        if (userSession && userSession.isAIMode) {
-          await handleAIResponse(userId, message);
+        .luxury-card {
+            background: rgba(45, 55, 72, 0.95);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(212, 175, 55, 0.3);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
         }
+        
+        .gold-border {
+            border: 2px solid #D4AF37;
+        }
+        
+        .gradient-text {
+            background: linear-gradient(135deg, #D4AF37, #FFD700);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .btn-gold {
+            background: linear-gradient(135deg, #D4AF37, #FFD700);
+            color: #1a1f2e;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-gold:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(212, 175, 55, 0.4);
+        }
+        
+        .status-connected {
+            background: linear-gradient(135deg, #00B98B, #007C5C);
+            color: white;
+        }
+        
+        .status-disconnected {
+            background: linear-gradient(135deg, #f56565, #c53030);
+            color: white;
+        }
+        
+        .client-item {
+            transition: all 0.3s ease;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .client-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+        
+        .client-item.active {
+            background: rgba(0, 124, 92, 0.2);
+            border-right: 3px solid #00B98B;
+        }
+        
+        .unread-badge {
+            background: linear-gradient(135deg, #f56565, #c53030);
+            color: white;
+        }
+        
+        /* IMPROVED CHAT STYLES */
+        .chat-container {
+            height: calc(100vh - 280px);
+            overflow-y: auto;
+            scroll-behavior: smooth;
+            padding: 10px;
+        }
+        
+        .chat-bubble {
+            max-width: 75%;
+            padding: 8px 12px;
+            border-radius: 12px;
+            margin-bottom: 6px;
+            position: relative;
+            font-size: 14px;
+            line-height: 1.4;
+            word-wrap: break-word;
+        }
+        
+        .chat-bubble.sent {
+            background: linear-gradient(135deg, #007C5C, #00B98B);
+            margin-left: auto;
+            border-bottom-right-radius: 4px;
+        }
+        
+        .chat-bubble.received {
+            background: rgba(255, 255, 255, 0.1);
+            margin-right: auto;
+            border-bottom-left-radius: 4px;
+        }
+        
+        .message-content {
+            word-wrap: break-word;
+            line-height: 1.4;
+        }
+        
+        .chat-time {
+            text-align: left;
+            direction: ltr;
+            font-size: 11px;
+            opacity: 0.7;
+            margin-top: 2px;
+        }
+        
+        .scroll-to-bottom {
+            position: absolute;
+            bottom: 80px;
+            right: 20px;
+            background: rgba(0, 124, 92, 0.9);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            z-index: 100;
+        }
+        
+        .scroll-to-bottom.visible {
+            opacity: 1;
+        }
+        
+        .scroll-to-bottom:hover {
+            background: rgba(0, 124, 92, 1);
+            transform: scale(1.1);
+        }
+        
+        /* Client Interest Status Colors */
+        .client-status-interested {
+            border-left: 4px solid #10B981 !important;
+        }
+        
+        .client-status-busy {
+            border-left: 4px solid #F59E0B !important;
+        }
+        
+        .client-status-not-interested {
+            border-left: 4px solid #EF4444 !important;
+        }
+        
+        .client-status-no-reply {
+            border-left: 4px solid #9CA3AF !important;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-left: 5px;
+        }
+        
+        .dot-interested { background-color: #10B981; }
+        .dot-busy { background-color: #F59E0B; }
+        .dot-not-interested { background-color: #EF4444; }
+        .dot-no-reply { background-color: #9CA3AF; }
+        
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 12px 20px;
+            border-radius: 8px;
+            color: white;
+            font-weight: bold;
+            z-index: 1000;
+            transform: translateX(400px);
+            transition: transform 0.3s ease;
+            max-width: 300px;
+        }
+        
+        .toast.show {
+            transform: translateX(0);
+        }
+        
+        .toast.success {
+            background: linear-gradient(135deg, #00B98B, #007C5C);
+        }
+        
+        .toast.error {
+            background: linear-gradient(135deg, #f56565, #c53030);
+        }
+        
+        .toast.warning {
+            background: linear-gradient(135deg, #ed8936, #dd6b20);
+        }
+        
+        .qr-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        
+        .qr-container {
+            background: rgba(45, 55, 72, 0.95);
+            padding: 30px;
+            border-radius: 20px;
+            text-align: center;
+            border: 2px solid #D4AF37;
+        }
+        
+        /* Scrollbar Styling */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: linear-gradient(135deg, #D4AF37, #FFD700);
+            border-radius: 3px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(135deg, #FFD700, #D4AF37);
+        }
+        
+        /* Client Status Filter */
+        .status-filter {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .status-filter-btn {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .status-filter-btn.active {
+            transform: scale(1.05);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+        
+        .btn-all { background: #6B7280; color: white; }
+        .btn-interested { background: #10B981; color: white; }
+        .btn-busy { background: #F59E0B; color: white; }
+        .btn-not-interested { background: #EF4444; color: white; }
+        .btn-no-reply { background: #9CA3AF; color: white; }
 
-      } catch (error) {
-        console.error(`❌ Error handling message for user ${userId}:`, error);
-      }
-    });
-
-    // Store client in user session
-    if (!userSessions.has(userId)) {
-      userSessions.set(userId, {
-        whatsappClient: client,
-        whatsappReady: false,
-        qrCode: null,
-        isAIMode: true,
-        isBotStopped: false
-      });
-    } else {
-      userSessions.get(userId).whatsappClient = client;
-    }
-
-    // Initialize client
-    await client.initialize();
-
-  } catch (error) {
-    console.error(`❌ Failed to initialize WhatsApp client for user ${userId}:`, error);
-  }
-}
-
-// Update client last message
-async function updateClientLastMessage(userId, phone, message) {
-  try {
-    // Find or create client
-    const [clientRows] = await pool.execute(
-      'SELECT id FROM clients WHERE user_id = ? AND phone = ?',
-      [userId, phone]
-    );
-
-    if (clientRows.length === 0) {
-      // Create new client
-      await pool.execute(
-        'INSERT INTO clients (user_id, name, phone, lastMessage) VALUES (?, ?, ?, ?)',
-        [userId, phone, phone, message]
-      );
-    } else {
-      // Update existing client
-      await pool.execute(
-        'UPDATE clients SET lastMessage = ?, lastActivity = CURRENT_TIMESTAMP, unread = unread + 1 WHERE user_id = ? AND phone = ?',
-        [message, userId, phone]
-      );
-    }
-  } catch (error) {
-    console.error('Error updating client last message:', error);
-  }
-}
-
-// Handle AI responses
-async function handleAIResponse(userId, message) {
-  try {
-    const userSession = userSessions.get(userId);
-    if (!userSession || userSession.isBotStopped) return;
-
-    // Simple AI response logic (replace with your actual AI service)
-    let response = '';
-    const messageText = message.body.toLowerCase();
-
-    if (messageText.includes('سعر') || messageText.includes('تكلفة') || messageText.includes('ثمن')) {
-      response = '🚀 نظام رقم كلاود ERP يبدأ من 199 ريال شهرياً! جلسة استشارية مجانية لمعرفة احتياجاتك بالضبط. 📞 +966555111222';
-    } else if (messageText.includes('مميزات') || messageText.includes('ميزات') || messageText.includes('features')) {
-      response = '🌟 مميزات نظام رقم كلاود ERP:\n• محاسبة متكاملة\n• إدارة المخزون\n• الموارد البشرية\n• التقارير الذكية\n• دعم فني 24/7\n• نسخة تجريبية مجانية!';
-    } else if (messageText.includes('شكر') || messageText.includes('thanks') || messageText.includes('thank')) {
-      response = '🤝 العفو! نحن هنا لخدمتك. هل تريد معرفة المزيد عن نظام رقم كلاود ERP؟';
-    } else if (messageText.includes('مرحبا') || messageText.includes('اهلا') || messageText.includes('hello')) {
-      response = '👋 أهلاً وسهلاً! 🌟 نظام رقم كلاود ERP السحابي يحول عملك لنسخة أكثر ذكاءً وكفاءة. هل تريد جلسة استشارية مجانية؟';
-    } else {
-      // Default promotional response
-      response = '🚀 نظام رقم كلاود ERP السحابي! حلول متكاملة للمحاسبة، المخزون، الموارد البشرية، والمزيد. جلسة استشارية مجانية! 📞 +966555111222 🌐 ragmcloud.sa';
-    }
-
-    // Send AI response
-    const client = userSession.whatsappClient;
-    if (client && userSession.whatsappReady) {
-      await client.sendMessage(message.from, response);
-      
-      // Save AI response to database
-      await pool.execute(
-        'INSERT INTO messages (user_id, client_phone, message, fromMe) VALUES (?, ?, ?, ?)',
-        [userId, message.from, response, true]
-      );
-
-      // Update performance stats
-      await updatePerformanceStats(userId, 'aiRepliesSent');
-
-      // Emit AI response to user
-      io.to(`user_${userId}`).emit(`user_message_${userId}`, {
-        clientPhone: message.from,
-        message: response,
-        fromMe: true,
-        timestamp: new Date(),
-        isAI: true
-      });
-    }
-  } catch (error) {
-    console.error(`❌ Error in AI response for user ${userId}:`, error);
-  }
-}
-
-// Update performance stats
-async function updatePerformanceStats(userId, field) {
-  try {
-    const today = new Date().toISOString().split('T')[0];
-    
-    await pool.execute(
-      `INSERT INTO performance_stats (user_id, date, ${field}) 
-       VALUES (?, ?, 1) 
-       ON DUPLICATE KEY UPDATE ${field} = ${field} + 1`,
-      [userId, today]
-    );
-  } catch (error) {
-    console.error('Error updating performance stats:', error);
-  }
-}
-
-// API Routes
-
-// User Authentication
-app.post('/api/login', async (req, res) => {
-  try {
-    const { username, password } = req.body;
-
-    const [users] = await pool.execute(
-      'SELECT * FROM users WHERE username = ? AND isActive = true',
-      [username]
-    );
-
-    if (users.length === 0) {
-      return res.status(401).json({ success: false, error: 'المستخدم غير موجود' });
-    }
-
-    const user = users[0];
-    const validPassword = await bcrypt.compare(password, user.password);
-
-    if (!validPassword) {
-      return res.status(401).json({ success: false, error: 'كلمة المرور غير صحيحة' });
-    }
-
-    const token = jwt.sign(
-      { id: user.id, username: user.username, role: user.role },
-      JWT_SECRET,
-      { expiresIn: '24h' }
-    );
-
-    res.json({
-      success: true,
-      token,
-      user: {
-        id: user.id,
-        name: user.name,
-        username: user.username,
-        role: user.role
-      }
-    });
-  } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ success: false, error: 'خطأ في الخادم' });
-  }
-});
-
-// Get current user
-app.get('/api/me', authenticateToken, async (req, res) => {
-  try {
-    const [users] = await pool.execute(
-      'SELECT id, name, username, role FROM users WHERE id = ?',
-      [req.user.id]
-    );
-
-    if (users.length === 0) {
-      return res.status(404).json({ success: false, error: 'المستخدم غير موجود' });
-    }
-
-    res.json({
-      success: true,
-      user: users[0]
-    });
-  } catch (error) {
-    console.error('Get user error:', error);
-    res.status(500).json({ success: false, error: 'خطأ في الخادم' });
-  }
-});
-
-// Get users (admin only)
-app.get('/api/users', authenticateToken, async (req, res) => {
-  try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ success: false, error: 'غير مسموح' });
-    }
-
-    const [users] = await pool.execute(
-      'SELECT id, name, username, role, isActive FROM users'
-    );
-
-    res.json({
-      success: true,
-      users
-    });
-  } catch (error) {
-    console.error('Get users error:', error);
-    res.status(500).json({ success: false, error: 'خطأ في الخادم' });
-  }
-});
-
-// Create user (admin only)
-app.post('/api/users', authenticateToken, async (req, res) => {
-  try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ success: false, error: 'غير مسموح' });
-    }
-
-    const { name, username, password, role } = req.body;
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    await pool.execute(
-      'INSERT INTO users (name, username, password, role) VALUES (?, ?, ?, ?)',
-      [name, username, hashedPassword, role]
-    );
-
-    res.json({
-      success: true,
-      message: 'تم إضافة المستخدم بنجاح'
-    });
-  } catch (error) {
-    console.error('Create user error:', error);
-    
-    if (error.code === 'ER_DUP_ENTRY') {
-      return res.status(400).json({ success: false, error: 'اسم المستخدم موجود مسبقاً' });
-    }
-    
-    res.status(500).json({ success: false, error: 'خطأ في الخادم' });
-  }
-});
-
-// Get user WhatsApp status
-app.get('/api/user-whatsapp-status', authenticateToken, async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const userSession = userSessions.get(userId);
-
-    if (!userSession) {
-      return res.json({
-        connected: false,
-        message: 'غير متصل',
-        status: 'disconnected',
-        hasQr: false
-      });
-    }
-
-    if (userSession.whatsappReady) {
-      return res.json({
-        connected: true,
-        message: 'متصل بالواتساب',
-        status: 'connected',
-        hasQr: false
-      });
-    } else if (userSession.qrCode) {
-      return res.json({
-        connected: false,
-        message: 'جاهز للمسح',
-        status: 'qr-ready',
-        hasQr: true,
-        qrCode: userSession.qrCode
-      });
-    } else {
-      return res.json({
-        connected: false,
-        message: 'جاري التهيئة...',
-        status: 'initializing',
-        hasQr: false
-      });
-    }
-  } catch (error) {
-    console.error('Get WhatsApp status error:', error);
-    res.status(500).json({ success: false, error: 'خطأ في الخادم' });
-  }
-});
-
-// Get user QR code
-app.get('/api/user-whatsapp-qr', authenticateToken, async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const userSession = userSessions.get(userId);
-
-    if (!userSession || !userSession.qrCode) {
-      return res.status(404).json({ success: false, error: 'QR Code غير متوفر' });
-    }
-
-    res.json({
-      success: true,
-      qrCode: userSession.qrCode
-    });
-  } catch (error) {
-    console.error('Get QR code error:', error);
-    res.status(500).json({ success: false, error: 'خطأ في الخادم' });
-  }
-});
-
-// Upload Excel file
-const upload = multer({ dest: 'uploads/' });
-app.post('/api/upload-excel', authenticateToken, upload.single('excelFile'), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ success: false, error: 'لم يتم اختيار ملف' });
-    }
-
-    const workbook = xlsx.readFile(req.file.path);
-    const sheetName = workbook.SheetNames[0];
-    const data = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
-
-    const clients = [];
-    
-    for (const row of data) {
-      const name = row['Name'] || row['name'] || row['الاسم'] || 'عميل';
-      const phone = row['Phone'] || row['phone'] || row['الهاتف'] || row['رقم الهاتف'];
-      
-      if (phone) {
-        // Format phone number (ensure it's in international format)
-        let formattedPhone = phone.toString().replace(/\D/g, '');
-        if (!formattedPhone.startsWith('+')) {
-          if (formattedPhone.startsWith('0')) {
-            formattedPhone = '966' + formattedPhone.substring(1);
-          }
-          formattedPhone = formattedPhone + '@c.us';
+        /* NEW: Auto-report notification */
+        .auto-report-notification {
+            background: linear-gradient(135deg, #ed8936, #dd6b20);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            animation: pulse 2s infinite;
+            display: none;
         }
 
-        clients.push({
-          name,
-          phone: formattedPhone,
-          status: 'no-reply',
-          lastMessage: '',
-          unread: 0
-        });
-
-        // Insert or update client in database
-        await pool.execute(
-          `INSERT INTO clients (user_id, name, phone, status, lastMessage, unread) 
-           VALUES (?, ?, ?, ?, ?, ?) 
-           ON DUPLICATE KEY UPDATE name = VALUES(name)`,
-          [req.user.id, name, formattedPhone, 'no-reply', '', 0]
-        );
-      }
-    }
-
-    res.json({
-      success: true,
-      message: `تم رفع ${clients.length} عميل بنجاح`,
-      count: clients.length,
-      clients
-    });
-  } catch (error) {
-    console.error('Upload Excel error:', error);
-    res.status(500).json({ success: false, error: 'خطأ في رفع الملف' });
-  }
-});
-
-// Get clients
-app.get('/api/clients', authenticateToken, async (req, res) => {
-  try {
-    const [clients] = await pool.execute(
-      'SELECT * FROM clients WHERE user_id = ? ORDER BY lastActivity DESC',
-      [req.user.id]
-    );
-
-    res.json({
-      success: true,
-      clients
-    });
-  } catch (error) {
-    console.error('Get clients error:', error);
-    res.status(500).json({ success: false, error: 'خطأ في جلب العملاء' });
-  }
-});
-
-// Get client messages
-app.get('/api/client-messages/:clientId', authenticateToken, async (req, res) => {
-  try {
-    const clientId = req.params.clientId;
-
-    // Get client phone first
-    const [clients] = await pool.execute(
-      'SELECT phone FROM clients WHERE id = ? AND user_id = ?',
-      [clientId, req.user.id]
-    );
-
-    if (clients.length === 0) {
-      return res.status(404).json({ success: false, error: 'العميل غير موجود' });
-    }
-
-    const clientPhone = clients[0].phone;
-
-    // Get messages
-    const [messages] = await pool.execute(
-      'SELECT * FROM messages WHERE user_id = ? AND client_phone = ? ORDER BY timestamp ASC',
-      [req.user.id, clientPhone]
-    );
-
-    // Reset unread count
-    await pool.execute(
-      'UPDATE clients SET unread = 0 WHERE id = ? AND user_id = ?',
-      [clientId, req.user.id]
-    );
-
-    res.json({
-      success: true,
-      messages
-    });
-  } catch (error) {
-    console.error('Get messages error:', error);
-    res.status(500).json({ success: false, error: 'خطأ في جلب الرسائل' });
-  }
-});
-
-// Send bulk messages
-app.post('/api/send-bulk', authenticateToken, async (req, res) => {
-  try {
-    const { message, delay, clients } = req.body;
-    const userId = req.user.id;
-    const userSession = userSessions.get(userId);
-
-    if (!userSession || !userSession.whatsappReady) {
-      return res.status(400).json({ success: false, error: 'الواتساب غير متصل' });
-    }
-
-    if (userSession.isBotStopped) {
-      return res.status(400).json({ success: false, error: 'البوت متوقف' });
-    }
-
-    res.json({
-      success: true,
-      message: 'بدأ الإرسال الجماعي'
-    });
-
-    // Start bulk sending in background
-    startBulkSending(userId, clients, message, delay);
-
-  } catch (error) {
-    console.error('Send bulk error:', error);
-    res.status(500).json({ success: false, error: 'خطأ في الإرسال الجماعي' });
-  }
-});
-
-// Start bulk sending
-async function startBulkSending(userId, clients, message, delay) {
-  try {
-    const userSession = userSessions.get(userId);
-    if (!userSession || !userSession.whatsappReady) return;
-
-    const client = userSession.whatsappClient;
-
-    for (let i = 0; i < clients.length; i++) {
-      if (userSession.isBotStopped) break;
-
-      const clientData = clients[i];
-      
-      try {
-        await client.sendMessage(clientData.phone, message);
-        
-        // Save sent message to database
-        await pool.execute(
-          'INSERT INTO messages (user_id, client_phone, message, fromMe) VALUES (?, ?, ?, ?)',
-          [userId, clientData.phone, message, true]
-        );
-
-        // Update client last message
-        await pool.execute(
-          'UPDATE clients SET lastMessage = ?, lastActivity = CURRENT_TIMESTAMP WHERE user_id = ? AND phone = ?',
-          [message, userId, clientData.phone]
-        );
-
-        // Update performance stats
-        await updatePerformanceStats(userId, 'messagesSent');
-
-        // Emit progress
-        io.to(`user_${userId}`).emit('bulk_progress', {
-          type: 'success',
-          client: clientData.name,
-          clientPhone: clientData.phone,
-          success: true
-        });
-
-      } catch (error) {
-        console.error(`Failed to send to ${clientData.phone}:`, error);
-        
-        io.to(`user_${userId}`).emit('bulk_progress', {
-          type: 'error',
-          client: clientData.name,
-          clientPhone: clientData.phone,
-          success: false,
-          error: error.message
-        });
-      }
-
-      // Delay between messages
-      if (i < clients.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, delay * 1000));
-      }
-    }
-
-    io.to(`user_${userId}`).emit('bulk_progress', {
-      type: 'complete',
-      message: 'تم الانتهاء من الإرسال الجماعي'
-    });
-
-  } catch (error) {
-    console.error('Bulk sending error:', error);
-  }
-}
-
-// Socket.io connection handling
-io.on('connection', (socket) => {
-  console.log('🔌 New client connected:', socket.id);
-
-  socket.on('authenticate', async (token) => {
-    try {
-      const decoded = jwt.verify(token, JWT_SECRET);
-      const userId = decoded.id;
-
-      // Join user-specific room
-      socket.join(`user_${userId}`);
-      
-      console.log(`✅ User ${userId} authenticated on socket ${socket.id}`);
-
-      // Initialize WhatsApp client if not already initialized
-      if (!userSessions.has(userId)) {
-        await initializeWhatsAppClient(userId);
-      }
-
-      // Send current status
-      const userSession = userSessions.get(userId);
-      if (userSession) {
-        if (userSession.whatsappReady) {
-          socket.emit(`user_status_${userId}`, {
-            connected: true,
-            message: 'WhatsApp Connected',
-            status: 'connected'
-          });
-        } else if (userSession.qrCode) {
-          socket.emit(`user_qr_${userId}`, {
-            qrCode: userSession.qrCode,
-            message: 'QR Code ready for scanning'
-          });
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
         }
 
-        // Send bot status
-        socket.emit(`user_bot_status_${userId}`, {
-          stopped: userSession.isBotStopped
+        /* NEW: Bot status indicator */
+        .bot-status-stopped {
+            background: linear-gradient(135deg, #f56565, #c53030) !important;
+        }
+
+        .bot-status-running {
+            background: linear-gradient(135deg, #00B98B, #007C5C) !important;
+        }
+
+        /* NEW: User Management Styles */
+        .user-management-section {
+            transition: all 0.3s ease;
+        }
+
+        .user-item {
+            transition: all 0.3s ease;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .user-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .role-admin {
+            border-left: 4px solid #D4AF37 !important;
+        }
+
+        .role-standard {
+            border-left: 4px solid #007C5C !important;
+        }
+
+        .user-active {
+            color: #10B981;
+        }
+
+        .user-inactive {
+            color: #EF4444;
+        }
+
+        /* NEW: User Switch Overlay */
+        .user-switch-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .user-switch-container {
+            background: rgba(45, 55, 72, 0.95);
+            padding: 30px;
+            border-radius: 20px;
+            text-align: center;
+            border: 2px solid #D4AF37;
+            max-width: 500px;
+            width: 90%;
+        }
+
+        /* NEW: WhatsApp QR Code Status */
+        .whatsapp-qr-status {
+            background: linear-gradient(135deg, #ed8936, #dd6b20);
+            color: white;
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .whatsapp-qr-status:hover {
+            transform: scale(1.02);
+            box-shadow: 0 4px 12px rgba(237, 137, 54, 0.3);
+        }
+
+        /* NEW: Logout Button Styles */
+        .logout-btn {
+            background: linear-gradient(135deg, #f56565, #c53030);
+            color: white;
+            transition: all 0.3s ease;
+        }
+
+        .logout-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(245, 101, 101, 0.4);
+        }
+    </style>
+</head>
+<body class="text-white">
+    <!-- Toast Notifications -->
+    <div id="toastContainer" class="fixed top-4 right-4 z-50"></div>
+    
+    <!-- NEW: Auto Report Notification -->
+    <div id="autoReportNotification" class="auto-report-notification">
+        <i class="fas fa-bell mr-2"></i>
+        <span id="autoReportMessage"></span>
+    </div>
+    
+    <!-- NEW: User Switch Overlay -->
+    <div id="userSwitchOverlay" class="user-switch-overlay hidden">
+        <div class="user-switch-container">
+            <div class="flex items-center justify-center mb-4">
+                <i class="fas fa-user-shield text-3xl text-primary-light mr-3"></i>
+                <h3 class="text-xl font-bold gradient-text">تبديل المستخدم</h3>
+            </div>
+            <p class="text-gray-300 mb-4">أنت الآن تشاهد لوحة التحكم كـ: <span id="currentViewingUser" class="text-primary-light"></span></p>
+            <div class="flex space-x-3 justify-center">
+                <button id="returnToAdmin" class="btn-gold px-6 py-2 rounded-lg font-bold">
+                    <i class="fas fa-arrow-left mr-2"></i>العودة إلى حسابي
+                </button>
+                <button id="closeUserSwitch" class="bg-gray-600 hover:bg-gray-700 px-6 py-2 rounded-lg font-bold transition-colors">
+                    <i class="fas fa-times mr-2"></i>إغلاق
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- QR Overlay -->
+    <div id="qrOverlay" class="qr-overlay hidden">
+        <div class="qr-container luxury-card">
+            <div class="flex items-center justify-center mb-4">
+                <i class="fab fa-whatsapp text-3xl text-green-400 mr-3"></i>
+                <h3 class="text-xl font-bold gradient-text">Scan QR Code</h3>
+            </div>
+            <p class="text-gray-300 mb-4">Scan this QR code with WhatsApp to connect</p>
+            <div id="qrCode" class="mb-4 flex justify-center"></div>
+            <button id="closeQR" class="btn-gold px-6 py-2 rounded-lg font-bold">
+                <i class="fas fa-times mr-2"></i>إغلاق
+            </button>
+        </div>
+    </div>
+    
+    <div class="flex h-screen">
+        <!-- Left Sidebar -->
+        <div class="w-80 luxury-card rounded-r-2xl m-3 flex flex-col">
+            <!-- Header -->
+            <div class="p-6 border-b border-gray-600">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center">
+                        <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-primary-light flex items-center justify-center text-white mr-3">
+                            <i class="fas fa-cloud"></i>
+                        </div>
+                        <div>
+                            <h1 class="text-xl font-bold gradient-text">رقم كلاود</h1>
+                            <p class="text-sm text-gray-400">ERP Sales Assistant</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- User Info -->
+                <div class="flex items-center justify-between mb-4">
+                    <span class="text-sm text-gray-300">المستخدم:</span>
+                    <span id="currentUserName" class="px-3 py-1 bg-primary rounded-full text-sm font-bold">...</span>
+                </div>
+
+                <!-- User Role -->
+                <div class="flex items-center justify-between mb-4">
+                    <span class="text-sm text-gray-300">الدور:</span>
+                    <span id="currentUserRole" class="px-3 py-1 bg-purple-600 rounded-full text-sm font-bold">...</span>
+                </div>
+                
+                <!-- WhatsApp Status -->
+                <div class="flex items-center justify-between mb-4">
+                    <span class="text-sm text-gray-300">حالة الواتساب:</span>
+                    <span id="whatsappStatus" class="status-disconnected px-3 py-1 rounded-full text-sm font-bold">غير متصل</span>
+                </div>
+
+                <!-- NEW: Bot Status -->
+                <div class="flex items-center justify-between mb-4">
+                    <span class="text-sm text-gray-300">حالة البوت:</span>
+                    <span id="botStatus" class="bot-status-running px-3 py-1 rounded-full text-sm font-bold">نشط</span>
+                </div>
+
+                <!-- NEW: WhatsApp QR Code Button -->
+                <div id="whatsappQrStatus" class="whatsapp-qr-status hidden">
+                    <i class="fas fa-qrcode mr-2"></i>
+                    <span>QR Code جاهز للمسح</span>
+                </div>
+                
+                <!-- NEW: Admin User Switch Button -->
+                <button id="userSwitchBtn" class="w-full bg-purple-600 hover:bg-purple-700 py-2 rounded-lg font-bold mb-2 transition-colors hidden">
+                    <i class="fas fa-user-shield mr-2"></i>تبديل المستخدم
+                </button>
+                
+                <!-- Reconnect Button -->
+                <button id="reconnectBtn" class="w-full btn-gold py-2 rounded-lg font-bold mb-2">
+                    <i class="fas fa-sync-alt mr-2"></i>إعادة الاتصال
+                </button>
+
+                <!-- NEW: Stop Bot Button -->
+                <button id="stopBotBtn" class="w-full bg-red-600 hover:bg-red-700 py-2 rounded-lg font-bold mb-2 transition-colors">
+                    <i class="fas fa-stop mr-2"></i>إيقاف البوت
+                </button>
+
+                <!-- NEW: Logout Button -->
+                <button id="logoutBtn" class="w-full logout-btn py-2 rounded-lg font-bold mb-2">
+                    <i class="fas fa-sign-out-alt mr-2"></i>تسجيل الخروج
+                </button>
+                
+                <!-- AI Mode Toggle -->
+                <div class="flex items-center justify-between p-3 bg-gray-700 rounded-lg">
+                    <span class="text-sm text-gray-300">وضع الذكاء الاصطناعي</span>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="aiToggle" class="sr-only peer" checked>
+                        <div class="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                    </label>
+                </div>
+                
+                <!-- AI Status -->
+                <div id="aiStatus" class="mt-2 p-2 bg-green-900 bg-opacity-20 rounded-lg text-center">
+                    <span class="text-green-400 text-sm">🤖 الذكاء الاصطناعي مفعل</span>
+                </div>
+            </div>
+            
+            <!-- NEW: User Management Section (Visible only to Admin) -->
+            <div id="userManagementSection" class="user-management-section p-6 border-b border-gray-600 hidden">
+                <h3 class="font-bold text-lg mb-3 gradient-text">إدارة المستخدمين</h3>
+                
+                <!-- Add User Form -->
+                <div class="mb-4 p-3 bg-gray-800 rounded-lg">
+                    <h4 class="font-bold text-primary-light mb-2">إضافة مستخدم جديد</h4>
+                    <input type="text" id="newUserName" placeholder="اسم المستخدم" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-sm mb-2 focus:outline-none focus:border-primary">
+                    <input type="password" id="newUserPassword" placeholder="كلمة المرور" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-sm mb-2 focus:outline-none focus:border-primary">
+                    <select id="newUserRole" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-sm mb-2 focus:outline-none focus:border-primary">
+                        <option value="standard">مستخدم عادي</option>
+                        <option value="admin">مدير</option>
+                    </select>
+                    <button id="addUserBtn" class="w-full bg-primary hover:bg-primary-dark py-2 rounded-lg font-bold transition-colors">
+                        <i class="fas fa-user-plus mr-2"></i>إضافة مستخدم
+                    </button>
+                </div>
+                
+                <!-- Users List -->
+                <div class="max-h-40 overflow-y-auto">
+                    <h4 class="font-bold text-primary-light mb-2">المستخدمين</h4>
+                    <div id="usersList">
+                        <!-- Users will be populated here -->
+                    </div>
+                </div>
+            </div>
+            
+            <!-- File Upload Section -->
+            <div class="p-6 border-b border-gray-600">
+                <h3 class="font-bold text-lg mb-3 gradient-text">رفع قاعدة العملاء</h3>
+                <input type="file" id="excelFile" accept=".xlsx,.xls" class="hidden">
+                <button id="uploadBtn" class="w-full bg-gray-700 hover:bg-gray-600 py-3 rounded-lg font-bold mb-2 transition-colors">
+                    <i class="fas fa-upload mr-2"></i>رفع ملف Excel
+                </button>
+                <div id="fileInfo" class="hidden text-sm text-gray-400 text-center p-2 bg-gray-800 rounded">
+                    <i class="fas fa-file-excel text-primary-light mr-1"></i> لم يتم رفع أي ملف
+                </div>
+            </div>
+            
+            <!-- Bulk Message Section -->
+            <div class="p-6 border-b border-gray-600">
+                <h3 class="font-bold text-lg mb-3 gradient-text">الإرسال الجماعي</h3>
+                <textarea 
+                    id="bulkMessage" 
+                    rows="4" 
+                    class="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 text-sm mb-3 resize-none focus:outline-none focus:border-primary"
+                    placeholder="اكتب الرسالة الترويجية هنا..."></textarea>
+                
+                <div class="flex items-center justify-between mb-3">
+                    <span class="text-sm text-gray-300">فاصل الزمني (ثواني):</span>
+                    <input type="number" id="sendDelay" value="40" min="40" max="120" class="w-20 bg-gray-600 border border-gray-500 rounded px-2 py-1 text-center">
+                </div>
+                
+                <button id="sendBulkBtn" class="w-full btn-gold py-3 rounded-lg font-bold mb-2">
+                    <i class="fas fa-paper-plane mr-2"></i> 🚀 إرسال عروض ترويجية
+                </button>
+                
+                <button id="retryBulkBtn" class="w-full bg-yellow-600 hover:bg-yellow-700 py-2 rounded-lg font-bold mb-2 hidden transition-colors">
+                    <i class="fas fa-redo mr-2"></i> إعادة المحاولة (طريقة بديلة)
+                </button>
+                
+                <div class="text-xs text-gray-400 text-center">
+                    سيتم الإرسال إلى <span id="clientsCount">0</span> عميل
+                </div>
+            </div>
+            
+            <!-- Reports Section -->
+            <div class="p-6">
+                <h3 class="font-bold text-lg mb-3 gradient-text">التقارير والإحصائيات</h3>
+                <button id="exportReportBtn" class="w-full bg-gray-700 hover:bg-gray-600 py-2 rounded-lg font-bold mb-2 transition-colors">
+                    <i class="fas fa-download mr-2"></i>تصدير تقرير
+                </button>
+                <button id="sendReportBtn" class="w-full bg-gray-700 hover:bg-gray-600 py-2 rounded-lg font-bold transition-colors">
+                    <i class="fas fa-envelope mr-2"></i>إرسال للمدير
+                </button>
+
+                <!-- NEW: Performance Stats -->
+                <div class="mt-4 p-3 bg-gray-800 rounded-lg">
+                    <h4 class="font-bold text-primary-light mb-2">إحصائيات اليوم</h4>
+                    <div class="grid grid-cols-2 gap-2 text-xs">
+                        <div class="flex justify-between">
+                            <span>الرسائل:</span>
+                            <span id="statMessages" class="text-primary-light">0</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>الردود الآلية:</span>
+                            <span id="statAIReplies" class="text-primary-light">0</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>العملاء:</span>
+                            <span id="statClients" class="text-primary-light">0</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>المهتمين:</span>
+                            <span id="statInterested" class="text-primary-light">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Right Chat Area -->
+        <div class="flex-1 flex flex-col m-3 luxury-card rounded-l-2xl relative">
+            <!-- Chat Header -->
+            <div class="p-6 border-b border-gray-600">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center">
+                        <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-primary-light flex items-center justify-center text-white mr-3">
+                            <i class="fas fa-user"></i>
+                        </div>
+                        <div>
+                            <h2 id="currentClientName" class="text-xl font-bold">اختر عميلاً</h2>
+                            <p id="currentClientPhone" class="text-sm text-gray-400">لم يتم اختيار عميل</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <div id="activeStatus" class="hidden">
+                            <span class="px-3 py-1 bg-green-900 bg-opacity-20 text-green-400 rounded-full text-sm">
+                                <i class="fas fa-circle text-xs mr-1"></i>نشط
+                            </span>
+                        </div>
+                        <!-- Client Status Selector -->
+                        <div id="clientStatusSelector" class="hidden">
+                            <select id="statusSelect" class="bg-gray-700 border border-gray-600 rounded-lg px-3 py-1 text-sm focus:outline-none focus:border-primary">
+                                <option value="no-reply">لم يرد</option>
+                                <option value="interested">مهتم</option>
+                                <option value="busy">مشغول</option>
+                                <option value="not-interested">غير مهتم</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Clients List / Chat Area -->
+            <div class="flex-1 flex">
+                <!-- FIXED: Chat Messages (LEFT) -->
+                <div class="flex-1 flex flex-col relative">
+                    <div id="chatContainer" class="chat-container">
+                        <div class="text-center text-gray-400 mt-20">
+                            <i class="fas fa-comments text-5xl mb-4 opacity-50"></i>
+                            <p class="text-xl mb-2">مرحباً في رقم كلاود ERP!</p>
+                            <p class="text-gray-500">اختر عميلاً لبدء المحادثة</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Scroll to Bottom Button -->
+                    <button id="scrollToBottom" class="scroll-to-bottom">
+                        <i class="fas fa-chevron-down"></i>
+                    </button>
+                    
+                    <!-- Message Input -->
+                    <div class="p-4 border-t border-gray-600">
+                        <div class="flex items-center">
+                            <input 
+                                type="text" 
+                                id="messageInput" 
+                                placeholder="اكتب رسالتك هنا..." 
+                                class="flex-1 bg-gray-700 border border-gray-600 rounded-l-lg p-3 focus:outline-none focus:border-primary"
+                                disabled>
+                            <button 
+                                id="sendMessageBtn" 
+                                class="bg-primary hover:bg-primary-dark px-6 py-3 rounded-r-lg font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                disabled>
+                                <i class="fas fa-paper-plane"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- FIXED: Clients List (RIGHT) -->
+                <div class="w-1/3 border-l border-gray-600 h-full overflow-hidden flex flex-col">
+                    <div class="p-4 border-b border-gray-600">
+                        <h3 class="font-bold text-lg gradient-text mb-2">قائمة العملاء</h3>
+                        <!-- Status Filter -->
+                        <div class="status-filter">
+                            <button class="status-filter-btn btn-all active" data-status="all">الكل</button>
+                            <button class="status-filter-btn btn-interested" data-status="interested">
+                                <span class="status-dot dot-interested"></span> مهتم
+                            </button>
+                            <button class="status-filter-btn btn-busy" data-status="busy">
+                                <span class="status-dot dot-busy"></span> مشغول
+                            </button>
+                            <button class="status-filter-btn btn-not-interested" data-status="not-interested">
+                                <span class="status-dot dot-not-interested"></span> غير مهتم
+                            </button>
+                            <button class="status-filter-btn btn-no-reply" data-status="no-reply">
+                                <span class="status-dot dot-no-reply"></span> لم يرد
+                            </button>
+                        </div>
+                    </div>
+                    <div id="clientList" class="flex-1 overflow-y-auto p-2">
+                        <!-- Clients will be populated here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let clients = [];
+        let currentClient = null;
+        let messages = {};
+        let isAIMode = true;
+        let socket = null;
+        let isBulkSending = false;
+        let currentStatusFilter = 'all';
+        let isBotStopped = false;
+        
+        // User management variables
+        let currentUser = null;
+        let users = [];
+        let isAdminViewingAs = false;
+        let viewingAsUser = null;
+        let authToken = null;
+        
+        // DOM Elements
+        const qrOverlay = document.getElementById('qrOverlay');
+        const qrCode = document.getElementById('qrCode');
+        const closeQR = document.getElementById('closeQR');
+        const reconnectBtn = document.getElementById('reconnectBtn');
+        const stopBotBtn = document.getElementById('stopBotBtn');
+        const logoutBtn = document.getElementById('logoutBtn');
+        const whatsappStatus = document.getElementById('whatsappStatus');
+        const botStatus = document.getElementById('botStatus');
+        const aiToggle = document.getElementById('aiToggle');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const excelFile = document.getElementById('excelFile');
+        const fileInfo = document.getElementById('fileInfo');
+        const bulkMessage = document.getElementById('bulkMessage');
+        const sendDelay = document.getElementById('sendDelay');
+        const sendBulkBtn = document.getElementById('sendBulkBtn');
+        const retryBulkBtn = document.getElementById('retryBulkBtn');
+        const clientList = document.getElementById('clientList');
+        const exportReportBtn = document.getElementById('exportReportBtn');
+        const sendReportBtn = document.getElementById('sendReportBtn');
+        const currentClientName = document.getElementById('currentClientName');
+        const currentClientPhone = document.getElementById('currentClientPhone');
+        const activeStatus = document.getElementById('activeStatus');
+        const chatContainer = document.getElementById('chatContainer');
+        const messageInput = document.getElementById('messageInput');
+        const sendMessageBtn = document.getElementById('sendMessageBtn');
+        const aiStatus = document.getElementById('aiStatus');
+        const toastContainer = document.getElementById('toastContainer');
+        const clientsCount = document.getElementById('clientsCount');
+        const scrollToBottom = document.getElementById('scrollToBottom');
+        const statusSelect = document.getElementById('statusSelect');
+        const clientStatusSelector = document.getElementById('clientStatusSelector');
+        const autoReportNotification = document.getElementById('autoReportNotification');
+        const autoReportMessage = document.getElementById('autoReportMessage');
+        const whatsappQrStatus = document.getElementById('whatsappQrStatus');
+        
+        // Performance stats elements
+        const statMessages = document.getElementById('statMessages');
+        const statAIReplies = document.getElementById('statAIReplies');
+        const statClients = document.getElementById('statClients');
+        const statInterested = document.getElementById('statInterested');
+
+        // User Management Elements
+        const currentUserName = document.getElementById('currentUserName');
+        const currentUserRole = document.getElementById('currentUserRole');
+        const userManagementSection = document.getElementById('userManagementSection');
+        const userSwitchBtn = document.getElementById('userSwitchBtn');
+        const userSwitchOverlay = document.getElementById('userSwitchOverlay');
+        const returnToAdmin = document.getElementById('returnToAdmin');
+        const closeUserSwitch = document.getElementById('closeUserSwitch');
+        const currentViewingUser = document.getElementById('currentViewingUser');
+        const newUserName = document.getElementById('newUserName');
+        const newUserPassword = document.getElementById('newUserPassword');
+        const newUserRole = document.getElementById('newUserRole');
+        const addUserBtn = document.getElementById('addUserBtn');
+        const usersList = document.getElementById('usersList');
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeApp();
         });
-      }
 
-      socket.userId = userId;
+        function initializeApp() {
+            try {
+                // Get auth token from localStorage
+                authToken = localStorage.getItem('authToken');
+                if (!authToken) {
+                    window.location.href = '/';
+                    return;
+                }
 
-    } catch (error) {
-      console.error('Authentication error:', error);
-      socket.emit('auth_error', 'Authentication failed');
-    }
-  });
+                // Connect to Socket.io with authentication
+                socket = io({
+                    timeout: 10000,
+                    reconnectionAttempts: 5
+                });
+                
+                setupSocketEvents();
+                setupEventListeners();
+                loadCurrentUser(); // This will trigger authentication
+                
+                // 🆕 Auto-check WhatsApp status on load
+                setTimeout(() => {
+                    checkWhatsAppStatus();
+                }, 2000);
+                
+                // Auto-fill promotional message
+                bulkMessage.value = "🚀 نظام رقم كلاود ERP السحابي! حلول متكاملة للمحاسبة، المخزون، الموارد البشرية، والمزيد. جلسة استشارية مجانية! 📞 +966555111222 🌐 ragmcloud.sa";
+                
+            } catch (error) {
+                console.error('Failed to initialize app:', error);
+                showToast('❌ فشل تهيئة التطبيق', 'error');
+            }
+        }
+        
+        function setupSocketEvents() {
+            socket.on('connect', () => {
+                console.log('✅ Connected to server');
+                showToast('✅ تم الاتصال بالخادم بنجاح', 'success');
+                
+                // Authenticate socket connection
+                if (currentUser) {
+                    console.log('🔐 Authenticating socket for user:', currentUser.id);
+                    socket.emit('authenticate', authToken);
+                }
+            });
+            
+            socket.on('authenticated', (userData) => {
+                console.log('✅ Socket authenticated for user:', userData);
+                const userId = currentUser.id;
+                
+                // 🆕 FIXED: User-specific WhatsApp status
+                socket.on(`user_status_${userId}`, (data) => {
+                    console.log('📡 Received user status:', data);
+                    updateWhatsAppStatus(data);
+                });
 
-  // Send message
-  socket.on('send_message', async (data) => {
-    try {
-      const userId = socket.userId;
-      if (!userId) return;
+                // 🆕 FIXED: User-specific QR code with auto-display
+                socket.on(`user_qr_${userId}`, (data) => {
+                    console.log('📡 Received QR code for user:', userId);
+                    if (data.qrCode) {
+                        showQRCode(data.qrCode);
+                    }
+                });
 
-      const userSession = userSessions.get(userId);
-      if (!userSession || !userSession.whatsappReady) {
-        socket.emit('error', { message: 'WhatsApp is not connected' });
-        return;
-      }
+                // 🆕 FIXED: User-specific bot status
+                socket.on(`user_bot_status_${userId}`, (data) => {
+                    console.log('📡 Received bot status:', data);
+                    isBotStopped = data.stopped;
+                    updateBotStatusUI();
+                });
 
-      const { to, message } = data;
-      const client = userSession.whatsappClient;
+                // 🆕 FIXED: User-specific messages
+                socket.on(`user_message_${userId}`, (data) => {
+                    console.log('📡 Received user message:', data);
+                    handleUserMessage(data);
+                });
+                
+                console.log(`✅ User-specific listeners setup complete for user ${userId}`);
+            });
+            
+            socket.on('disconnect', (reason) => {
+                console.log('Disconnected from server:', reason);
+                showToast('❌ فقد الاتصال بالخادم', 'error');
+            });
+            
+            socket.on('connect_error', (error) => {
+                console.error('Connection error:', error);
+                showToast('❌ خطأ في الاتصال بالخادم', 'error');
+            });
+            
+            socket.on('auth_error', (error) => {
+                console.error('Authentication error:', error);
+                showToast('❌ خطأ في المصادقة، جاري إعادة التوجيه...', 'error');
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 2000);
+            });
 
-      await client.sendMessage(to, message);
+            // Global events (not user-specific)
+            socket.on('bot_status', (data) => {
+                isBotStopped = data.stopped;
+                updateBotStatusUI();
+            });
 
-      // Save message to database
-      await pool.execute(
-        'INSERT INTO messages (user_id, client_phone, message, fromMe) VALUES (?, ?, ?, ?)',
-        [userId, to, message, true]
-      );
+            socket.on('auto_report_notification', (data) => {
+                showAutoReportNotification(data);
+            });
 
-      // Update performance stats
-      await updatePerformanceStats(userId, 'messagesSent');
+            socket.on('client_status_updated', (data) => {
+                updateClientStatus(data.clientId, data.status);
+            });
 
-      // Emit sent message
-      socket.emit(`user_message_${userId}`, {
-        clientPhone: to,
-        message: message,
-        fromMe: true,
-        timestamp: new Date()
-      });
+            socket.on('performance_stats', (data) => {
+                updatePerformanceStats(data);
+            });
 
-    } catch (error) {
-      console.error('Send message error:', error);
-      socket.emit('error', { message: 'Failed to send message' });
-    }
-  });
+            socket.on('bulk_progress', (data) => {
+                handleBulkProgress(data);
+            });
 
-  // Update client status
-  socket.on('update_client_status', async (data) => {
-    try {
-      const userId = socket.userId;
-      if (!userId) return;
+            socket.on('clients_updated', (data) => {
+                clients = data;
+                renderClientList();
+                updateClientsCount();
+            });
+        }
+        
+        function setupEventListeners() {
+            // QR Code
+            closeQR.addEventListener('click', () => {
+                qrOverlay.classList.add('hidden');
+            });
 
-      const { phone, status } = data;
+            // WhatsApp QR Status Button
+            whatsappQrStatus.addEventListener('click', () => {
+                fetchUserQRCode();
+            });
+            
+            // Reconnect
+            reconnectBtn.addEventListener('click', () => {
+                socket.emit('user_reconnect_whatsapp');
+                showToast('🔄 جاري إعادة الاتصال...', 'warning');
+            });
+            
+            // Stop Bot Button
+            stopBotBtn.addEventListener('click', () => {
+                const newState = !isBotStopped;
+                socket.emit('user_toggle_bot', { stop: newState });
+                showToast(newState ? '🛑 جاري إيقاف البوت...' : '🚀 جاري تشغيل البوت...', newState ? 'warning' : 'success');
+            });
 
-      await pool.execute(
-        'UPDATE clients SET status = ? WHERE user_id = ? AND phone = ?',
-        [status, userId, phone]
-      );
+            // Logout Button
+            logoutBtn.addEventListener('click', () => {
+                logoutUser();
+            });
+            
+            // AI Mode Toggle
+            aiToggle.addEventListener('change', (e) => {
+                isAIMode = e.target.checked;
+                aiStatus.innerHTML = isAIMode ? 
+                    '<span class="text-green-400 text-sm">🤖 الذكاء الاصطناعي مفعل</span>' :
+                    '<span class="text-yellow-400 text-sm">⚠️ الذكاء الاصطناعي معطل</span>';
+                
+                showToast(isAIMode ? '🤖 تم تفعيل الذكاء الاصطناعي' : '⚠️ تم تعطيل الذكاء الاصطناعي', 'success');
+            });
+            
+            // File Upload
+            uploadBtn.addEventListener('click', () => {
+                excelFile.click();
+            });
+            
+            excelFile.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    uploadExcelFile(file);
+                }
+            });
+            
+            // Bulk Message
+            sendBulkBtn.addEventListener('click', () => {
+                if (!bulkMessage.value.trim()) {
+                    showToast('❌ يرجى كتابة رسالة ترويجية', 'error');
+                    return;
+                }
+                
+                if (clients.length === 0) {
+                    showToast('❌ لا يوجد عملاء للإرسال', 'error');
+                    return;
+                }
+                
+                startBulkSending();
+            });
+            
+            retryBulkBtn.addEventListener('click', () => {
+                startBulkSending(true);
+            });
+            
+            // Message Sending
+            messageInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                }
+            });
+            
+            sendMessageBtn.addEventListener('click', sendMessage);
+            
+            // Status Filter
+            document.querySelectorAll('.status-filter-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const status = e.target.dataset.status;
+                    setStatusFilter(status);
+                });
+            });
+            
+            // Client Status Selector
+            statusSelect.addEventListener('change', (e) => {
+                if (currentClient) {
+                    updateClientStatus(currentClient.id, e.target.value);
+                }
+            });
+            
+            // Export Report
+            exportReportBtn.addEventListener('click', () => {
+                exportReport();
+            });
+            
+            // Send Report
+            sendReportBtn.addEventListener('click', () => {
+                sendReport();
+            });
+            
+            // Scroll to Bottom
+            scrollToBottom.addEventListener('click', () => {
+                scrollChatToBottom();
+            });
+            
+            // User Management Event Listeners
+            userSwitchBtn.addEventListener('click', () => {
+                userSwitchOverlay.classList.remove('hidden');
+                currentViewingUser.textContent = isAdminViewingAs ? viewingAsUser.name : currentUser.name;
+            });
+            
+            returnToAdmin.addEventListener('click', () => {
+                isAdminViewingAs = false;
+                viewingAsUser = null;
+                userSwitchOverlay.classList.add('hidden');
+                updateUserInterface();
+                showToast('✅ العودة إلى حساب المدير', 'success');
+            });
+            
+            closeUserSwitch.addEventListener('click', () => {
+                userSwitchOverlay.classList.add('hidden');
+            });
+            
+            addUserBtn.addEventListener('click', addNewUser);
+        }
 
-      // Emit status update to all users in room
-      io.to(`user_${userId}`).emit('client_status_updated', {
-        clientPhone: phone,
-        status: status
-      });
+        // 🆕 IMPROVED QR Code Functions
+        function showQRCode(qrCodeUrl) {
+            console.log('🖼️ Showing QR code:', qrCodeUrl);
+            if (!qrCodeUrl) {
+                console.error('❌ No QR code URL provided');
+                showToast('❌ لم يتم توليد QR Code', 'error');
+                return;
+            }
+            
+            // Clear previous QR code
+            qrCode.innerHTML = '';
+            
+            // Create new QR code image
+            const qrImage = document.createElement('img');
+            qrImage.src = qrCodeUrl;
+            qrImage.alt = "WhatsApp QR Code";
+            qrImage.className = "w-64 h-64 mx-auto";
+            qrImage.onload = function() {
+                console.log('✅ QR code image loaded successfully');
+            };
+            qrImage.onerror = function() {
+                console.error('❌ Failed to load QR code image');
+                showToast('❌ فشل تحميل QR Code', 'error');
+            };
+            
+            qrCode.appendChild(qrImage);
+            qrOverlay.classList.remove('hidden');
+            
+            // Show notification
+            showToast('📱 يرجى مسح QR Code للاتصال', 'success');
+            
+            console.log('✅ QR code overlay shown');
+        }
 
-      if (status === 'interested') {
-        await updatePerformanceStats(userId, 'interestedClients');
-      }
+        // 🆕 Auto-fetch QR code on page load
+        function fetchUserQRCode() {
+            console.log('🔄 Fetching user QR code...');
+            fetch('/api/user-whatsapp-qr', {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.qrCode) {
+                    console.log('✅ QR code fetched successfully');
+                    showQRCode(data.qrCode);
+                } else {
+                    console.log('ℹ️ QR code not available yet');
+                    showToast('⏳ جاري توليد QR Code...', 'warning');
+                }
+            })
+            .catch(error => {
+                console.error('❌ Error fetching QR code:', error);
+                showToast('❌ فشل جلب QR Code', 'error');
+            });
+        }
 
-    } catch (error) {
-      console.error('Update client status error:', error);
-    }
-  });
+        // 🆕 Improved WhatsApp status update with auto-QR display
+        function updateWhatsAppStatus(data) {
+            console.log('🔄 Updating WhatsApp status:', data);
+            whatsappStatus.textContent = data.message;
+            
+            if (data.connected) {
+                whatsappStatus.className = 'status-connected px-3 py-1 rounded-full text-sm font-bold';
+                whatsappQrStatus.classList.add('hidden');
+                qrOverlay.classList.add('hidden'); // Hide QR when connected
+            } else {
+                whatsappStatus.className = 'status-disconnected px-3 py-1 rounded-full text-sm font-bold';
+                
+                if (data.status === 'qr-ready') {
+                    whatsappQrStatus.classList.remove('hidden');
+                    // 🆕 AUTO-SHOW QR CODE when status is qr-ready
+                    if (!qrOverlay.classList.contains('hidden')) {
+                        // QR overlay is already visible, no need to show again
+                        console.log('📱 QR overlay already visible');
+                    } else {
+                        // Fetch and show QR code automatically
+                        console.log('🔄 Auto-fetching QR code for qr-ready status');
+                        setTimeout(() => fetchUserQRCode(), 1000);
+                    }
+                } else {
+                    whatsappQrStatus.classList.add('hidden');
+                    qrOverlay.classList.add('hidden');
+                }
+            }
+        }
 
-  // Toggle bot
-  socket.on('user_toggle_bot', (data) => {
-    const userId = socket.userId;
-    if (!userId) return;
+        // 🆕 Function to check WhatsApp status
+        function checkWhatsAppStatus() {
+            fetch('/api/user-whatsapp-status', {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('📡 WhatsApp status check:', data);
+                if (data.hasQr && data.qrCode) {
+                    showQRCode(data.qrCode);
+                }
+                updateWhatsAppStatus(data);
+            })
+            .catch(error => {
+                console.error('Error checking WhatsApp status:', error);
+            });
+        }
 
-    const userSession = userSessions.get(userId);
-    if (userSession) {
-      userSession.isBotStopped = data.stop;
-      
-      io.to(`user_${userId}`).emit(`user_bot_status_${userId}`, {
-        stopped: data.stop
-      });
-    }
-  });
+        // Logout Function
+        function logoutUser() {
+            if (confirm('هل أنت متأكد من تسجيل الخروج؟')) {
+                // Clear localStorage
+                localStorage.removeItem('authToken');
+                localStorage.removeItem('currentUser');
+                localStorage.removeItem('performanceStats');
+                
+                // Disconnect socket
+                if (socket) {
+                    socket.disconnect();
+                }
+                
+                // Show logout message
+                showToast('👋 تم تسجيل الخروج بنجاح', 'success');
+                
+                // Redirect to login page
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 1500);
+            }
+        }
 
-  // Reconnect WhatsApp
-  socket.on('user_reconnect_whatsapp', async () => {
-    const userId = socket.userId;
-    if (!userId) return;
+        // User Management Functions
+        function loadCurrentUser() {
+            const savedUser = localStorage.getItem('currentUser');
+            if (savedUser) {
+                currentUser = JSON.parse(savedUser);
+                updateUserInterface();
+                
+                // 🆕 CRITICAL: Authenticate socket AFTER user is loaded
+                if (socket && socket.connected) {
+                    console.log('🔐 Authenticating socket for user:', currentUser.id);
+                    socket.emit('authenticate', authToken);
+                }
+            } else {
+                fetch('/api/me', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        currentUser = data.user;
+                        localStorage.setItem('currentUser', JSON.stringify(currentUser));
+                        updateUserInterface();
+                        
+                        // 🆕 CRITICAL: Authenticate socket AFTER user is loaded
+                        if (socket && socket.connected) {
+                            console.log('🔐 Authenticating socket for user:', currentUser.id);
+                            socket.emit('authenticate', authToken);
+                        }
+                    } else {
+                        window.location.href = '/';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading user:', error);
+                    window.location.href = '/';
+                });
+            }
+        }
+        
+        function loadUsers() {
+            if (currentUser && currentUser.role === 'admin') {
+                fetch('/api/users', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        users = data.users;
+                        renderUsersList();
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading users:', error);
+                });
+            }
+        }
+        
+        function updateUserInterface() {
+            if (!currentUser) return;
+            
+            currentUserName.textContent = currentUser.name;
+            currentUserRole.textContent = currentUser.role === 'admin' ? 'مدير' : 'مستخدم عادي';
+            
+            if (currentUser.role === 'admin' && !isAdminViewingAs) {
+                userManagementSection.classList.remove('hidden');
+                userSwitchBtn.classList.remove('hidden');
+            } else {
+                userManagementSection.classList.add('hidden');
+                userSwitchBtn.classList.add('hidden');
+            }
+            
+            currentUserRole.className = currentUser.role === 'admin' 
+                ? 'px-3 py-1 bg-purple-600 rounded-full text-sm font-bold'
+                : 'px-3 py-1 bg-primary rounded-full text-sm font-bold';
+        }
+        
+        function addNewUser() {
+            const name = newUserName.value.trim();
+            const password = newUserPassword.value.trim();
+            const role = newUserRole.value;
+            
+            if (!name || !password) {
+                showToast('❌ يرجى ملء جميع الحقول', 'error');
+                return;
+            }
+            
+            fetch('/api/users', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    name: name,
+                    username: name.toLowerCase().replace(/\s/g, ''),
+                    password: password,
+                    role: role
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast('✅ تم إضافة المستخدم بنجاح', 'success');
+                    clearUserForm();
+                    loadUsers();
+                } else {
+                    showToast('❌ ' + data.error, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error adding user:', error);
+                showToast('❌ فشل إضافة المستخدم', 'error');
+            });
+        }
+        
+        function renderUsersList() {
+            usersList.innerHTML = '';
+            
+            users.forEach(user => {
+                const userElement = document.createElement('div');
+                userElement.className = `user-item p-3 rounded-lg mb-2 ${user.role === 'admin' ? 'role-admin' : 'role-standard'} bg-gray-800`;
+                
+                userElement.innerHTML = `
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <div class="font-bold">${user.name}</div>
+                            <div class="text-xs text-gray-400">${user.role === 'admin' ? 'مدير' : 'مستخدم عادي'}</div>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <span class="text-xs ${user.isActive ? 'user-active' : 'user-inactive'}">
+                                <i class="fas fa-circle text-xs mr-1"></i>${user.isActive ? 'نشط' : 'غير نشط'}
+                            </span>
+                            ${currentUser.role === 'admin' && currentUser.id !== user.id ? `
+                                <button class="switch-to-user-btn text-xs bg-blue-600 hover:bg-blue-700 px-2 py-1 rounded transition-colors" data-user-id="${user.id}">
+                                    <i class="fas fa-eye mr-1"></i>عرض
+                                </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+                
+                usersList.appendChild(userElement);
+            });
+            
+            document.querySelectorAll('.switch-to-user-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const userId = parseInt(e.target.closest('button').dataset.userId);
+                    switchToUser(userId);
+                });
+            });
+        }
+        
+        function switchToUser(userId) {
+            const targetUser = users.find(u => u.id === userId);
+            if (targetUser) {
+                isAdminViewingAs = true;
+                viewingAsUser = targetUser;
+                userSwitchOverlay.classList.add('hidden');
+                updateUserInterface();
+                showToast(`👁️ تشاهد الآن كـ: ${targetUser.name}`, 'success');
+            }
+        }
+        
+        function clearUserForm() {
+            newUserName.value = '';
+            newUserPassword.value = '';
+            newUserRole.value = 'standard';
+        }
 
-    console.log(`🔄 Reconnecting WhatsApp for user ${userId}`);
-    
-    const userSession = userSessions.get(userId);
-    if (userSession && userSession.whatsappClient) {
-      await userSession.whatsappClient.destroy();
-    }
+        function uploadExcelFile(file) {
+            const formData = new FormData();
+            formData.append('excelFile', file);
+            
+            fetch('/api/upload-excel', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`
+                },
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    fileInfo.classList.remove('hidden');
+                    fileInfo.innerHTML = `<i class="fas fa-file-excel text-primary-light mr-1"></i> ${file.name} (${data.count} عميل)`;
+                    showToast(`✅ ${data.message}`, 'success');
+                    
+                    clients = data.clients;
+                    renderClientList();
+                    updateClientsCount();
+                } else {
+                    showToast('❌ ' + data.error, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error uploading file:', error);
+                showToast('❌ فشل رفع الملف', 'error');
+            });
+        }
+        
+        function loadClients() {
+            fetch('/api/clients', {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    clients = data.clients;
+                    renderClientList();
+                    updateClientsCount();
+                }
+            })
+            .catch(error => {
+                console.error('Error loading clients:', error);
+            });
+        }
+        
+        function renderClientList() {
+            clientList.innerHTML = '';
+            
+            const filteredClients = currentStatusFilter === 'all' 
+                ? clients 
+                : clients.filter(client => client.status === currentStatusFilter);
+            
+            filteredClients.forEach(client => {
+                const clientElement = document.createElement('div');
+                clientElement.className = `client-item p-3 rounded-lg mb-2 cursor-pointer client-status-${client.status} ${currentClient?.id === client.id ? 'active' : ''}`;
+                clientElement.dataset.clientId = client.id;
+                
+                clientElement.innerHTML = `
+                    <div class="flex justify-between items-start">
+                        <div class="flex-1">
+                            <div class="font-bold">${client.name}</div>
+                            <div class="text-xs text-gray-400">${client.phone}</div>
+                            <div class="text-sm mt-1 truncate">${client.lastMessage}</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-xs text-gray-500">${new Date(client.lastActivity).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</div>
+                            ${client.unread > 0 ? `
+                                <div class="unread-badge text-xs px-2 py-1 rounded-full mt-1">${client.unread}</div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+                
+                clientElement.addEventListener('click', () => {
+                    selectClient(client);
+                });
+                
+                clientList.appendChild(clientElement);
+            });
+        }
+        
+        function selectClient(client) {
+            currentClient = client;
+            currentClientName.textContent = client.name;
+            currentClientPhone.textContent = client.phone;
+            activeStatus.classList.remove('hidden');
+            clientStatusSelector.classList.remove('hidden');
+            statusSelect.value = client.status;
+            
+            messageInput.disabled = false;
+            sendMessageBtn.disabled = false;
+            
+            document.querySelectorAll('.client-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            document.querySelector(`[data-client-id="${client.id}"]`).classList.add('active');
+            
+            loadMessages(client.id);
+        }
+        
+        function loadMessages(clientId) {
+            fetch(`/api/client-messages/${clientId}`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    messages[clientId] = data.messages;
+                    renderMessages(messages[clientId]);
+                }
+            })
+            .catch(error => {
+                console.error('Error loading messages:', error);
+            });
+        }
+        
+        function renderMessages(messages) {
+            chatContainer.innerHTML = '';
+            
+            if (messages.length === 0) {
+                chatContainer.innerHTML = `
+                    <div class="text-center text-gray-400 mt-20">
+                        <i class="fas fa-comments text-5xl mb-4 opacity-50"></i>
+                        <p class="text-gray-500">لا توجد رسائل بعد</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            messages.forEach(message => {
+                const messageElement = document.createElement('div');
+                messageElement.className = `chat-bubble ${message.fromMe ? 'sent' : 'received'}`;
+                
+                messageElement.innerHTML = `
+                    <div class="message-content">${message.message}</div>
+                    <div class="chat-time">${new Date(message.timestamp).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</div>
+                `;
+                
+                chatContainer.appendChild(messageElement);
+            });
+            
+            scrollChatToBottom();
+        }
+        
+        function sendMessage() {
+            const message = messageInput.value.trim();
+            if (!message || !currentClient) return;
+            
+            socket.emit('send_message', {
+                to: currentClient.phone,
+                message: message
+            });
+            
+            const newMessage = {
+                id: Date.now(),
+                message: message,
+                fromMe: true,
+                timestamp: new Date().toISOString()
+            };
+            
+            if (!messages[currentClient.id]) {
+                messages[currentClient.id] = [];
+            }
+            messages[currentClient.id].push(newMessage);
+            
+            renderMessages(messages[currentClient.id]);
+            messageInput.value = '';
+            
+            updatePerformanceStats({
+                messages: parseInt(statMessages.textContent) + 1
+            });
+        }
+        
+        function startBulkSending(isRetry = false) {
+            if (isBulkSending) {
+                showToast('⚠️ جاري الإرسال بالفعل', 'warning');
+                return;
+            }
+            
+            const message = bulkMessage.value.trim();
+            const delay = parseInt(sendDelay.value);
+            
+            if (!message) {
+                showToast('❌ يرجى كتابة رسالة ترويجية', 'error');
+                return;
+            }
+            
+            if (clients.length === 0) {
+                showToast('❌ لا يوجد عملاء للإرسال', 'error');
+                return;
+            }
+            
+            fetch('/api/send-bulk', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    message: message,
+                    delay: delay,
+                    clients: clients
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast(`🚀 ${data.message}`, 'success');
+                isBulkSending = true;
+                    sendBulkBtn.disabled = true;
+                    sendBulkBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> جاري الإرسال...';
+                } else {
+                    showToast('❌ ' + data.error, 'error');
+                    }
+            })
+            .catch(error => {
+                console.error('Error sending bulk messages:', error);
+                showToast('❌ فشل الإرسال الجماعي', 'error');
+            });
+        }
 
-    await initializeWhatsAppClient(userId);
-  });
-
-  socket.on('disconnect', () => {
-    console.log('❌ Client disconnected:', socket.id);
-  });
-});
-
-// Initialize server
-async function startServer() {
-  await initializeDatabase();
-  
-  const PORT = process.env.PORT || 3000;
-  server.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
-    console.log(`📱 WhatsApp ERP Dashboard: http://localhost:${PORT}`);
-  });
-}
-
-// Create default admin user on startup
-async function createDefaultAdmin() {
-  try {
-    const [users] = await pool.execute('SELECT id FROM users WHERE role = "admin"');
-    
-    if (users.length === 0) {
-      const hashedPassword = await bcrypt.hash('admin123', 10);
-      
-      await pool.execute(
-        'INSERT INTO users (name, username, password, role) VALUES (?, ?, ?, ?)',
-        ['مدير النظام', 'admin', hashedPassword, 'admin']
-      );
-      
-      console.log('✅ Default admin user created: admin / admin123');
-    }
-  } catch (error) {
-    console.error('Error creating default admin:', error);
-  }
-}
-
-// Handle graceful shutdown
-process.on('SIGINT', async () => {
-  console.log('🛑 Shutting down server...');
-  
-  // Destroy all WhatsApp clients
-  for (const [userId, session] of userSessions.entries()) {
-    if (session.whatsappClient) {
-      await session.whatsappClient.destroy();
-    }
-  }
-  
-  if (pool) {
-    await pool.end();
-  }
-  
-  process.exit(0);
-});
-
-// Start the server
-startServer().then(() => {
-  setTimeout(createDefaultAdmin, 2000);
-});
+        function handleBulkProgress(data) {
+            if (data.type === 'start') {
+                showToast(`🚀 بدء الإرسال إلى ${data.total} عميل`, 'success');
+            } else if (data.success) {
+                console.log(`✅ Sent to ${data.client}: ${data.clientPhone}`);
+            } else {
+                console.error(`❌ Failed to send to ${data.client}: ${data.error}`);
+            }
+        }
+        
+        function updateClientStatus(clientId, newStatus) {
+            const client = clients.find(c => c.id === clientId);
+            if (client) {
+                socket.emit('update_client_status', {
+                    phone: client.phone,
+                    status: newStatus
+                });
+                
+                client.status = newStatus;
+                renderClientList();
+                
+                if (newStatus === 'interested') {
+                    updatePerformanceStats({
+                        interested: parseInt(statInterested.textContent) + 1
+                    });
+                }
+                
+                showToast(`✅ تم تحديث حالة العميل إلى: ${getStatusText(newStatus)}`, 'success');
+            }
+        }
+        
+        function getStatusText(status) {
+            const statusMap = {
+                'interested': 'مهتم',
+                'busy': 'مشغول',
+                'not-interested': 'غير مهتم',
+                'no-reply': 'لم يرد'
+            };
+            return statusMap[status] || status;
+        }
+        
+        function setStatusFilter(status) {
+            currentStatusFilter = status;
+            
+            document.querySelectorAll('.status-filter-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.querySelector(`[data-status="${status}"]`).classList.add('active');
+            
+            renderClientList();
+        }
+        
+        function updateClientsCount() {
+            clientsCount.textContent = clients.length;
+            statClients.textContent = clients.length;
+        }
+        
+        function scrollChatToBottom() {
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+        
+        function updatePerformanceStats(stats) {
+            if (stats.messages !== undefined) statMessages.textContent = stats.messages;
+            if (stats.aiReplies !== undefined) statAIReplies.textContent = stats.aiReplies;
+            if (stats.clients !== undefined) statClients.textContent = stats.clients;
+            if (stats.interested !== undefined) statInterested.textContent = stats.interested;
+            
+            const currentStats = {
+                messages: parseInt(statMessages.textContent),
+                aiReplies: parseInt(statAIReplies.textContent),
+                clients: parseInt(statClients.textContent),
+                interested: parseInt(statInterested.textContent)
+            };
+            localStorage.setItem('performanceStats', JSON.stringify(currentStats));
+        }
+        
+        function loadPerformanceStats() {
+            fetch('/api/employee-performance', {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const perf = data.performance.dailyStats;
+                    updatePerformanceStats({
+                        messages: perf.messagesSent,
+                        aiReplies: perf.aiRepliesSent,
+                        clients: perf.clientsContacted,
+                        interested: perf.interestedClients
+                    });
+                }
+            })
+            .catch(error => {
+                console.error('Error loading performance stats:', error);
+                const savedStats = localStorage.getItem('performanceStats');
+                if (savedStats) {
+                    updatePerformanceStats(JSON.parse(savedStats));
+                }
+            });
+        }
+        
+        function exportReport() {
+            fetch('/api/export-report', {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`
+                }
+            })
+            .then(response => {
+                if (response.ok) {
+                    return response.blob();
+                }
+                throw new Error('Export failed');
+            })
+            .then(blob => {
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = `ragmcloud-report-${new Date().toISOString().split('T')[0]}.txt`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                showToast('📊 تم تصدير التقرير بنجاح', 'success');
+            })
+            .catch(error => {
+                console.error('Error exporting report:', error);
+                showToast('❌ فشل تصدير التقرير', 'error');
+            });
+        }
+        
+        function sendReport() {
+            fetch('/api/send-to-manager', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast('📧 تم إرسال التقرير إلى المدير بنجاح', 'success');
+                    } else {
+                    showToast('❌ ' + data.error, 'error');
+                    }
+            })
+            .catch(error => {
+                console.error('Error sending report:', error);
+                showToast('❌ فشل إرسال التقرير', 'error');
+            });
+        }
+        
+        function showToast(message, type = 'success') {
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            
+            toastContainer.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.classList.add('show');
+            }, 100);
+            
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => {
+                    toastContainer.removeChild(toast);
+                }, 300);
+            }, 4000);
+        }
+        
+        function showAutoReportNotification(data) {
+            autoReportMessage.textContent = data.message;
+            autoReportNotification.style.display = 'block';
+            
+            setTimeout(() => {
+                autoReportNotification.style.display = 'none';
+            }, 5000);
+        }
+        
+        function updateBotStatusUI() {
+            if (isBotStopped) {
+                botStatus.textContent = 'متوقف';
+                botStatus.className = 'bot-status-stopped px-3 py-1 rounded-full text-sm font-bold';
+                stopBotBtn.innerHTML = '<i class="fas fa-play mr-2"></i>تشغيل البوت';
+            } else {
+                botStatus.textContent = 'نشط';
+                botStatus.className = 'bot-status-running px-3 py-1 rounded-full text-sm font-bold';
+                stopBotBtn.innerHTML = '<i class="fas fa-stop mr-2"></i>إيقاف البوت';
+            }
+        }
+        
+        // Chat scroll detection
+        chatContainer.addEventListener('scroll', () => {
+            const scrollThreshold = 100;
+            const isNearBottom = chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight < scrollThreshold;
+            
+            if (isNearBottom) {
+                scrollToBottom.classList.remove('visible');
+            } else {
+                scrollToBottom.classList.add('visible');
+            }
+        });
+    </script>
+</body>
+</html>
