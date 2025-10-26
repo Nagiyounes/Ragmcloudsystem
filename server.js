@@ -400,6 +400,13 @@ function getStatusText(status) {
 // 🆕 Update AI system prompt - FIXED
 app.put('/api/ai-prompt', authenticateUser, authorizeAdmin, (req, res) => {
     try {
+        console.log('🔄 Updating AI prompt - Request body:', req.body);
+        
+        // 🆕 FIX: Check if req.body exists and has prompt property
+        if (!req.body || typeof req.body !== 'object') {
+            return res.status(400).json({ error: 'طلب غير صالح - البيانات مفقودة' });
+        }
+        
         const { prompt } = req.body;
         
         console.log('🔄 Updating AI prompt:', prompt ? `Content length: ${prompt.length}` : 'No content');
