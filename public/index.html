@@ -1,113 +1,277 @@
-// FIXED AI Prompt Endpoint
-app.put('/api/ai-prompt', authenticateToken, async (req, res) => {
-    try {
-        const { prompt } = req.body;
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>رقم كلاود - تسجيل الدخول</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800&display=swap');
         
-        console.log('📝 Received AI prompt save request:', {
-            userId: req.user.id,
-            promptLength: prompt?.length
-        });
-        
-        // Add proper validation
-        if (!prompt || typeof prompt !== 'string') {
-            console.error('❌ Invalid prompt data:', { prompt });
-            return res.status(400).json({ 
-                success: false, 
-                error: 'طلب غير صالح - البيانات مفقودة' 
-            });
+        body {
+            font-family: 'Tajawal', sans-serif;
+            background: linear-gradient(135deg, #1a1f2e 0%, #2d3748 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         
-        if (prompt.trim().length === 0) {
-            return res.status(400).json({ 
-                success: false, 
-                error: 'النص لا يمكن أن يكون فارغاً' 
-            });
+        .glass-effect {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
         }
         
-        // Check if user is admin
-        if (req.user.role !== 'admin') {
-            return res.status(403).json({ 
-                success: false, 
-                error: 'غير مصرح - تحتاج صلاحيات المدير' 
-            });
+        .luxury-card {
+            background: rgba(45, 55, 72, 0.95);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(212, 175, 55, 0.3);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
         }
         
-        // Save to database or file system
-        // Example: Save to a file
-        const fs = require('fs').promises;
-        const aiPromptPath = './data/ai-prompts/system-prompt.txt';
-        
-        try {
-            // Ensure directory exists
-            await fs.mkdir('./data/ai-prompts', { recursive: true });
-            
-            // Save the prompt
-            await fs.writeFile(aiPromptPath, prompt, 'utf8');
-            
-            console.log('✅ AI prompt saved successfully');
-            
-            res.json({ 
-                success: true, 
-                message: 'تم حفظ نظام الذكاء الاصطناعي بنجاح' 
-            });
-            
-        } catch (fileError) {
-            console.error('❌ File system error:', fileError);
-            res.status(500).json({ 
-                success: false, 
-                error: 'فشل حفظ النظام في الملف' 
-            });
+        .gradient-text {
+            background: linear-gradient(135deg, #D4AF37, #FFD700);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
         
-    } catch (error) {
-        console.error('❌ Error saving AI prompt:', error);
-        res.status(500).json({ 
-            success: false, 
-            error: 'فشل حفظ النظام' 
-        });
-    }
-});
+        .btn-gold {
+            background: linear-gradient(135deg, #D4AF37, #FFD700);
+            color: #1a1f2e;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-gold:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(212, 175, 55, 0.4);
+        }
+        
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 12px 20px;
+            border-radius: 8px;
+            color: white;
+            font-weight: bold;
+            z-index: 1000;
+            transform: translateX(400px);
+            transition: transform 0.3s ease;
+            max-width: 300px;
+        }
+        
+        .toast.show {
+            transform: translateX(0);
+        }
+        
+        .toast.success {
+            background: linear-gradient(135deg, #00B98B, #007C5C);
+        }
+        
+        .toast.error {
+            background: linear-gradient(135deg, #f56565, #c53030);
+        }
+    </style>
+</head>
+<body class="text-white">
+    <!-- Toast Notifications -->
+    <div id="toastContainer" class="fixed top-4 right-4 z-50"></div>
+    
+    <div class="w-full max-w-md mx-4">
+        <div class="luxury-card rounded-2xl p-8">
+            <!-- Logo -->
+            <div class="text-center mb-8">
+                <div class="w-20 h-20 rounded-2xl bg-gradient-to-br from-[#007C5C] to-[#00B98B] flex items-center justify-center text-white mx-auto mb-4">
+                    <i class="fas fa-cloud text-3xl"></i>
+                </div>
+                <h1 class="text-3xl font-bold gradient-text">رقم كلاود</h1>
+                <p class="text-gray-400 mt-2">نظام ERP الذكي - مساعد المبيعات</p>
+            </div>
+            
+            <!-- SINGLE Login Form - Fixed -->
+            <form id="loginForm" class="space-y-6">
+                <div>
+                    <label for="username" class="block text-sm font-medium text-gray-300 mb-2">
+                        <i class="fas fa-user mr-2"></i>اسم المستخدم
+                    </label>
+                    <input 
+                        type="text" 
+                        id="username" 
+                        required
+                        class="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 text-sm focus:outline-none focus:border-[#00B98B] transition-colors"
+                        placeholder="أدخل اسم المستخدم">
+                </div>
+                
+                <div>
+                    <label for="password" class="block text-sm font-medium text-gray-300 mb-2">
+                        <i class="fas fa-lock mr-2"></i>كلمة المرور
+                    </label>
+                    <input 
+                        type="password" 
+                        id="password" 
+                        required
+                        class="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 text-sm focus:outline-none focus:border-[#00B98B] transition-colors"
+                        placeholder="أدخل كلمة المرور">
+                </div>
+                
+                <button 
+                    type="submit"
+                    class="w-full btn-gold py-3 rounded-lg font-bold text-lg"
+                    id="loginBtn">
+                    <i class="fas fa-sign-in-alt mr-2"></i>تسجيل الدخول
+                </button>
+            </form>
+            
+            <!-- Demo Accounts -->
+            <div class="mt-6 p-4 bg-gray-800 rounded-lg">
+                <h3 class="text-sm font-bold text-[#00B98B] mb-2">حسابات تجريبية:</h3>
+                <div class="text-xs text-gray-400 space-y-1">
+                    <div>👑 المدير: admin / admin123</div>
+                    <div>👤 المستخدم: mohamed / user123</div>
+                </div>
+            </div>
 
-// GET AI Prompt Endpoint
-app.get('/api/ai-prompt', authenticateToken, async (req, res) => {
-    try {
-        // Check if user is admin
-        if (req.user.role !== 'admin') {
-            return res.status(403).json({ 
-                success: false, 
-                error: 'غير مصرح - تحتاج صلاحيات المدير' 
-            });
-        }
-        
-        // Read from file system
-        const fs = require('fs').promises;
-        const aiPromptPath = './data/ai-prompts/system-prompt.txt';
-        
-        try {
-            const prompt = await fs.readFile(aiPromptPath, 'utf8');
+            <!-- System Info -->
+            <div class="mt-6 text-center">
+                <p class="text-gray-400 text-sm">
+                    نظام إدارة علاقات العملاء والبيع الآلي
+                </p>
+                <p class="text-gray-500 text-xs mt-2">
+                    الإصدار 2.0 - مدعوم بالذكاء الاصطناعي
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const loginForm = document.getElementById('loginForm');
+        const loginBtn = document.getElementById('loginBtn');
+        const toastContainer = document.getElementById('toastContainer');
+
+        // Handle login form submission
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
             
-            res.json({ 
-                success: true, 
-                prompt: prompt 
-            });
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value.trim();
             
-        } catch (fileError) {
-            if (fileError.code === 'ENOENT') {
-                // File doesn't exist, return empty prompt
-                res.json({ 
-                    success: true, 
-                    prompt: '' 
+            if (!username || !password) {
+                showToast('❌ يرجى ملء جميع الحقول', 'error');
+                return;
+            }
+            
+            setLoadingState(true);
+            
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ username, password })
                 });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showToast('✅ تم تسجيل الدخول بنجاح', 'success');
+                    
+                    // Store token and user data
+                    localStorage.setItem('authToken', data.token);
+                    localStorage.setItem('currentUser', JSON.stringify(data.user));
+                    
+                    // Redirect to dashboard after short delay
+                    setTimeout(() => {
+                        window.location.href = '/dashboard';
+                    }, 1000);
+                    
+                } else {
+                    showToast(`❌ ${data.error}`, 'error');
+                }
+                
+            } catch (error) {
+                console.error('Login error:', error);
+                showToast('❌ خطأ في الاتصال بالخادم', 'error');
+            } finally {
+                setLoadingState(false);
+            }
+        });
+
+        function setLoadingState(loading) {
+            if (loading) {
+                loginBtn.disabled = true;
+                loginBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> جاري التسجيل...';
             } else {
-                throw fileError;
+                loginBtn.disabled = false;
+                loginBtn.innerHTML = '<i class="fas fa-sign-in-alt mr-2"></i>تسجيل الدخول';
             }
         }
-        
-    } catch (error) {
-        console.error('❌ Error loading AI prompt:', error);
-        res.status(500).json({ 
-            success: false, 
-            error: 'فشل تحميل النظام' 
+
+        function showToast(message, type) {
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            toastContainer.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.classList.add('show');
+            }, 10);
+            
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => {
+                    if (toastContainer.contains(toast)) {
+                        toastContainer.removeChild(toast);
+                    }
+                }, 300);
+            }, 3000);
+        }
+
+        // Check if already logged in
+        document.addEventListener('DOMContentLoaded', function() {
+            const token = localStorage.getItem('authToken');
+            if (token) {
+                // Verify token is still valid
+                fetch('/api/me', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        window.location.href = '/dashboard';
+                    } else {
+                        // Token invalid, clear storage
+                        localStorage.removeItem('authToken');
+                        localStorage.removeItem('currentUser');
+                    }
+                })
+                .catch(() => {
+                    // Clear invalid token
+                    localStorage.removeItem('authToken');
+                    localStorage.removeItem('currentUser');
+                });
+            }
+
+            // Auto-focus username field
+            document.getElementById('username').focus();
         });
-    }
-});
+
+        // Enter key support
+        document.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                const focused = document.activeElement;
+                if (focused && (focused.id === 'username' || focused.id === 'password')) {
+                    loginForm.dispatchEvent(new Event('submit'));
+                }
+            }
+        });
+    </script>
+</body>
+</html>
