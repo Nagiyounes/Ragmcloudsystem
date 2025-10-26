@@ -321,11 +321,11 @@ function loadAIPromptFromFile() {
             return savedPrompt;
         } else {
             console.log('ℹ️ Using default AI prompt');
-            return DEFAULT_AI_SYSTEM_PROMPT;
+            return `أنت مساعد ذكي ومحترف تمثل شركة "رقم كلاود" المتخصصة في أنظمة ERP السحابية. أنت بائع مقنع ومحاسب خبير.`;
         }
     } catch (error) {
         console.error('❌ Error loading AI prompt:', error);
-        return DEFAULT_AI_SYSTEM_PROMPT;
+        return `أنت مساعد ذكي ومحترف تمثل شركة "رقم كلاود" المتخصصة في أنظمة ERP السحابية. أنت بائع مقنع ومحاسب خبير.`;
     }
 }
 
@@ -394,24 +394,27 @@ function getStatusText(status) {
 }
 
 // =============================================
-// 🆕 FIX 2: AI PROMPT API - FIXED
+// 🆕 FIX 2: AI PROMPT API - COMPLETELY FIXED
 // =============================================
 
-// 🆕 Update AI system prompt - FIXED
+// 🆕 Update AI system prompt - FIXED with better validation
 app.put('/api/ai-prompt', authenticateUser, authorizeAdmin, (req, res) => {
     try {
-        console.log('🔄 Updating AI prompt - Request body:', req.body);
+        console.log('🔄 Updating AI prompt - Request received');
+        console.log('📦 Request body:', req.body);
         
-        // 🆕 FIX: Check if req.body exists and has prompt property
-        if (!req.body || typeof req.body !== 'object') {
+        // 🆕 FIX: More flexible validation
+        if (!req.body) {
+            console.log('❌ No request body received');
             return res.status(400).json({ error: 'طلب غير صالح - البيانات مفقودة' });
         }
         
         const { prompt } = req.body;
         
-        console.log('🔄 Updating AI prompt:', prompt ? `Content length: ${prompt.length}` : 'No content');
+        console.log('🔄 Extracted prompt:', prompt ? `Content length: ${prompt.length}` : 'No prompt content');
         
         if (!prompt || prompt.trim() === '') {
+            console.log('❌ Empty prompt received');
             return res.status(400).json({ error: 'النص المطلوب مطلوب' });
         }
         
@@ -429,7 +432,7 @@ app.put('/api/ai-prompt', authenticateUser, authorizeAdmin, (req, res) => {
         });
         
     } catch (error) {
-        console.error('Update AI prompt error:', error);
+        console.error('❌ Update AI prompt error:', error);
         res.status(500).json({ error: 'خطأ في تحديث النص: ' + error.message });
     }
 });
@@ -437,13 +440,14 @@ app.put('/api/ai-prompt', authenticateUser, authorizeAdmin, (req, res) => {
 // 🆕 Get current AI prompt - FIXED
 app.get('/api/ai-prompt', authenticateUser, authorizeAdmin, (req, res) => {
     try {
+        console.log('📥 Getting AI prompt');
         res.json({ 
             success: true, 
             prompt: AI_SYSTEM_PROMPT 
         });
         
     } catch (error) {
-        console.error('Error getting AI prompt:', error);
+        console.error('❌ Error getting AI prompt:', error);
         res.status(500).json({ error: 'خطأ في جلب النص' });
     }
 });
@@ -1235,6 +1239,7 @@ function saveUsers() {
     try {
         const usersFile = './data/users.json';
         fs.writeFileSync(usersFile, JSON.stringify(users, null, 2));
+        console.log(`✅ Saved ${users.length} users to file`);
     } catch (error) {
         console.error('❌ Error saving users:', error);
     }
@@ -2103,6 +2108,7 @@ app.post('/api/user-reconnect-whatsapp', authenticateUser, (req, res) => {
 // NEW: User Management Routes (Admin only)
 app.get('/api/users', authenticateUser, authorizeAdmin, (req, res) => {
     try {
+        console.log('📥 Fetching users list, total users:', users.length);
         const usersList = users.map(user => ({
             id: user.id,
             name: user.name,
@@ -2113,8 +2119,10 @@ app.get('/api/users', authenticateUser, authorizeAdmin, (req, res) => {
             lastLogin: user.lastLogin
         }));
         
+        console.log('✅ Sending users list:', usersList.length, 'users');
         res.json({ success: true, users: usersList });
     } catch (error) {
+        console.error('❌ Error fetching users:', error);
         res.status(500).json({ error: 'خطأ في الخادم' });
     }
 });
