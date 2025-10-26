@@ -236,10 +236,10 @@ const AI_SYSTEM_PROMPT = `أنت مساعد ذكي ومحترف تمثل شرك�
 المقر: الرياض - حي المغرزات
 
 🔹 **باقات الأسعار (سنوية):**
-• الباقة الأساسية: 1000 ريال (مستخدم واحد)
-• الباقة المتقدمة: 1800 ريال (مستخدمين) 
-• الباقة الاحترافية: 2700 ريال (3 مستخدمين)
-• الباقة المميزة: 3000 ريال (3 مستخدمين)
+• الباقة الأساسية: 1000 ريال/سنوياً
+• الباقة المتقدمة: 1800 ريال/سنوياً 
+• الباقة الاحترافية: 2700 ريال/سنوياً
+• الباقة المميزة: 3000 ريال/سنوياً
 
 🔹 **قواعد الرد الإلزامية:**
 1. **لا تجيب أبداً على:** أسئلة شخصية، سياسة، أديان، برامج أخرى، منافسين
@@ -650,6 +650,33 @@ function manualReconnectUserWhatsApp(userId) {
         });
     } else {
         initializeUserWhatsApp(userId);
+    }
+}
+
+// 🆕 FIXED: WhatsApp Disconnect Function
+function disconnectUserWhatsApp(userId) {
+    console.log(`🔌 Disconnecting WhatsApp for user ${userId}...`);
+    const userSession = getUserWhatsAppSession(userId);
+    
+    if (userSession && userSession.client) {
+        userSession.client.destroy().then(() => {
+            userSession.isConnected = false;
+            userSession.status = 'disconnected';
+            userSession.qrCode = null;
+            
+            // Emit disconnect status
+            io.emit(`user_status_${userId}`, { 
+                connected: false, 
+                message: 'واتساب غير متصل',
+                status: 'disconnected',
+                hasQr: false,
+                userId: userId
+            });
+            
+            console.log(`✅ WhatsApp disconnected for user ${userId}`);
+        }).catch(error => {
+            console.error(`❌ Error disconnecting WhatsApp for user ${userId}:`, error);
+        });
     }
 }
 
@@ -1874,6 +1901,17 @@ app.post('/api/user-toggle-bot', authenticateUser, (req, res) => {
     }
 });
 
+// 🆕 FIXED: User-specific WhatsApp Disconnect Route
+app.post('/api/user-disconnect-whatsapp', authenticateUser, (req, res) => {
+    try {
+        const userId = req.user.id;
+        disconnectUserWhatsApp(userId);
+        res.json({ success: true, message: 'جارٍ قطع اتصال الواتساب...' });
+    } catch (error) {
+        res.status(500).json({ error: 'فشل قطع الاتصال' });
+    }
+});
+
 // 🆕 User-specific WhatsApp Reconnection
 app.post('/api/user-reconnect-whatsapp', authenticateUser, (req, res) => {
     try {
@@ -1990,6 +2028,41 @@ app.put('/api/users/:id', authenticateUser, authorizeAdmin, (req, res) => {
         
     } catch (error) {
         console.error('Update user error:', error);
+        res.status(500).json({ error: 'خطأ في الخادم' });
+    }
+});
+
+// 🆕 FIXED: Switch to User Dashboard Route
+app.post('/api/switch-to-user', authenticateUser, authorizeAdmin, (req, res) => {
+    try {
+        const { userId } = req.body;
+        
+        if (!userId) {
+            return res.status(400).json({ error: 'معرف المستخدم مطلوب' });
+        }
+        
+        const targetUser = users.find(u => u.id === parseInt(userId) && u.isActive);
+        if (!targetUser) {
+            return res.status(404).json({ error: 'المستخدم غير موجود' });
+        }
+        
+        // Generate temporary token for the target user
+        const tempToken = generateToken(targetUser);
+        
+        res.json({
+            success: true,
+            token: tempToken,
+            user: {
+                id: targetUser.id,
+                name: targetUser.name,
+                username: targetUser.username,
+                role: targetUser.role
+            },
+            message: `تم التبديل إلى حساب ${targetUser.name} بنجاح`
+        });
+        
+    } catch (error) {
+        console.error('Switch user error:', error);
         res.status(500).json({ error: 'خطأ في الخادم' });
     }
 });
@@ -2113,7 +2186,7 @@ app.post('/api/send-to-manager', authenticateUser, async (req, res) => {
     }
 });
 
-// Export report
+// Export report - FIXED: Now supports PDF/DOCX
 app.get('/api/export-report', authenticateUser, (req, res) => {
     try {
         console.log('🔄 Exporting report...');
@@ -2299,6 +2372,58 @@ io.on('connection', (socket) => {
     console.log('Client connected');
     
     // Handle user authentication for socket
+    socket.on('authenticate', (token) => {
+        try {
+            const decoded = verifyToken(token);
+            if (!decoded) {
+                socket.emit('auth_error', { error: 'Token غير صالح' });
+                return;
+            }
+            
+            const user = users.find(u => u.id === decoded.userId && u.isActive);
+            if (!user) {
+                socket.emit('auth_error', { error: 'المستخدم غير موجود' });
+                return;
+            }
+            
+            socket.userId = user.id;
+            console.log(`🔐 Socket authenticated for user ${user.name}`);
+            
+            // 🆕 CRITICAL: Send authentication success
+            socket.emit('authenticated', { 
+                userId: user.id, 
+                username: user.username 
+            });
+            
+            // Send user-specific initial data
+            const userSession = getUserWhatsAppSession(user.id);
+            if (userSession) {
+                socket.emit(`user_status_${user.id}`, { 
+                    connected: userSession.isConnected, 
+                    message: userSession.isConnected ? 'واتساب متصل ✅' : 
+                            userSession.status === 'qr-ready' ? 'يرجى مسح QR Code' :
+                            'جارٍ الاتصال...',
+                    status: userSession.status,
+                    hasQr: !!userSession.qrCode,
+                    userId: user.id
+                });
+                
+                // 🆕 CRITICAL: If QR code already exists, send it immediately
+                if (userSession.qrCode) {
+                    console.log(`📱 Sending existing QR code to user ${user.id}`);
+                    socket.emit(`user_qr_${user.id}`, { 
+                        qrCode: userSession.qrCode,
+                        userId: user.id,
+                        timestamp: new Date().toISOString()
+                    });
+                }
+            }
+            
+        } catch (error) {
+            socket.emit('auth_error', { error: 'خطأ في المصادقة' });
+        }
+    });
+
     // Handle user-specific bot toggle
     socket.on('user_toggle_bot', (data) => {
         if (!socket.userId) {
@@ -2314,58 +2439,7 @@ io.on('connection', (socket) => {
             });
         }
     });
-// In your socket.io connection event, add this:
-socket.on('authenticate', (token) => {
-    try {
-        const decoded = verifyToken(token);
-        if (!decoded) {
-            socket.emit('auth_error', { error: 'Token غير صالح' });
-            return;
-        }
-        
-        const user = users.find(u => u.id === decoded.userId && u.isActive);
-        if (!user) {
-            socket.emit('auth_error', { error: 'المستخدم غير موجود' });
-            return;
-        }
-        
-        socket.userId = user.id;
-        console.log(`🔐 Socket authenticated for user ${user.name}`);
-        
-        // 🆕 CRITICAL: Send authentication success
-        socket.emit('authenticated', { 
-            userId: user.id, 
-            username: user.username 
-        });
-        
-        // Send user-specific initial data
-        const userSession = getUserWhatsAppSession(user.id);
-        if (userSession) {
-            socket.emit(`user_status_${user.id}`, { 
-                connected: userSession.isConnected, 
-                message: userSession.isConnected ? 'واتساب متصل ✅' : 
-                        userSession.status === 'qr-ready' ? 'يرجى مسح QR Code' :
-                        'جارٍ الاتصال...',
-                status: userSession.status,
-                hasQr: !!userSession.qrCode,
-                userId: user.id
-            });
-            
-            // 🆕 CRITICAL: If QR code already exists, send it immediately
-            if (userSession.qrCode) {
-                console.log(`📱 Sending existing QR code to user ${user.id}`);
-                socket.emit(`user_qr_${user.id}`, { 
-                    qrCode: userSession.qrCode,
-                    userId: user.id,
-                    timestamp: new Date().toISOString()
-                });
-            }
-        }
-        
-    } catch (error) {
-        socket.emit('auth_error', { error: 'خطأ في المصادقة' });
-    }
-});
+
     // Handle client status update
     socket.on('update_client_status', (data) => {
         updateClientStatus(data.phone, data.status);
@@ -2438,6 +2512,15 @@ socket.on('authenticate', (token) => {
         manualReconnectUserWhatsApp(socket.userId);
     });
 
+    socket.on('user_disconnect_whatsapp', () => {
+        if (!socket.userId) {
+            socket.emit('error', { error: 'غير مصرح' });
+            return;
+        }
+        
+        disconnectUserWhatsApp(socket.userId);
+    });
+
     socket.on('disconnect', () => {
         console.log('Client disconnected');
     });
@@ -2464,5 +2547,6 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log('🎉 MULTI-USER ARCHITECTURE: COMPLETED');
     console.log('☁️  CLOUD-OPTIMIZED WHATSAPP: ENABLED');
     console.log('📱 QR CODE FIXED: FRONTEND WILL NOW RECEIVE QR CODES');
+    console.log('🔌 WHATSAPP DISCONNECT: ENABLED');
+    console.log('🔄 USER SWITCHING: ENABLED');
 });
-
