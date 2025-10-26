@@ -102,21 +102,12 @@
             color: white;
         }
         
-        /* FIXED CHAT STYLES - Improved layout */
-        .chat-area-container {
-            display: flex;
-            flex-direction: column;
-            height: 100%;
-            position: relative;
-        }
-        
+        /* IMPROVED CHAT STYLES */
         .chat-container {
-            flex: 1;
+            height: calc(100vh - 280px);
             overflow-y: auto;
             scroll-behavior: smooth;
             padding: 10px;
-            display: flex;
-            flex-direction: column;
         }
         
         .chat-bubble {
@@ -128,18 +119,17 @@
             font-size: 14px;
             line-height: 1.4;
             word-wrap: break-word;
-            align-self: flex-start;
         }
         
         .chat-bubble.sent {
             background: linear-gradient(135deg, #007C5C, #00B98B);
-            align-self: flex-end;
+            margin-left: auto;
             border-bottom-right-radius: 4px;
         }
         
         .chat-bubble.received {
             background: rgba(255, 255, 255, 0.1);
-            align-self: flex-start;
+            margin-right: auto;
             border-bottom-left-radius: 4px;
         }
         
@@ -683,35 +673,9 @@
             </div>
             
             <!-- Clients List / Chat Area -->
-            <div class="flex-1 flex overflow-hidden">
-                <!-- Clients List -->
-                <div class="w-1/3 border-l border-gray-600 h-full overflow-hidden flex flex-col">
-                    <div class="p-4 border-b border-gray-600">
-                        <h3 class="font-bold text-lg gradient-text mb-2">قائمة العملاء</h3>
-                        <!-- Status Filter -->
-                        <div class="status-filter">
-                            <button class="status-filter-btn btn-all active" data-status="all">الكل</button>
-                            <button class="status-filter-btn btn-interested" data-status="interested">
-                                <span class="status-dot dot-interested"></span> مهتم
-                            </button>
-                            <button class="status-filter-btn btn-busy" data-status="busy">
-                                <span class="status-dot dot-busy"></span> مشغول
-                            </button>
-                            <button class="status-filter-btn btn-not-interested" data-status="not-interested">
-                                <span class="status-dot dot-not-interested"></span> غير مهتم
-                            </button>
-                            <button class="status-filter-btn btn-no-reply" data-status="no-reply">
-                                <span class="status-dot dot-no-reply"></span> لم يرد
-                            </button>
-                        </div>
-                    </div>
-                    <div id="clientList" class="flex-1 overflow-y-auto p-2">
-                        <!-- Clients will be populated here -->
-                    </div>
-                </div>
-                
-                <!-- Chat Messages -->
-                <div class="flex-1 flex flex-col relative chat-area-container">
+            <div class="flex-1 flex">
+                <!-- FIXED: Chat Messages (LEFT) -->
+                <div class="flex-1 flex flex-col relative">
                     <div id="chatContainer" class="chat-container">
                         <div class="text-center text-gray-400 mt-20">
                             <i class="fas fa-comments text-5xl mb-4 opacity-50"></i>
@@ -741,6 +705,32 @@
                                 <i class="fas fa-paper-plane"></i>
                             </button>
                         </div>
+                    </div>
+                </div>
+                
+                <!-- FIXED: Clients List (RIGHT) -->
+                <div class="w-1/3 border-l border-gray-600 h-full overflow-hidden flex flex-col">
+                    <div class="p-4 border-b border-gray-600">
+                        <h3 class="font-bold text-lg gradient-text mb-2">قائمة العملاء</h3>
+                        <!-- Status Filter -->
+                        <div class="status-filter">
+                            <button class="status-filter-btn btn-all active" data-status="all">الكل</button>
+                            <button class="status-filter-btn btn-interested" data-status="interested">
+                                <span class="status-dot dot-interested"></span> مهتم
+                            </button>
+                            <button class="status-filter-btn btn-busy" data-status="busy">
+                                <span class="status-dot dot-busy"></span> مشغول
+                            </button>
+                            <button class="status-filter-btn btn-not-interested" data-status="not-interested">
+                                <span class="status-dot dot-not-interested"></span> غير مهتم
+                            </button>
+                            <button class="status-filter-btn btn-no-reply" data-status="no-reply">
+                                <span class="status-dot dot-no-reply"></span> لم يرد
+                            </button>
+                        </div>
+                    </div>
+                    <div id="clientList" class="flex-1 overflow-y-auto p-2">
+                        <!-- Clients will be populated here -->
                     </div>
                 </div>
             </div>
