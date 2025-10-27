@@ -415,7 +415,7 @@ function initializeUserWhatsApp(userId) {
                 });
 
                 // Update client last message
-                updateClientLastMessage(clientPhone, message.body);
+                updateClientLastMessage(userId, clientPhone, message.body);
 
                 // Process incoming message with user-specific auto-reply
                 processUserIncomingMessage(userId, message.body, message.from).catch(error => {
@@ -510,7 +510,7 @@ async function processUserIncomingMessage(userId, message, from) {
         storeClientMessage(clientPhone, message, false);
         
         // Auto-detect client interest
-        autoDetectClientInterest(clientPhone, message);
+        autoDetectClientInterest(userId, clientPhone, message);
         
         const userSession = getUserWhatsAppSession(userId);
         if (!userSession) {
@@ -568,7 +568,7 @@ async function processUserIncomingMessage(userId, message, from) {
         }
         
         // Update client last message
-        updateClientLastMessage(clientPhone, aiResponse);
+        updateClientLastMessage(userId, clientPhone, aiResponse);
         
         // Emit to frontend for the specific user
         io.emit(`user_message_${userId}`, {
@@ -1032,37 +1032,8 @@ function shouldSendGreeting(phone) {
     }
 }
 
-// FIXED: Check if we should auto-reply to client (REPLY TO ALL CLIENTS)
-function shouldReplyToClient(userId, phone) {
-    const userSession = getUserWhatsAppSession(userId);
-    if (!userSession) return false;
-    
-    // Check if client is in user's imported list
-    return userSession.importedClients.has(phone);
-}
-
-// Check if we should auto-reply to client (3-second delay)
-function shouldUserAutoReplyNow(userId, phone) {
-    const userSession = getUserWhatsAppSession(userId);
-    if (!userSession) return true;
-    
-    const lastReplyTime = userSession.clientReplyTimers.get(phone);
-    if (!lastReplyTime) return true;
-    
-    const timeDiff = Date.now() - lastReplyTime;
-    return timeDiff >= 3000; // 3 seconds minimum between replies
-}
-
-// Update client reply timer
-function updateUserReplyTimer(userId, phone) {
-    const userSession = getUserWhatsAppSession(userId);
-    if (userSession) {
-        userSession.clientReplyTimers.set(phone, Date.now());
-    }
-}
-
 // Auto-detect client interest based on message content
-function autoDetectClientInterest(phone, message) {
+function autoDetectClientInterest(userId, phone, message) {
     try {
         const msg = message.toLowerCase();
         
@@ -1082,7 +1053,7 @@ function autoDetectClientInterest(phone, message) {
         }
         
         // Update client status in memory
-        updateClientStatus(phone, newStatus);
+        updateClientStatus(userId, phone, newStatus);
         
         return newStatus;
     } catch (error) {
@@ -1091,14 +1062,14 @@ function autoDetectClientInterest(phone, message) {
     }
 }
 
-// Update client status in memory
-function updateClientStatus(phone, status) {
+// Update client status in memory - USER SPECIFIC
+function updateClientStatus(userId, phone, status) {
     try {
         let clients = [];
-        const clientsFile = './memory/clients.json';
+        const userClientsFile = `./memory/clients_${userId}.json`;
         
-        if (fs.existsSync(clientsFile)) {
-            const clientsData = fs.readFileSync(clientsFile, 'utf8');
+        if (fs.existsSync(userClientsFile)) {
+            const clientsData = fs.readFileSync(userClientsFile, 'utf8');
             clients = JSON.parse(clientsData);
         }
 
@@ -1106,16 +1077,12 @@ function updateClientStatus(phone, status) {
         if (clientIndex !== -1) {
             clients[clientIndex].status = status;
             clients[clientIndex].statusUpdatedAt = new Date().toISOString();
-            fs.writeFileSync(clientsFile, JSON.stringify(clients, null, 2));
+            fs.writeFileSync(userClientsFile, JSON.stringify(clients, null, 2));
             
-            // Emit status update to frontend
-            io.emit('client_status_updated', {
-                phone: phone,
-                status: status,
-                clients: clients
-            });
+            // Emit status update to frontend for this user only
+            io.emit(`user_clients_updated_${userId}`, clients);
             
-            console.log(`🔄 Auto-updated client ${phone} status to: ${status}`);
+            console.log(`🔄 User ${userId} auto-updated client ${phone} status to: ${status}`);
         }
     } catch (error) {
         console.error('Error updating client status:', error);
@@ -1591,14 +1558,14 @@ function processExcelFile(filePath) {
     }
 }
 
-// Update client last message
-function updateClientLastMessage(phone, message) {
+// Update client last message - USER SPECIFIC
+function updateClientLastMessage(userId, phone, message) {
     try {
         let clients = [];
-        const clientsFile = './memory/clients.json';
+        const userClientsFile = `./memory/clients_${userId}.json`;
         
-        if (fs.existsSync(clientsFile)) {
-            const clientsData = fs.readFileSync(clientsFile, 'utf8');
+        if (fs.existsSync(userClientsFile)) {
+            const clientsData = fs.readFileSync(userClientsFile, 'utf8');
             clients = JSON.parse(clientsData);
         }
 
@@ -1606,8 +1573,8 @@ function updateClientLastMessage(phone, message) {
         if (clientIndex !== -1) {
             clients[clientIndex].lastMessage = message.substring(0, 50) + (message.length > 50 ? '...' : '');
             clients[clientIndex].lastActivity = new Date().toISOString();
-            fs.writeFileSync(clientsFile, JSON.stringify(clients, null, 2));
-            io.emit('clients_updated', clients);
+            fs.writeFileSync(userClientsFile, JSON.stringify(clients, null, 2));
+            io.emit(`user_clients_updated_${userId}`, clients);
         }
     } catch (error) {
         console.error('Error updating client last message:', error);
@@ -1994,14 +1961,14 @@ app.put('/api/users/:id', authenticateUser, authorizeAdmin, (req, res) => {
     }
 });
 
-// Upload Excel file
+// Upload Excel file - USER SPECIFIC
 app.post('/api/upload-excel', authenticateUser, upload.single('excelFile'), (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({ error: 'لم يتم رفع أي ملف' });
         }
 
-        console.log('📂 Processing uploaded file:', req.file.originalname);
+        console.log('📂 Processing uploaded file for user:', req.user.name, req.file.originalname);
         
         const clients = processExcelFile(req.file.path);
 
@@ -2012,21 +1979,23 @@ app.post('/api/upload-excel', authenticateUser, upload.single('excelFile'), (req
             });
         }
 
-        // 🆕 Add clients to user's imported list
+        // 🆕 Add clients to user's imported list and save to user-specific file
         const userId = req.user.id;
         const userSession = getUserWhatsAppSession(userId);
+        const userClientsFile = `./memory/clients_${userId}.json`;
+        
         if (userSession) {
             clients.forEach(client => {
                 userSession.importedClients.add(client.phone);
             });
         }
 
-        // Save clients to file
-        fs.writeFileSync('./memory/clients.json', JSON.stringify(clients, null, 2));
+        // Save clients to USER-SPECIFIC file
+        fs.writeFileSync(userClientsFile, JSON.stringify(clients, null, 2));
         fs.unlinkSync(req.file.path); // Clean up uploaded file
 
-        // Emit to all connected clients
-        io.emit('clients_updated', clients);
+        // Emit to only this user's connected clients
+        io.emit(`user_clients_updated_${userId}`, clients);
 
         res.json({ 
             success: true, 
@@ -2049,17 +2018,21 @@ app.post('/api/upload-excel', authenticateUser, upload.single('excelFile'), (req
     }
 });
 
-// Get clients list
+// Get clients list - USER SPECIFIC
 app.get('/api/clients', authenticateUser, (req, res) => {
     try {
-        if (fs.existsSync('./memory/clients.json')) {
-            const clientsData = fs.readFileSync('./memory/clients.json', 'utf8');
+        const userId = req.user.id;
+        const userClientsFile = `./memory/clients_${userId}.json`;
+        
+        if (fs.existsSync(userClientsFile)) {
+            const clientsData = fs.readFileSync(userClientsFile, 'utf8');
             const clients = JSON.parse(clientsData);
             res.json({ success: true, clients: clients });
         } else {
             res.json({ success: true, clients: [] });
         }
     } catch (error) {
+        console.error('Error loading user clients:', error);
         res.json({ success: true, clients: [] });
     }
 });
@@ -2282,7 +2255,7 @@ app.post('/api/send-message', authenticateUser, async (req, res) => {
         });
         
         storeClientMessage(phone, message, true);
-        updateClientLastMessage(phone, message);
+        updateClientLastMessage(userId, phone, message);
         
         res.json({ 
             success: true, 
@@ -2299,6 +2272,66 @@ io.on('connection', (socket) => {
     console.log('Client connected');
     
     // Handle user authentication for socket
+    socket.on('authenticate', (token) => {
+        try {
+            const decoded = verifyToken(token);
+            if (!decoded) {
+                socket.emit('auth_error', { error: 'Token غير صالح' });
+                return;
+            }
+            
+            const user = users.find(u => u.id === decoded.userId && u.isActive);
+            if (!user) {
+                socket.emit('auth_error', { error: 'المستخدم غير موجود' });
+                return;
+            }
+            
+            socket.userId = user.id;
+            console.log(`🔐 Socket authenticated for user ${user.name}`);
+            
+            // 🆕 CRITICAL: Send authentication success
+            socket.emit('authenticated', { 
+                userId: user.id, 
+                username: user.username 
+            });
+            
+            // Send user-specific initial data
+            const userSession = getUserWhatsAppSession(user.id);
+            if (userSession) {
+                socket.emit(`user_status_${user.id}`, { 
+                    connected: userSession.isConnected, 
+                    message: userSession.isConnected ? 'واتساب متصل ✅' : 
+                            userSession.status === 'qr-ready' ? 'يرجى مسح QR Code' :
+                            'جارٍ الاتصال...',
+                    status: userSession.status,
+                    hasQr: !!userSession.qrCode,
+                    userId: user.id
+                });
+                
+                // 🆕 CRITICAL: If QR code already exists, send it immediately
+                if (userSession.qrCode) {
+                    console.log(`📱 Sending existing QR code to user ${user.id}`);
+                    socket.emit(`user_qr_${user.id}`, { 
+                        qrCode: userSession.qrCode,
+                        userId: user.id,
+                        timestamp: new Date().toISOString()
+                    });
+                }
+            }
+            
+            // Send user-specific clients
+            const userClientsFile = `./memory/clients_${user.id}.json`;
+            if (fs.existsSync(userClientsFile)) {
+                const clientsData = fs.readFileSync(userClientsFile, 'utf8');
+                const clients = JSON.parse(clientsData);
+                socket.emit(`user_clients_updated_${user.id}`, clients);
+            }
+            
+        } catch (error) {
+            socket.emit('auth_error', { error: 'خطأ في المصادقة' });
+        }
+    });
+
     // Handle user-specific bot toggle
     socket.on('user_toggle_bot', (data) => {
         if (!socket.userId) {
@@ -2314,61 +2347,14 @@ io.on('connection', (socket) => {
             });
         }
     });
-// In your socket.io connection event, add this:
-socket.on('authenticate', (token) => {
-    try {
-        const decoded = verifyToken(token);
-        if (!decoded) {
-            socket.emit('auth_error', { error: 'Token غير صالح' });
-            return;
-        }
-        
-        const user = users.find(u => u.id === decoded.userId && u.isActive);
-        if (!user) {
-            socket.emit('auth_error', { error: 'المستخدم غير موجود' });
-            return;
-        }
-        
-        socket.userId = user.id;
-        console.log(`🔐 Socket authenticated for user ${user.name}`);
-        
-        // 🆕 CRITICAL: Send authentication success
-        socket.emit('authenticated', { 
-            userId: user.id, 
-            username: user.username 
-        });
-        
-        // Send user-specific initial data
-        const userSession = getUserWhatsAppSession(user.id);
-        if (userSession) {
-            socket.emit(`user_status_${user.id}`, { 
-                connected: userSession.isConnected, 
-                message: userSession.isConnected ? 'واتساب متصل ✅' : 
-                        userSession.status === 'qr-ready' ? 'يرجى مسح QR Code' :
-                        'جارٍ الاتصال...',
-                status: userSession.status,
-                hasQr: !!userSession.qrCode,
-                userId: user.id
-            });
-            
-            // 🆕 CRITICAL: If QR code already exists, send it immediately
-            if (userSession.qrCode) {
-                console.log(`📱 Sending existing QR code to user ${user.id}`);
-                socket.emit(`user_qr_${user.id}`, { 
-                    qrCode: userSession.qrCode,
-                    userId: user.id,
-                    timestamp: new Date().toISOString()
-                });
-            }
-        }
-        
-    } catch (error) {
-        socket.emit('auth_error', { error: 'خطأ في المصادقة' });
-    }
-});
+
     // Handle client status update
     socket.on('update_client_status', (data) => {
-        updateClientStatus(data.phone, data.status);
+        if (!socket.userId) {
+            socket.emit('error', { error: 'غير مصرح' });
+            return;
+        }
+        updateClientStatus(socket.userId, data.phone, data.status);
         socket.emit('client_status_updated', { success: true });
     });
 
@@ -2413,7 +2399,7 @@ socket.on('authenticate', (token) => {
             });
             
             storeClientMessage(to, message, true);
-            updateClientLastMessage(to, message);
+            updateClientLastMessage(socket.userId, to, message);
             
             socket.emit('message_sent', { 
                 to: to,
@@ -2464,5 +2450,5 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log('🎉 MULTI-USER ARCHITECTURE: COMPLETED');
     console.log('☁️  CLOUD-OPTIMIZED WHATSAPP: ENABLED');
     console.log('📱 QR CODE FIXED: FRONTEND WILL NOW RECEIVE QR CODES');
+    console.log('🔧 USER-SPECIFIC CLIENTS: ENABLED - Each user sees only their own clients');
 });
-
