@@ -236,10 +236,10 @@ const AI_SYSTEM_PROMPT = `أنت مساعد ذكي ومحترف تمثل شرك�
 المقر: الرياض - حي المغرزات
 
 🔹 **باقات الأسعار (سنوية):**
-• الباقة الأساسية: 1000 ريال (مستخدم واحد)
-• الباقة المتقدمة: 1800 ريال (مستخدمين) 
-• الباقة الاحترافية: 2700 ريال (3 مستخدمين)
-• الباقة المميزة: 3000 ريال (3 مستخدمين)
+• الباقة الأساسية: 1000 ريال/سنوياً
+• الباقة المتقدمة: 1800 ريال/سنوياً  
+• الباقة الاحترافية: 2700 ريال/سنوياً
+• الباقة المميزة: 3000 ريال/سنوياً
 
 🔹 **قواعد الرد الإلزامية:**
 1. **لا تجيب أبداً على:** أسئلة شخصية، سياسة، أديان، برامج أخرى، منافسين
@@ -390,7 +390,7 @@ function initializeUserWhatsApp(userId) {
             console.log(`✅ User ${userId} WhatsApp connected successfully`);
         });
 
-        // 🆕 Message Event with User-specific Processing
+        // 🆕 FIXED: Message Event with User-specific Processing
         userSession.client.on('message', async (message) => {
             // Ignore status broadcasts and messages from us
             if (message.from === 'status@broadcast' || message.fromMe) {
@@ -401,17 +401,19 @@ function initializeUserWhatsApp(userId) {
             console.log('💬 Message content:', message.body);
             
             try {
-                // Store incoming message immediately
                 const clientPhone = message.from.replace('@c.us', '');
+                
+                // 🆕 FIXED: Store incoming message immediately
                 storeClientMessage(clientPhone, message.body, false);
                 
-                // Emit to frontend with user context
+                // 🆕 FIXED: Emit to frontend with user context
                 io.emit(`user_message_${userId}`, {
                     from: clientPhone,
                     message: message.body,
-                    timestamp: new Date(),
+                    timestamp: new Date().toISOString(),
                     fromMe: false,
-                    userId: userId
+                    userId: userId,
+                    clientPhone: clientPhone // 🆕 ADDED: Include client phone for frontend
                 });
 
                 // Update client last message
@@ -499,7 +501,7 @@ function isUserWhatsAppConnected(userId) {
     return session && session.isConnected;
 }
 
-// 🆕 User-specific Message Processing
+// 🆕 FIXED: User-specific Message Processing
 async function processUserIncomingMessage(userId, message, from) {
     try {
         console.log(`📩 User ${userId} processing message from ${from}: ${message}`);
@@ -559,6 +561,16 @@ async function processUserIncomingMessage(userId, message, from) {
         // Store the sent message
         storeClientMessage(clientPhone, aiResponse, true);
         
+        // 🆕 FIXED: Emit the sent message to frontend
+        io.emit(`user_message_${userId}`, {
+            from: clientPhone,
+            message: aiResponse,
+            timestamp: new Date().toISOString(),
+            fromMe: true,
+            userId: userId,
+            clientPhone: clientPhone // 🆕 ADDED: Include client phone for frontend
+        });
+        
         // Update user-specific reply timer
         updateUserReplyTimer(userId, clientPhone);
         
@@ -569,15 +581,6 @@ async function processUserIncomingMessage(userId, message, from) {
         
         // Update client last message
         updateClientLastMessage(clientPhone, aiResponse);
-        
-        // Emit to frontend for the specific user
-        io.emit(`user_message_${userId}`, {
-            from: clientPhone,
-            message: aiResponse,
-            timestamp: new Date(),
-            fromMe: true,
-            userId: userId
-        });
         
         console.log(`✅ User ${userId} auto-reply sent to ${clientPhone}`);
         
@@ -590,6 +593,16 @@ async function processUserIncomingMessage(userId, message, from) {
             if (userSession && userSession.isConnected) {
                 const professionalMessage = "عذراً، يبدو أن هناك تأخير في النظام. يرجى المحاولة مرة أخرى أو التواصل معنا مباشرة على +966555111222";
                 await userSession.client.sendMessage(from, professionalMessage);
+                
+                // 🆕 FIXED: Also emit error message to frontend
+                io.emit(`user_message_${userId}`, {
+                    from: from.replace('@c.us', ''),
+                    message: professionalMessage,
+                    timestamp: new Date().toISOString(),
+                    fromMe: true,
+                    userId: userId,
+                    clientPhone: from.replace('@c.us', '')
+                });
             }
         } catch (sendError) {
             console.error(`❌ User ${userId} failed to send error message:`, sendError);
@@ -1469,7 +1482,7 @@ async function generateRagmcloudAIResponse(userMessage, clientPhone) {
     return generateEnhancedRagmcloudResponse(userMessage, clientPhone);
 }
 
-// ENHANCED: Store messages per client with better reliability
+// 🆕 FIXED: Store messages per client with better reliability
 function storeClientMessage(phone, message, isFromMe) {
     try {
         const messageData = {
@@ -1512,7 +1525,7 @@ function storeClientMessage(phone, message, isFromMe) {
     }
 }
 
-// ENHANCED: Get client messages with error handling
+// 🆕 FIXED: Get client messages with error handling
 function getClientMessages(phone) {
     try {
         const messageFile = `./memory/messages_${phone}.json`;
@@ -2299,6 +2312,58 @@ io.on('connection', (socket) => {
     console.log('Client connected');
     
     // Handle user authentication for socket
+    socket.on('authenticate', (token) => {
+        try {
+            const decoded = verifyToken(token);
+            if (!decoded) {
+                socket.emit('auth_error', { error: 'Token غير صالح' });
+                return;
+            }
+            
+            const user = users.find(u => u.id === decoded.userId && u.isActive);
+            if (!user) {
+                socket.emit('auth_error', { error: 'المستخدم غير موجود' });
+                return;
+            }
+            
+            socket.userId = user.id;
+            console.log(`🔐 Socket authenticated for user ${user.name}`);
+            
+            // 🆕 CRITICAL: Send authentication success
+            socket.emit('authenticated', { 
+                userId: user.id, 
+                username: user.username 
+            });
+            
+            // Send user-specific initial data
+            const userSession = getUserWhatsAppSession(user.id);
+            if (userSession) {
+                socket.emit(`user_status_${user.id}`, { 
+                    connected: userSession.isConnected, 
+                    message: userSession.isConnected ? 'واتساب متصل ✅' : 
+                            userSession.status === 'qr-ready' ? 'يرجى مسح QR Code' :
+                            'جارٍ الاتصال...',
+                    status: userSession.status,
+                    hasQr: !!userSession.qrCode,
+                    userId: user.id
+                });
+                
+                // 🆕 CRITICAL: If QR code already exists, send it immediately
+                if (userSession.qrCode) {
+                    console.log(`📱 Sending existing QR code to user ${user.id}`);
+                    socket.emit(`user_qr_${user.id}`, { 
+                        qrCode: userSession.qrCode,
+                        userId: user.id,
+                        timestamp: new Date().toISOString()
+                    });
+                }
+            }
+            
+        } catch (error) {
+            socket.emit('auth_error', { error: 'خطأ في المصادقة' });
+        }
+    });
+
     // Handle user-specific bot toggle
     socket.on('user_toggle_bot', (data) => {
         if (!socket.userId) {
@@ -2314,58 +2379,7 @@ io.on('connection', (socket) => {
             });
         }
     });
-// In your socket.io connection event, add this:
-socket.on('authenticate', (token) => {
-    try {
-        const decoded = verifyToken(token);
-        if (!decoded) {
-            socket.emit('auth_error', { error: 'Token غير صالح' });
-            return;
-        }
-        
-        const user = users.find(u => u.id === decoded.userId && u.isActive);
-        if (!user) {
-            socket.emit('auth_error', { error: 'المستخدم غير موجود' });
-            return;
-        }
-        
-        socket.userId = user.id;
-        console.log(`🔐 Socket authenticated for user ${user.name}`);
-        
-        // 🆕 CRITICAL: Send authentication success
-        socket.emit('authenticated', { 
-            userId: user.id, 
-            username: user.username 
-        });
-        
-        // Send user-specific initial data
-        const userSession = getUserWhatsAppSession(user.id);
-        if (userSession) {
-            socket.emit(`user_status_${user.id}`, { 
-                connected: userSession.isConnected, 
-                message: userSession.isConnected ? 'واتساب متصل ✅' : 
-                        userSession.status === 'qr-ready' ? 'يرجى مسح QR Code' :
-                        'جارٍ الاتصال...',
-                status: userSession.status,
-                hasQr: !!userSession.qrCode,
-                userId: user.id
-            });
-            
-            // 🆕 CRITICAL: If QR code already exists, send it immediately
-            if (userSession.qrCode) {
-                console.log(`📱 Sending existing QR code to user ${user.id}`);
-                socket.emit(`user_qr_${user.id}`, { 
-                    qrCode: userSession.qrCode,
-                    userId: user.id,
-                    timestamp: new Date().toISOString()
-                });
-            }
-        }
-        
-    } catch (error) {
-        socket.emit('auth_error', { error: 'خطأ في المصادقة' });
-    }
-});
+
     // Handle client status update
     socket.on('update_client_status', (data) => {
         updateClientStatus(data.phone, data.status);
@@ -2414,6 +2428,16 @@ socket.on('authenticate', (token) => {
             
             storeClientMessage(to, message, true);
             updateClientLastMessage(to, message);
+            
+            // 🆕 FIXED: Emit the sent message to frontend
+            socket.emit(`user_message_${socket.userId}`, {
+                from: to,
+                message: message,
+                timestamp: new Date().toISOString(),
+                fromMe: true,
+                userId: socket.userId,
+                clientPhone: to
+            });
             
             socket.emit('message_sent', { 
                 to: to,
@@ -2464,5 +2488,5 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log('🎉 MULTI-USER ARCHITECTURE: COMPLETED');
     console.log('☁️  CLOUD-OPTIMIZED WHATSAPP: ENABLED');
     console.log('📱 QR CODE FIXED: FRONTEND WILL NOW RECEIVE QR CODES');
+    console.log('💬 MESSAGE DISPLAY FIXED: MESSAGES WILL NOW APPEAR IN CHAT CONTAINER');
 });
-
