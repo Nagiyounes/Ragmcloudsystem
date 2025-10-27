@@ -887,7 +887,7 @@
                     updateBotStatusUI();
                 });
 
-                // 🆕 FIXED: User-specific messages
+                // 🆕 FIXED: User-specific messages - FIXED MESSAGE DISPLAY ISSUE
                 socket.on(`user_message_${userId}`, (data) => {
                     console.log('📡 Received user message:', data);
                     handleUserMessage(data);
@@ -1191,6 +1191,72 @@
             });
         }
 
+        // 🆕 FIXED: Handle user messages - FIXED THE MAIN ISSUE
+        function handleUserMessage(data) {
+            console.log('💬 Handling user message:', data);
+            
+            // Check if the message is for the currently selected client
+            if (currentClient && currentClient.phone === data.clientPhone) {
+                console.log('✅ Message is for current client, displaying in chat');
+                
+                // Add message to local storage
+                if (!messages[currentClient.id]) {
+                    messages[currentClient.id] = [];
+                }
+                
+                const messageData = {
+                    message: data.message,
+                    fromMe: data.fromMe,
+                    timestamp: data.timestamp || new Date().toISOString()
+                };
+                
+                messages[currentClient.id].push(messageData);
+                
+                // Render the updated messages
+                renderMessages(messages[currentClient.id]);
+                
+                // Update client last message in the list
+                updateClientInList(currentClient.id, data.message);
+                
+            } else {
+                console.log('ℹ️ Message is for different client or no client selected');
+                
+                // Update the client in the list with new message
+                const client = clients.find(c => c.phone === data.clientPhone);
+                if (client) {
+                    updateClientInList(client.id, data.message);
+                    
+                    // Show notification for new message
+                    if (!data.fromMe) {
+                        showToast(`📩 رسالة جديدة من ${client.name}`, 'success');
+                    }
+                }
+            }
+            
+            // Update performance stats for AI replies
+            if (data.fromMe) {
+                updatePerformanceStats({
+                    aiReplies: parseInt(statAIReplies.textContent) + 1
+                });
+            }
+        }
+
+        // 🆕 NEW: Update client in list with new message
+        function updateClientInList(clientId, message) {
+            const client = clients.find(c => c.id === clientId);
+            if (client) {
+                client.lastMessage = message.substring(0, 50) + (message.length > 50 ? '...' : '');
+                client.lastActivity = new Date().toISOString();
+                
+                // If this is a new incoming message, increment unread count
+                if (!currentClient || currentClient.id !== clientId) {
+                    client.unread = (client.unread || 0) + 1;
+                }
+                
+                renderClientList();
+            }
+        }
+
         // Logout Function
         function logoutUser() {
             if (confirm('هل أنت متأكد من تسجيل الخروج؟')) {
@@ -1487,6 +1553,10 @@
             clientStatusSelector.classList.remove('hidden');
             statusSelect.value = client.status;
             
+            // Reset unread count when selecting client
+            client.unread = 0;
+            renderClientList();
+            
             messageInput.disabled = false;
             sendMessageBtn.disabled = false;
             
@@ -1610,7 +1680,7 @@
             .then(data => {
                 if (data.success) {
                     showToast(`🚀 ${data.message}`, 'success');
-                isBulkSending = true;
+                    isBulkSending = true;
                     sendBulkBtn.disabled = true;
                     sendBulkBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> جاري الإرسال...';
                 } else {
@@ -1831,6 +1901,11 @@
                 scrollToBottom.classList.add('visible');
             }
         });
+
+        // Load initial data
+        loadClients();
+        loadPerformanceStats();
+        loadUsers();
     </script>
 </body>
 </html>
