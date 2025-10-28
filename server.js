@@ -650,6 +650,33 @@ function manualReconnectUserWhatsApp(userId) {
     }
 }
 
+// NEW: WhatsApp Disconnect Function
+function disconnectUserWhatsApp(userId) {
+    console.log(`🔌 Disconnecting WhatsApp for user ${userId}...`);
+    const userSession = getUserWhatsAppSession(userId);
+    
+    if (userSession && userSession.client) {
+        userSession.client.destroy().then(() => {
+            userSession.isConnected = false;
+            userSession.status = 'disconnected';
+            userSession.qrCode = null;
+            
+            // Emit disconnect status
+            io.emit(`user_status_${userId}`, { 
+                connected: false, 
+                message: 'تم فصل الواتساب',
+                status: 'disconnected',
+                hasQr: false,
+                userId: userId
+            });
+            
+            console.log(`✅ WhatsApp disconnected for user ${userId}`);
+        }).catch(error => {
+            console.error(`❌ Error disconnecting WhatsApp for user ${userId}:`, error);
+        });
+    }
+}
+
 // =============================================
 // EXISTING FUNCTIONS (Updated for Multi-User)
 // =============================================
@@ -718,7 +745,6 @@ function generateToken(user) {
     );
 }
 
-// NEW: Enhanced Token Verification to handle admin views
 function verifyToken(token) {
     try {
         return jwt.verify(token, JWT_SECRET);
@@ -727,7 +753,6 @@ function verifyToken(token) {
     }
 }
 
-// NEW: Enhanced authenticateUser middleware
 function authenticateUser(req, res, next) {
     const token = req.header('Authorization')?.replace('Bearer ', '');
     
@@ -738,13 +763,6 @@ function authenticateUser(req, res, next) {
     const decoded = verifyToken(token);
     if (!decoded) {
         return res.status(401).json({ error: 'Token غير صالح.' });
-    }
-    
-    // For admin view sessions, we don't check the user in the database
-    if (decoded.isAdminView) {
-        req.user = decoded;
-        next();
-        return;
     }
     
     const user = users.find(u => u.id === decoded.userId && u.isActive);
@@ -1685,135 +1703,6 @@ function calculateActiveHours(startTime, endTime) {
     return `${hours} ساعة ${minutes} دقيقة`;
 }
 
-// =============================================
-// NEW: FIXED ROUTES FOR ADMIN NAVIGATION AND WHATSAPP DISCONNECT
-// =============================================
-
-// NEW: Get User by ID for Admin Viewing
-app.get('/api/users/:id', authenticateUser, authorizeAdmin, (req, res) => {
-    try {
-        const userId = parseInt(req.params.id);
-        const user = users.find(u => u.id === userId);
-        
-        if (!user) {
-            return res.status(404).json({ error: 'المستخدم غير موجود' });
-        }
-        
-        res.json({
-            success: true,
-            user: {
-                id: user.id,
-                name: user.name,
-                username: user.username,
-                role: user.role,
-                isActive: user.isActive,
-                createdAt: user.createdAt,
-                lastLogin: user.lastLogin
-            }
-        });
-    } catch (error) {
-        res.status(500).json({ error: 'خطأ في الخادم' });
-    }
-});
-
-// NEW: Switch to User View (Admin Function)
-app.post('/api/switch-user/:id', authenticateUser, authorizeAdmin, (req, res) => {
-    try {
-        const targetUserId = parseInt(req.params.id);
-        const targetUser = users.find(u => u.id === targetUserId);
-        
-        if (!targetUser) {
-            return res.status(404).json({ error: 'المستخدم غير موجود' });
-        }
-        
-        // Generate temporary token for the target user
-        const tempToken = jwt.sign(
-            { 
-                userId: targetUser.id, 
-                username: targetUser.username,
-                role: targetUser.role,
-                isAdminView: true,
-                adminId: req.user.id
-            },
-            JWT_SECRET,
-            { expiresIn: '1h' }
-        );
-        
-        res.json({
-            success: true,
-            token: tempToken,
-            user: {
-                id: targetUser.id,
-                name: targetUser.name,
-                username: targetUser.username,
-                role: targetUser.role
-            },
-            message: 'تم التبديل إلى عرض المستخدم بنجاح'
-        });
-        
-    } catch (error) {
-        console.error('Switch user error:', error);
-        res.status(500).json({ error: 'خطأ في الخادم' });
-    }
-});
-
-// NEW: Return to Admin View
-app.post('/api/return-admin', authenticateUser, (req, res) => {
-    try {
-        // Verify this is a temporary admin view session
-        if (req.user.isAdminView && req.user.adminId) {
-            const adminUser = users.find(u => u.id === req.user.adminId);
-            
-            if (adminUser) {
-                const adminToken = generateToken(adminUser);
-                
-                res.json({
-                    success: true,
-                    token: adminToken,
-                    user: {
-                        id: adminUser.id,
-                        name: adminUser.name,
-                        username: adminUser.username,
-                        role: adminUser.role
-                    },
-                    message: 'تم العودة إلى حساب المدير'
-                });
-                return;
-            }
-        }
-        
-        res.status(400).json({ error: 'غير مصرح بهذه العملية' });
-    } catch (error) {
-        console.error('Return to admin error:', error);
-        res.status(500).json({ error: 'خطأ في الخادم' });
-    }
-});
-
-// NEW: WhatsApp Disconnect Endpoint
-app.post('/api/user-disconnect-whatsapp', authenticateUser, (req, res) => {
-    try {
-        const userId = req.user.id;
-        const userSession = getUserWhatsAppSession(userId);
-        
-        if (userSession && userSession.client) {
-            userSession.client.destroy();
-            userWhatsAppSessions.delete(userId);
-            
-            console.log(`✅ User ${userId} WhatsApp disconnected manually`);
-            
-            res.json({ 
-                success: true, 
-                message: 'تم قطع اتصال واتساب بنجاح' 
-            });
-        } else {
-            res.status(400).json({ error: 'لا يوجد اتصال واتساب نشط' });
-        }
-    } catch (error) {
-        console.error('Error disconnecting WhatsApp:', error);
-        res.status(500).json({ error: 'فشل قطع الاتصال' });
-    }
-});
-
 // Middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -1988,6 +1877,17 @@ app.post('/api/user-reconnect-whatsapp', authenticateUser, (req, res) => {
         res.json({ success: true, message: 'جارٍ إعادة الاتصال...' });
     } catch (error) {
         res.status(500).json({ error: 'فشل إعادة الاتصال' });
+    }
+});
+
+// NEW: WhatsApp Disconnect Route
+app.post('/api/disconnect-whatsapp', authenticateUser, (req, res) => {
+    try {
+        const userId = req.user.id;
+        disconnectUserWhatsApp(userId);
+        res.json({ success: true, message: 'جارٍ فصل الواتساب...' });
+    } catch (error) {
+        res.status(500).json({ error: 'فشل فصل الواتساب' });
     }
 });
 
@@ -2420,6 +2320,17 @@ io.on('connection', (socket) => {
         }
     });
 
+    // NEW: Handle WhatsApp disconnect
+    socket.on('disconnect_whatsapp', () => {
+        if (!socket.userId) {
+            socket.emit('error', { error: 'غير مصرح' });
+            return;
+        }
+        
+        disconnectUserWhatsApp(socket.userId);
+        socket.emit('whatsapp_disconnected', { success: true });
+    });
+
     socket.on('authenticate', (token) => {
         try {
             const decoded = verifyToken(token);
@@ -2569,7 +2480,5 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log('🎉 MULTI-USER ARCHITECTURE: COMPLETED');
     console.log('☁️  CLOUD-OPTIMIZED WHATSAPP: ENABLED');
     console.log('📱 QR CODE FIXED: FRONTEND WILL NOW RECEIVE QR CODES');
-    console.log('🔄 ADMIN NAVIGATION: FIXED');
-    console.log('💾 SESSION PERSISTENCE: ENABLED');
-    console.log('🔌 WHATSAPP DISCONNECT: ADDED');
+    console.log('🔌 WHATSAPP DISCONNECT: ENABLED');
 });
