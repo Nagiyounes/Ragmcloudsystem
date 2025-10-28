@@ -1804,6 +1804,32 @@ app.get('/api/me', authenticateUser, (req, res) => {
     });
 });
 
+// NEW: User Switch Route - Actual Navigation
+app.post('/api/switch-user', authenticateUser, authorizeAdmin, (req, res) => {
+    try {
+        const { targetUserId } = req.body;
+        const targetUser = users.find(u => u.id === parseInt(targetUserId) && u.isActive);
+        
+        if (!targetUser) {
+            return res.status(404).json({ error: 'المستخدم غير موجود' });
+        }
+        
+        // Generate token for target user
+        const targetToken = generateToken(targetUser);
+        
+        res.json({
+            success: true,
+            token: targetToken,
+            redirectUrl: '/dashboard',
+            message: `تم الانتقال إلى ${targetUser.name}`
+        });
+        
+    } catch (error) {
+        console.error('User switch error:', error);
+        res.status(500).json({ error: 'خطأ في الانتقال' });
+    }
+});
+
 // User WhatsApp Status Route
 app.get('/api/user-whatsapp-status', authenticateUser, (req, res) => {
     try {
@@ -2481,4 +2507,6 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log('☁️  CLOUD-OPTIMIZED WHATSAPP: ENABLED');
     console.log('📱 QR CODE FIXED: FRONTEND WILL NOW RECEIVE QR CODES');
     console.log('🔌 WHATSAPP DISCONNECT: ENABLED');
+    console.log('🎯 NAVIGATION FIXED: ADMIN CAN NOW SWITCH TO OTHER USERS');
+    console.log('💬 CHAT HISTORY FIXED: MESSAGES NOW DISPLAY PROPERLY IN CONTAINER');
 });
