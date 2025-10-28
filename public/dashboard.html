@@ -1,3 +1,5 @@
+[file name]: dashboard.html
+[file content begin]
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -100,32 +102,6 @@
         .unread-badge {
             background: linear-gradient(135deg, #f56565, #c53030);
             color: white;
-        }
-        
-        /* FIXED: Proper layout containment - Added from second file */
-        .chat-wrapper {
-            display: flex;
-            height: 100%;
-            overflow: hidden;
-        }
-        
-        .clients-sidebar {
-            width: 350px;
-            min-width: 350px;
-            max-width: 350px;
-            flex-shrink: 0;
-            border-left: 1px solid rgba(255, 255, 255, 0.1);
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
-        
-        .chat-main {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            min-width: 0;
-            overflow: hidden;
         }
         
         /* IMPROVED CHAT STYLES */
@@ -436,6 +412,102 @@
             transform: translateY(-2px);
             box-shadow: 0 4px 20px rgba(245, 101, 101, 0.4);
         }
+
+        /* FIXED: Chat List Styles */
+        .conversations-container {
+            height: calc(100vh - 200px);
+            overflow-y: auto;
+            padding: 10px;
+        }
+
+        .conversation-item {
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            border-radius: 10px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .conversation-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .conversation-item.active {
+            background: rgba(0, 124, 92, 0.2);
+            border-right: 3px solid #00B98B;
+        }
+
+        .conversation-avatar {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #007C5C, #00B98B);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-left: 12px;
+            flex-shrink: 0;
+        }
+
+        .conversation-content {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .conversation-name {
+            font-weight: bold;
+            margin-bottom: 4px;
+            color: white;
+        }
+
+        .conversation-preview {
+            color: #9CA3AF;
+            font-size: 13px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .conversation-time {
+            color: #6B7280;
+            font-size: 11px;
+            white-space: nowrap;
+        }
+
+        .conversation-badge {
+            background: #EF4444;
+            color: white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            margin-top: 4px;
+        }
+
+        /* FIXED: Main Chat Area Layout */
+        .main-chat-area {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        .chat-messages-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .chat-input-container {
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            background: rgba(45, 55, 72, 0.8);
+        }
     </style>
 </head>
 <body class="text-white">
@@ -675,8 +747,8 @@
                             <i class="fas fa-user"></i>
                         </div>
                         <div>
-                            <h2 id="currentClientName" class="text-xl font-bold">اختر عميلاً</h2>
-                            <p id="currentClientPhone" class="text-sm text-gray-400">لم يتم اختيار عميل</p>
+                            <h2 id="currentClientName" class="text-xl font-bold">اختر محادثة</h2>
+                            <p id="currentClientPhone" class="text-sm text-gray-400">لم يتم اختيار محادثة</p>
                         </div>
                     </div>
                     <div class="flex items-center space-x-2">
@@ -698,12 +770,12 @@
                 </div>
             </div>
             
-            <!-- FIXED: Chat Area Structure - Replaced with proper layout containment -->
-            <div class="flex-1 chat-wrapper">
-                <!-- Clients List -->
-                <div class="clients-sidebar">
+            <!-- FIXED: Main Chat Container with Conversations List -->
+            <div class="flex-1 flex">
+                <!-- Conversations List - Now properly displayed -->
+                <div class="w-1/3 border-l border-gray-600 h-full overflow-hidden flex flex-col">
                     <div class="p-4 border-b border-gray-600">
-                        <h3 class="font-bold text-lg gradient-text mb-2">قائمة العملاء</h3>
+                        <h3 class="font-bold text-lg gradient-text mb-2">المحادثات</h3>
                         <!-- Status Filter -->
                         <div class="status-filter">
                             <button class="status-filter-btn btn-all active" data-status="all">الكل</button>
@@ -721,18 +793,25 @@
                             </button>
                         </div>
                     </div>
-                    <div id="clientList" class="flex-1 overflow-y-auto p-2">
-                        <!-- Clients will be populated here -->
+                    
+                    <!-- FIXED: Conversations List Container -->
+                    <div id="conversationsList" class="conversations-container">
+                        <!-- Conversations will be populated here dynamically -->
+                        <div class="text-center text-gray-400 mt-10">
+                            <i class="fas fa-comments text-4xl mb-3 opacity-50"></i>
+                            <p class="text-lg">لا توجد محادثات</p>
+                            <p class="text-sm text-gray-500 mt-1">قم برفع ملف Excel لبدء المحادثات</p>
+                        </div>
                     </div>
                 </div>
                 
-                <!-- Chat Messages -->
-                <div class="chat-main">
-                    <div id="chatContainer" class="chat-container">
+                <!-- FIXED: Chat Messages Area -->
+                <div class="flex-1 flex flex-col main-chat-area">
+                    <div id="chatMessages" class="chat-messages-container">
                         <div class="text-center text-gray-400 mt-20">
                             <i class="fas fa-comments text-5xl mb-4 opacity-50"></i>
                             <p class="text-xl mb-2">مرحباً في رقم كلاود ERP!</p>
-                            <p class="text-gray-500">اختر عميلاً لبدء المحادثة</p>
+                            <p class="text-gray-500">اختر محادثة من القائمة لبدء المراسلة</p>
                         </div>
                     </div>
                     
@@ -742,7 +821,7 @@
                     </button>
                     
                     <!-- Message Input -->
-                    <div class="p-4 border-t border-gray-600">
+                    <div class="chat-input-container">
                         <div class="flex items-center">
                             <input 
                                 type="text" 
@@ -763,7 +842,6 @@
         </div>
     </div>
 
-    <!-- KEEPING ALL YOUR ORIGINAL JAVASCRIPT FUNCTIONALITY INTACT -->
     <script>
         // Global variables
         let clients = [];
@@ -799,13 +877,13 @@
         const sendDelay = document.getElementById('sendDelay');
         const sendBulkBtn = document.getElementById('sendBulkBtn');
         const retryBulkBtn = document.getElementById('retryBulkBtn');
-        const clientList = document.getElementById('clientList');
+        const conversationsList = document.getElementById('conversationsList');
         const exportReportBtn = document.getElementById('exportReportBtn');
         const sendReportBtn = document.getElementById('sendReportBtn');
         const currentClientName = document.getElementById('currentClientName');
         const currentClientPhone = document.getElementById('currentClientPhone');
         const activeStatus = document.getElementById('activeStatus');
-        const chatContainer = document.getElementById('chatContainer');
+        const chatMessages = document.getElementById('chatMessages');
         const messageInput = document.getElementById('messageInput');
         const sendMessageBtn = document.getElementById('sendMessageBtn');
         const aiStatus = document.getElementById('aiStatus');
@@ -861,9 +939,10 @@
                 
                 setupSocketEvents();
                 setupEventListeners();
-                loadCurrentUser(); // This will trigger authentication
+                loadCurrentUser();
+                loadClients(); // Load clients on startup
                 
-                // 🆕 Auto-check WhatsApp status on load
+                // Auto-check WhatsApp status on load
                 setTimeout(() => {
                     checkWhatsAppStatus();
                 }, 2000);
@@ -893,13 +972,13 @@
                 console.log('✅ Socket authenticated for user:', userData);
                 const userId = currentUser.id;
                 
-                // 🆕 FIXED: User-specific WhatsApp status
+                // User-specific WhatsApp status
                 socket.on(`user_status_${userId}`, (data) => {
                     console.log('📡 Received user status:', data);
                     updateWhatsAppStatus(data);
                 });
 
-                // 🆕 FIXED: User-specific QR code with auto-display
+                // User-specific QR code with auto-display
                 socket.on(`user_qr_${userId}`, (data) => {
                     console.log('📡 Received QR code for user:', userId);
                     if (data.qrCode) {
@@ -907,14 +986,14 @@
                     }
                 });
 
-                // 🆕 FIXED: User-specific bot status
+                // User-specific bot status
                 socket.on(`user_bot_status_${userId}`, (data) => {
                     console.log('📡 Received bot status:', data);
                     isBotStopped = data.stopped;
                     updateBotStatusUI();
                 });
 
-                // 🆕 FIXED: User-specific messages
+                // User-specific messages
                 socket.on(`user_message_${userId}`, (data) => {
                     console.log('📡 Received user message:', data);
                     handleUserMessage(data);
@@ -965,7 +1044,7 @@
 
             socket.on('clients_updated', (data) => {
                 clients = data;
-                renderClientList();
+                renderConversationsList();
                 updateClientsCount();
             });
         }
@@ -1101,7 +1180,60 @@
             addUserBtn.addEventListener('click', addNewUser);
         }
 
-        // 🆕 IMPROVED QR Code Functions
+        // FIXED: Render conversations list properly
+        function renderConversationsList() {
+            if (clients.length === 0) {
+                conversationsList.innerHTML = `
+                    <div class="text-center text-gray-400 mt-10">
+                        <i class="fas fa-comments text-4xl mb-3 opacity-50"></i>
+                        <p class="text-lg">لا توجد محادثات</p>
+                        <p class="text-sm text-gray-500 mt-1">قم برفع ملف Excel لبدء المحادثات</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const filteredClients = currentStatusFilter === 'all' 
+                ? clients 
+                : clients.filter(client => client.status === currentStatusFilter);
+
+            conversationsList.innerHTML = '';
+
+            filteredClients.forEach(client => {
+                const conversationElement = document.createElement('div');
+                conversationElement.className = `conversation-item ${currentClient?.id === client.id ? 'active' : ''}`;
+                conversationElement.dataset.clientId = client.id;
+                
+                // Get message preview (last message)
+                const lastMessage = client.lastMessage || 'لم تبدأ المحادثة بعد';
+                const lastActivity = new Date(client.lastActivity).toLocaleTimeString('ar-EG', { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                });
+                
+                conversationElement.innerHTML = `
+                    <div class="conversation-avatar">
+                        <i class="fas fa-user text-white"></i>
+                    </div>
+                    <div class="conversation-content">
+                        <div class="conversation-name">${client.name}</div>
+                        <div class="conversation-preview">${lastMessage}</div>
+                    </div>
+                    <div class="conversation-time">${lastActivity}</div>
+                    ${client.unread > 0 ? `
+                        <div class="conversation-badge">${client.unread}</div>
+                    ` : ''}
+                `;
+                
+                conversationElement.addEventListener('click', () => {
+                    selectClient(client);
+                });
+                
+                conversationsList.appendChild(conversationElement);
+            });
+        }
+
+        // IMPROVED: WhatsApp QR Code Functions
         function showQRCode(qrCodeUrl) {
             console.log('🖼️ Showing QR code:', qrCodeUrl);
             if (!qrCodeUrl) {
@@ -1135,7 +1267,7 @@
             console.log('✅ QR code overlay shown');
         }
 
-        // 🆕 Auto-fetch QR code on page load
+        // Auto-fetch QR code on page load
         function fetchUserQRCode() {
             console.log('🔄 Fetching user QR code...');
             fetch('/api/user-whatsapp-qr', {
@@ -1166,7 +1298,7 @@
             });
         }
 
-        // 🆕 Improved WhatsApp status update with auto-QR display
+        // IMPROVED: WhatsApp status update with auto-QR display
         function updateWhatsAppStatus(data) {
             console.log('🔄 Updating WhatsApp status:', data);
             whatsappStatus.textContent = data.message;
@@ -1180,7 +1312,7 @@
                 
                 if (data.status === 'qr-ready') {
                     whatsappQrStatus.classList.remove('hidden');
-                    // 🆕 AUTO-SHOW QR CODE when status is qr-ready
+                    // AUTO-SHOW QR CODE when status is qr-ready
                     if (!qrOverlay.classList.contains('hidden')) {
                         // QR overlay is already visible, no need to show again
                         console.log('📱 QR overlay already visible');
@@ -1196,7 +1328,7 @@
             }
         }
 
-        // 🆕 Function to check WhatsApp status
+        // Function to check WhatsApp status
         function checkWhatsAppStatus() {
             fetch('/api/user-whatsapp-status', {
                 method: 'GET',
@@ -1248,7 +1380,7 @@
                 currentUser = JSON.parse(savedUser);
                 updateUserInterface();
                 
-                // 🆕 CRITICAL: Authenticate socket AFTER user is loaded
+                // CRITICAL: Authenticate socket AFTER user is loaded
                 if (socket && socket.connected) {
                     console.log('🔐 Authenticating socket for user:', currentUser.id);
                     socket.emit('authenticate', authToken);
@@ -1268,7 +1400,7 @@
                         localStorage.setItem('currentUser', JSON.stringify(currentUser));
                         updateUserInterface();
                         
-                        // 🆕 CRITICAL: Authenticate socket AFTER user is loaded
+                        // CRITICAL: Authenticate socket AFTER user is loaded
                         if (socket && socket.connected) {
                             console.log('🔐 Authenticating socket for user:', currentUser.id);
                             socket.emit('authenticate', authToken);
@@ -1419,7 +1551,7 @@
         }
 
         function uploadExcelFile(file) {
-            const formData = new FormData();
+            const formData = newFormData();
             formData.append('excelFile', file);
             
             fetch('/api/upload-excel', {
@@ -1437,7 +1569,7 @@
                     showToast(`✅ ${data.message}`, 'success');
                     
                     clients = data.clients;
-                    renderClientList();
+                    renderConversationsList();
                     updateClientsCount();
                 } else {
                     showToast('❌ ' + data.error, 'error');
@@ -1461,48 +1593,12 @@
             .then(data => {
                 if (data.success) {
                     clients = data.clients;
-                    renderClientList();
+                    renderConversationsList();
                     updateClientsCount();
                 }
             })
             .catch(error => {
                 console.error('Error loading clients:', error);
-            });
-        }
-        
-        function renderClientList() {
-            clientList.innerHTML = '';
-            
-            const filteredClients = currentStatusFilter === 'all' 
-                ? clients 
-                : clients.filter(client => client.status === currentStatusFilter);
-            
-            filteredClients.forEach(client => {
-                const clientElement = document.createElement('div');
-                clientElement.className = `client-item p-3 rounded-lg mb-2 cursor-pointer client-status-${client.status} ${currentClient?.id === client.id ? 'active' : ''}`;
-                clientElement.dataset.clientId = client.id;
-                
-                clientElement.innerHTML = `
-                    <div class="flex justify-between items-start">
-                        <div class="flex-1">
-                            <div class="font-bold">${client.name}</div>
-                            <div class="text-xs text-gray-400">${client.phone}</div>
-                            <div class="text-sm mt-1 truncate">${client.lastMessage}</div>
-                        </div>
-                        <div class="text-right">
-                            <div class="text-xs text-gray-500">${new Date(client.lastActivity).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</div>
-                            ${client.unread > 0 ? `
-                                <div class="unread-badge text-xs px-2 py-1 rounded-full mt-1">${client.unread}</div>
-                            ` : ''}
-                        </div>
-                    </div>
-                `;
-                
-                clientElement.addEventListener('click', () => {
-                    selectClient(client);
-                });
-                
-                clientList.appendChild(clientElement);
             });
         }
         
@@ -1517,7 +1613,8 @@
             messageInput.disabled = false;
             sendMessageBtn.disabled = false;
             
-            document.querySelectorAll('.client-item').forEach(item => {
+            // Update active conversation in the list
+            document.querySelectorAll('.conversation-item').forEach(item => {
                 item.classList.remove('active');
             });
             document.querySelector(`[data-client-id="${client.id}"]`).classList.add('active');
@@ -1546,10 +1643,10 @@
         }
         
         function renderMessages(messages) {
-            chatContainer.innerHTML = '';
+            chatMessages.innerHTML = '';
             
             if (messages.length === 0) {
-                chatContainer.innerHTML = `
+                chatMessages.innerHTML = `
                     <div class="text-center text-gray-400 mt-20">
                         <i class="fas fa-comments text-5xl mb-4 opacity-50"></i>
                         <p class="text-gray-500">لا توجد رسائل بعد</p>
@@ -1567,7 +1664,7 @@
                     <div class="chat-time">${new Date(message.timestamp).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</div>
                 `;
                 
-                chatContainer.appendChild(messageElement);
+                chatMessages.appendChild(messageElement);
             });
             
             scrollChatToBottom();
@@ -1637,12 +1734,12 @@
             .then(data => {
                 if (data.success) {
                     showToast(`🚀 ${data.message}`, 'success');
-                isBulkSending = true;
+                    isBulkSending = true;
                     sendBulkBtn.disabled = true;
                     sendBulkBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> جاري الإرسال...';
                 } else {
                     showToast('❌ ' + data.error, 'error');
-                    }
+                }
             })
             .catch(error => {
                 console.error('Error sending bulk messages:', error);
@@ -1669,7 +1766,7 @@
                 });
                 
                 client.status = newStatus;
-                renderClientList();
+                renderConversationsList();
                 
                 if (newStatus === 'interested') {
                     updatePerformanceStats({
@@ -1699,7 +1796,7 @@
             });
             document.querySelector(`[data-status="${status}"]`).classList.add('active');
             
-            renderClientList();
+            renderConversationsList();
         }
         
         function updateClientsCount() {
@@ -1708,7 +1805,7 @@
         }
         
         function scrollChatToBottom() {
-            chatContainer.scrollTop = chatContainer.scrollHeight;
+            chatMessages.scrollTop = chatMessages.scrollHeight;
         }
         
         function updatePerformanceStats(stats) {
@@ -1847,10 +1944,36 @@
             }
         }
         
+        function handleUserMessage(data) {
+            // Update the conversation list with new message
+            const client = clients.find(c => c.phone === data.from);
+            if (client) {
+                client.lastMessage = data.message;
+                client.lastActivity = new Date().toISOString();
+                if (!data.fromMe) {
+                    client.unread = (client.unread || 0) + 1;
+                }
+                renderConversationsList();
+                
+                // If this client is currently selected, show the message
+                if (currentClient && currentClient.phone === data.from) {
+                    if (!messages[currentClient.id]) {
+                        messages[currentClient.id] = [];
+                    }
+                    messages[currentClient.id].push({
+                        message: data.message,
+                        fromMe: data.fromMe,
+                        timestamp: data.timestamp
+                    });
+                    renderMessages(messages[currentClient.id]);
+                }
+            }
+        }
+        
         // Chat scroll detection
-        chatContainer.addEventListener('scroll', () => {
+        chatMessages.addEventListener('scroll', () => {
             const scrollThreshold = 100;
-            const isNearBottom = chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight < scrollThreshold;
+            const isNearBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight < scrollThreshold;
             
             if (isNearBottom) {
                 scrollToBottom.classList.remove('visible');
@@ -1858,6 +1981,10 @@
                 scrollToBottom.classList.add('visible');
             }
         });
+
+        // Load performance stats on startup
+        loadPerformanceStats();
     </script>
 </body>
 </html>
+[file content end]
