@@ -529,7 +529,8 @@ async function initializeUserWhatsApp(userId, retryCount = 0) {
                     '--disable-web-security',
                     '--disable-features=VizDisplayCompositor',
                     '--disable-ipc-flooding-protection'
-                ]
+                ],
+                executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || null
             },
             webVersionCache: {
                 type: 'remote',
@@ -1757,6 +1758,10 @@ app.get('/api/me', authenticateUser, (req, res) => {
     });
 });
 
+// =============================================
+// NEW: MISSING API ENDPOINTS - ADDED HERE
+// =============================================
+
 // User Management Routes
 app.get('/api/users', authenticateUser, authorizeAdmin, (req, res) => {
     try {
@@ -1777,7 +1782,62 @@ app.get('/api/users', authenticateUser, authorizeAdmin, (req, res) => {
     }
 });
 
-// WhatsApp Routes
+// Create new user
+app.post('/api/users', 
+    authenticateUser, 
+    authorizeAdmin,
+    body('name').trim().isLength({ min: 2 }).escape(),
+    body('username').trim().isLength({ min: 3 }).escape(),
+    body('password').isLength({ min: 6 }),
+    body('role').isIn(['admin', 'standard']),
+    async (req, res) => {
+    try {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ errors: errors.array() });
+        }
+        
+        const { name, username, password, role } = req.body;
+        
+        // Check if username already exists
+        const existingUser = users.find(u => u.username === username);
+        if (existingUser) {
+            return res.status(400).json({ error: 'اسم المستخدم موجود مسبقاً' });
+        }
+        
+        // Create new user
+        const newUser = {
+            id: users.length > 0 ? Math.max(...users.map(u => u.id)) + 1 : 1,
+            name: name,
+            username: username,
+            password: bcrypt.hashSync(password, 10),
+            role: role,
+            isActive: true,
+            createdAt: new Date().toISOString(),
+            lastLogin: null
+        };
+        
+        users.push(newUser);
+        saveUsers();
+        
+        res.json({
+            success: true,
+            message: 'تم إضافة المستخدم بنجاح',
+            user: {
+                id: newUser.id,
+                name: newUser.name,
+                username: newUser.username,
+                role: newUser.role
+            }
+        });
+        
+    } catch (error) {
+        logger.error('Create user error:', error);
+        res.status(500).json({ error: 'خطأ في الخادم' });
+    }
+});
+
+// WhatsApp User-specific Routes
 app.get('/api/user-whatsapp-status', authenticateUser, (req, res) => {
     try {
         const userId = req.user.id;
@@ -1797,10 +1857,102 @@ app.get('/api/user-whatsapp-status', authenticateUser, (req, res) => {
             message: userSession.isConnected ? 'واتساب متصل ✅' : 
                     userSession.status === 'qr-ready' ? 'يرجى مسح QR Code' :
                     'جارٍ الاتصال...',
-            hasQr: !!userSession.qrCode
+            hasQr: !!userSession.qrCode,
+            qrCode: userSession.qrCode
         });
     } catch (error) {
         logger.error('WhatsApp status error:', error);
+        res.status(500).json({ error: 'خطأ في الخادم' });
+    }
+});
+
+// Get user QR code
+app.get('/api/user-whatsapp-qr', authenticateUser, (req, res) => {
+    try {
+        const userId = req.user.id;
+        const userSession = getUserWhatsAppSession(userId);
+        
+        if (!userSession || !userSession.qrCode) {
+            return res.json({
+                success: false,
+                message: 'QR Code غير متوفر حالياً'
+            });
+        }
+        
+        res.json({
+            success: true,
+            qrCode: userSession.qrCode,
+            userId: userId
+        });
+    } catch (error) {
+        logger.error('QR code error:', error);
+        res.status(500).json({ error: 'خطأ في الخادم' });
+    }
+});
+
+// Reconnect user WhatsApp
+app.post('/api/user-reconnect-whatsapp', authenticateUser, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        
+        const result = await manualReconnectUserWhatsApp(userId);
+        
+        if (result) {
+            res.json({
+                success: true,
+                message: 'جاري إعادة الاتصال بالواتساب...'
+            });
+        } else {
+            res.status(500).json({
+                success: false,
+                error: 'فشل إعادة الاتصال'
+            });
+        }
+    } catch (error) {
+        logger.error('Reconnect error:', error);
+        res.status(500).json({ error: 'خطأ في الخادم' });
+    }
+});
+
+// Disconnect user WhatsApp
+app.post('/api/user-disconnect-whatsapp', authenticateUser, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        
+        await disconnectUserWhatsApp(userId);
+        
+        res.json({
+            success: true,
+            message: 'تم فصل الواتساب بنجاح'
+        });
+    } catch (error) {
+        logger.error('Disconnect error:', error);
+        res.status(500).json({ error: 'خطأ في الخادم' });
+    }
+});
+
+// Toggle user bot
+app.post('/api/user-toggle-bot', authenticateUser, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { stop } = req.body;
+        
+        const result = toggleUserBot(userId, stop);
+        
+        if (result) {
+            res.json({
+                success: true,
+                message: stop ? 'تم إيقاف البوت' : 'تم تشغيل البوت',
+                stopped: stop
+            });
+        } else {
+            res.status(500).json({
+                success: false,
+                error: 'فشل تغيير حالة البوت'
+            });
+        }
+    } catch (error) {
+        logger.error('Toggle bot error:', error);
         res.status(500).json({ error: 'خطأ في الخادم' });
     }
 });
@@ -1847,8 +1999,231 @@ app.post('/api/send-message',
     }
 });
 
-// Additional routes...
-// (Include all other routes from the original file with proper validation)
+// File upload route
+app.post('/api/upload-excel', authenticateUser, upload.single('excelFile'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: 'لم يتم رفع أي ملف' });
+        }
+        
+        const clients = processExcelFile(req.file.path);
+        const userId = req.user.id;
+        
+        // Add clients to user's imported list
+        const userSession = getUserWhatsAppSession(userId);
+        if (userSession) {
+            clients.forEach(client => {
+                userSession.importedClients.add(client.phone);
+            });
+        }
+        
+        // Save clients to memory
+        let existingClients = [];
+        const clientsFile = './memory/clients.json';
+        
+        if (fs.existsSync(clientsFile)) {
+            const clientsData = fs.readFileSync(clientsFile, 'utf8');
+            existingClients = JSON.parse(clientsData);
+        }
+        
+        // Merge and remove duplicates
+        const allClients = [...existingClients, ...clients];
+        const uniqueClients = allClients.filter((client, index, self) => 
+            index === self.findIndex(c => c.phone === client.phone)
+        );
+        
+        fs.writeFileSync(clientsFile, JSON.stringify(uniqueClients, null, 2));
+        
+        res.json({
+            success: true,
+            message: `تم معالجة ${clients.length} عميل بنجاح`,
+            count: clients.length,
+            clients: uniqueClients
+        });
+        
+    } catch (error) {
+        logger.error('File upload error:', error);
+        res.status(500).json({ error: 'فشل معالجة الملف: ' + error.message });
+    }
+});
+
+// Get clients
+app.get('/api/clients', authenticateUser, (req, res) => {
+    try {
+        let clients = [];
+        const clientsFile = './memory/clients.json';
+        
+        if (fs.existsSync(clientsFile)) {
+            const clientsData = fs.readFileSync(clientsFile, 'utf8');
+            clients = JSON.parse(clientsData);
+        }
+        
+        res.json({
+            success: true,
+            clients: clients
+        });
+    } catch (error) {
+        logger.error('Get clients error:', error);
+        res.status(500).json({ error: 'خطأ في الخادم' });
+    }
+});
+
+// Update client status
+app.post('/api/update-client-status', authenticateUser, async (req, res) => {
+    try {
+        const { phone, status } = req.body;
+        
+        updateClientStatus(phone, status);
+        
+        res.json({
+            success: true,
+            message: 'تم تحديث حالة العميل'
+        });
+    } catch (error) {
+        logger.error('Update client status error:', error);
+        res.status(500).json({ error: 'خطأ في الخادم' });
+    }
+});
+
+// Get client messages
+app.get('/api/client-messages/:phone', authenticateUser, (req, res) => {
+    try {
+        const { phone } = req.params;
+        const messages = getClientMessages(phone);
+        
+        res.json({
+            success: true,
+            messages: messages
+        });
+    } catch (error) {
+        logger.error('Get client messages error:', error);
+        res.status(500).json({ error: 'خطأ في الخادم' });
+    }
+});
+
+// Employee performance
+app.get('/api/employee-performance', authenticateUser, (req, res) => {
+    try {
+        const userId = req.user.id;
+        
+        if (!employeePerformance[userId]) {
+            initializeUserPerformance(userId);
+        }
+        
+        res.json({
+            success: true,
+            performance: employeePerformance[userId]
+        });
+    } catch (error) {
+        logger.error('Employee performance error:', error);
+        res.status(500).json({ error: 'خطأ في الخادم' });
+    }
+});
+
+// Export report
+app.get('/api/export-report', authenticateUser, (req, res) => {
+    try {
+        const userId = req.user.id;
+        const result = exportReportToFile(userId);
+        
+        res.download(result.filePath, result.fileName);
+    } catch (error) {
+        logger.error('Export report error:', error);
+        res.status(500).json({ error: 'خطأ في الخادم' });
+    }
+});
+
+// Send report to manager
+app.post('/api/send-to-manager', authenticateUser, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        await sendReportToManager(userId);
+        
+        res.json({
+            success: true,
+            message: 'تم إرسال التقرير إلى المدير'
+        });
+    } catch (error) {
+        logger.error('Send report error:', error);
+        res.status(500).json({ error: 'خطأ في الخادم' });
+    }
+});
+
+// Bulk message sending
+app.post('/api/send-bulk', 
+    authenticateUser,
+    body('message').isLength({ min: 1, max: 1000 }).trim(),
+    body('delay').isInt({ min: 10, max: 120 }),
+    async (req, res) => {
+    try {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ errors: errors.array() });
+        }
+        
+        const { message, delay, clients } = req.body;
+        const userId = req.user.id;
+        
+        if (!clients || clients.length === 0) {
+            return res.status(400).json({ error: 'لا يوجد عملاء للإرسال' });
+        }
+        
+        // Send messages with delay
+        let sentCount = 0;
+        const failedClients = [];
+        
+        for (const client of clients) {
+            try {
+                await new Promise(resolve => setTimeout(resolve, delay * 1000));
+                await sendWhatsAppMessage(userId, client.phone, message);
+                sentCount++;
+                
+                // Emit progress
+                io.emit('bulk_progress', {
+                    type: 'progress',
+                    client: client.name,
+                    clientPhone: client.phone,
+                    success: true,
+                    sentCount: sentCount,
+                    totalCount: clients.length
+                });
+                
+            } catch (error) {
+                failedClients.push({
+                    client: client.name,
+                    phone: client.phone,
+                    error: error.message
+                });
+                
+                io.emit('bulk_progress', {
+                    type: 'progress',
+                    client: client.name,
+                    clientPhone: client.phone,
+                    success: false,
+                    error: error.message
+                });
+            }
+        }
+        
+        trackEmployeeActivity(userId, 'bulk_campaign', {
+            clientsCount: clients.length,
+            sentCount: sentCount,
+            failedCount: failedClients.length
+        });
+        
+        res.json({
+            success: true,
+            message: `تم إرسال ${sentCount} رسالة بنجاح`,
+            sentCount: sentCount,
+            failedCount: failedClients.length,
+            failedClients: failedClients
+        });
+        
+    } catch (error) {
+        logger.error('Bulk send error:', error);
+        res.status(500).json({ error: 'فشل الإرسال الجماعي: ' + error.message });
+    }
+});
 
 // =============================================
 // SOCKET.IO HANDLERS
