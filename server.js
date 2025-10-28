@@ -1,4 +1,3 @@
-
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
@@ -54,10 +53,10 @@ const storage = multer.diskStorage({
 const upload = multer({ storage: storage });
 
 // =============================================
-// 🆕 MULTI-USER WHATSAPP ARCHITECTURE
+// MULTI-USER WHATSAPP ARCHITECTURE
 // =============================================
 
-// 🆕 User WhatsApp Sessions Management
+// User WhatsApp Sessions Management
 const userWhatsAppSessions = new Map(); // Key: userId, Value: session object
 
 // Session object structure:
@@ -71,7 +70,7 @@ const userWhatsAppSessions = new Map(); // Key: userId, Value: session object
 //   importedClients: new Set(), // User-specific imported clients
 // }
 
-// NEW: User Management Variables
+// User Management Variables
 let users = [];
 let currentSessions = new Map(); // Track logged in users
 const JWT_SECRET = process.env.JWT_SECRET || 'ragmcloud-erp-secret-key-2024';
@@ -101,7 +100,6 @@ const ragmcloudCompanyInfo = {
     address: "الرياض - حي المغرزات - طريق الملك عبد الله",
     workingHours: "من الأحد إلى الخميس - 8 صباحاً إلى 6 مساءً",
     
-    // CORRECT PACKAGES from website
     packages: {
         basic: {
             name: "الباقة الأساسية",
@@ -198,7 +196,6 @@ const ragmcloudCompanyInfo = {
         }
     },
 
-    // Services
     services: {
         accounting: "الحلول المحاسبية المتكاملة",
         inventory: "إدارة المخزون والمستودعات",
@@ -209,7 +206,6 @@ const ragmcloudCompanyInfo = {
         integration: "التكامل مع الأنظمة الحكومية"
     },
 
-    // System Features
     features: [
         "سحابي 100% - لا حاجة لخوادم",
         "واجهة عربية سهلة الاستخدام", 
@@ -264,10 +260,10 @@ const AI_SYSTEM_PROMPT = `أنت مساعد ذكي ومحترف تمثل شرك�
 تذكر: أنت بائع محترف هدفك مساعدة العملاء في اختيار النظام المناسب لشركاتهم.`;
 
 // =============================================
-// 🆕 MULTI-USER WHATSAPP FUNCTIONS
+// MULTI-USER WHATSAPP FUNCTIONS
 // =============================================
 
-// 🆕 IMPROVED WhatsApp Client with Better Cloud Support
+// IMPROVED WhatsApp Client with Better Cloud Support
 function initializeUserWhatsApp(userId) {
     console.log(`🔄 Starting WhatsApp for user ${userId}...`);
     
@@ -291,11 +287,11 @@ function initializeUserWhatsApp(userId) {
         
         userWhatsAppSessions.set(userId, userSession);
 
-        // 🆕 IMPROVED WhatsApp Client Configuration for Cloud
+        // IMPROVED WhatsApp Client Configuration for Cloud
         userSession.client = new Client({
             authStrategy: new LocalAuth({ 
                 clientId: `ragmcloud-user-${userId}`,
-                dataPath: `./sessions/user-${userId}` // Separate sessions per user
+                dataPath: `./sessions/user-${userId}`
             }),
             puppeteer: {
                 headless: true,
@@ -307,7 +303,7 @@ function initializeUserWhatsApp(userId) {
                     '--no-first-run',
                     '--no-zygote',
                     '--disable-gpu',
-                    '--single-process', // 🆕 Important for cloud
+                    '--single-process',
                     '--no-zygote',
                     '--disable-setuid-sandbox',
                     '--disable-web-security',
@@ -319,15 +315,15 @@ function initializeUserWhatsApp(userId) {
                     '--disable-back-forward-cache',
                     '--disable-component-extensions-with-background-pages'
                 ],
-                executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || null // 🆕 For cloud environments
+                executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || null
             },
             webVersionCache: {
                 type: 'remote',
-                remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html' // 🆕 Fixed version
+                remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
             }
         });
 
-        // 🆕 FIXED QR Code Generation (User-specific)
+        // FIXED QR Code Generation (User-specific)
         userSession.client.on('qr', (qr) => {
             console.log(`📱 QR CODE RECEIVED for user ${userId}`);
             qrcode.generate(qr, { small: true });
@@ -341,14 +337,14 @@ function initializeUserWhatsApp(userId) {
                     console.log(`✅ QR code generated for user ${userId}`);
                     console.log(`📡 Emitting QR to user_qr_${userId}`);
                     
-                    // 🆕 FIXED: Emit to ALL connected clients for this user
+                    // FIXED: Emit to ALL connected clients for this user
                     io.emit(`user_qr_${userId}`, { 
                         qrCode: url,
                         userId: userId,
                         timestamp: new Date().toISOString()
                     });
                     
-                    // 🆕 FIXED: Also emit status update
+                    // FIXED: Also emit status update
                     io.emit(`user_status_${userId}`, { 
                         connected: false, 
                         message: 'يرجى مسح QR Code للاتصال',
@@ -360,7 +356,7 @@ function initializeUserWhatsApp(userId) {
                 } else {
                     console.error(`❌ QR code generation failed for user ${userId}:`, err);
                     
-                    // 🆕 FIXED: Emit error to frontend
+                    // FIXED: Emit error to frontend
                     io.emit(`user_status_${userId}`, { 
                         connected: false, 
                         message: 'فشل توليد QR Code',
@@ -373,13 +369,13 @@ function initializeUserWhatsApp(userId) {
             });
         });
 
-        // 🆕 Ready Event (User-specific)
+        // Ready Event (User-specific)
         userSession.client.on('ready', () => {
             console.log(`✅ WhatsApp READY for user ${userId}!`);
             userSession.isConnected = true;
             userSession.status = 'connected';
             
-            // 🆕 Emit user-specific status
+            // Emit user-specific status
             io.emit(`user_status_${userId}`, { 
                 connected: true, 
                 message: 'واتساب متصل ✅',
@@ -391,7 +387,7 @@ function initializeUserWhatsApp(userId) {
             console.log(`✅ User ${userId} WhatsApp connected successfully`);
         });
 
-        // 🆕 Message Event with User-specific Processing
+        // Message Event with User-specific Processing
         userSession.client.on('message', async (message) => {
             // Ignore status broadcasts and messages from us
             if (message.from === 'status@broadcast' || message.fromMe) {
@@ -428,7 +424,7 @@ function initializeUserWhatsApp(userId) {
             }
         });
 
-        // 🆕 Authentication Failure (User-specific)
+        // Authentication Failure (User-specific)
         userSession.client.on('auth_failure', (msg) => {
             console.log(`❌ WhatsApp auth failed for user ${userId}:`, msg);
             userSession.isConnected = false;
@@ -443,7 +439,7 @@ function initializeUserWhatsApp(userId) {
             });
         });
 
-        // 🆕 Disconnected Event (User-specific)
+        // Disconnected Event (User-specific)
         userSession.client.on('disconnected', (reason) => {
             console.log(`🔌 WhatsApp disconnected for user ${userId}:`, reason);
             userSession.isConnected = false;
@@ -464,7 +460,7 @@ function initializeUserWhatsApp(userId) {
             }, 10000);
         });
 
-        // 🆕 Better Error Handling
+        // Better Error Handling
         userSession.client.on('error', (error) => {
             console.error(`❌ WhatsApp error for user ${userId}:`, error);
         });
@@ -489,18 +485,18 @@ function initializeUserWhatsApp(userId) {
     }
 }
 
-// 🆕 Get User WhatsApp Session
+// Get User WhatsApp Session
 function getUserWhatsAppSession(userId) {
     return userWhatsAppSessions.get(userId);
 }
 
-// 🆕 Check if User WhatsApp is Connected
+// Check if User WhatsApp is Connected
 function isUserWhatsAppConnected(userId) {
     const session = getUserWhatsAppSession(userId);
     return session && session.isConnected;
 }
 
-// 🆕 User-specific Message Processing
+// User-specific Message Processing
 async function processUserIncomingMessage(userId, message, from) {
     try {
         console.log(`📩 User ${userId} processing message from ${from}: ${message}`);
@@ -598,7 +594,7 @@ async function processUserIncomingMessage(userId, message, from) {
     }
 }
 
-// 🆕 User-specific Auto-Reply Functions
+// User-specific Auto-Reply Functions
 function shouldReplyToClient(userId, phone) {
     const userSession = getUserWhatsAppSession(userId);
     if (!userSession) return false;
@@ -625,7 +621,7 @@ function updateUserReplyTimer(userId, phone) {
     }
 }
 
-// 🆕 User-specific Bot Control
+// User-specific Bot Control
 function toggleUserBot(userId, stop) {
     const userSession = getUserWhatsAppSession(userId);
     if (userSession) {
@@ -640,7 +636,7 @@ function toggleUserBot(userId, stop) {
     return false;
 }
 
-// 🆕 User-specific WhatsApp Reconnection
+// User-specific WhatsApp Reconnection
 function manualReconnectUserWhatsApp(userId) {
     console.log(`🔄 Manual reconnection requested for user ${userId}...`);
     const userSession = getUserWhatsAppSession(userId);
@@ -658,7 +654,7 @@ function manualReconnectUserWhatsApp(userId) {
 // EXISTING FUNCTIONS (Updated for Multi-User)
 // =============================================
 
-// NEW: User Management Functions
+// User Management Functions
 function initializeUsers() {
     const usersFile = './data/users.json';
     
@@ -758,7 +754,7 @@ function authorizeAdmin(req, res, next) {
     next();
 }
 
-// NEW: Initialize user-specific performance tracking
+// Initialize user-specific performance tracking
 function initializeUserPerformance(userId) {
     if (!employeePerformance[userId]) {
         employeePerformance[userId] = {
@@ -802,7 +798,7 @@ function resetUserDailyStats(userId) {
     saveUserPerformanceData(userId);
 }
 
-// NEW: Track employee activity per user
+// Track employee activity per user
 function trackEmployeeActivity(userId, type, data = {}) {
     if (!employeePerformance[userId]) {
         initializeUserPerformance(userId);
@@ -857,7 +853,7 @@ function trackEmployeeActivity(userId, type, data = {}) {
     saveUserPerformanceData(userId);
 }
 
-// NEW: Save user performance data
+// Save user performance data
 function saveUserPerformanceData(userId) {
     try {
         if (employeePerformance[userId]) {
@@ -872,7 +868,7 @@ function saveUserPerformanceData(userId) {
     }
 }
 
-// NEW: Load user performance data
+// Load user performance data
 function loadUserPerformanceData(userId) {
     try {
         const filePath = `./memory/employee_performance_${userId}.json`;
@@ -897,7 +893,7 @@ function loadUserPerformanceData(userId) {
     }
 }
 
-// NEW: Generate user-specific performance report
+// Generate user-specific performance report
 function generateUserPerformanceReport(userId) {
     if (!employeePerformance[userId]) {
         initializeUserPerformance(userId);
@@ -985,7 +981,7 @@ ${improvementSuggestions.join('\n')}
     return report;
 }
 
-// NEW: Check if we should auto-send report to manager
+// Check if we should auto-send report to manager
 function checkAutoSendReport(userId) {
     if (!employeePerformance[userId]) return;
     
@@ -1033,7 +1029,7 @@ function shouldSendGreeting(phone) {
     }
 }
 
-// FIXED: Check if we should auto-reply to client (REPLY TO ALL CLIENTS)
+// Check if we should auto-reply to client
 function shouldReplyToClient(userId, phone) {
     const userSession = getUserWhatsAppSession(userId);
     if (!userSession) return false;
@@ -1123,7 +1119,7 @@ function updateClientStatus(phone, status) {
     }
 }
 
-// ENHANCED: Get conversation history for AI context
+// Get conversation history for AI context
 function getConversationHistoryForAI(phone, maxMessages = 10) {
     try {
         const messages = getClientMessages(phone);
@@ -1148,7 +1144,7 @@ function getConversationHistoryForAI(phone, maxMessages = 10) {
     }
 }
 
-// ENHANCED: DeepSeek AI API Call with Conversation Memory
+// DeepSeek AI API Call with Conversation Memory
 async function callDeepSeekAI(userMessage, clientPhone) {
     if (!deepseekAvailable || !process.env.DEEPSEEK_API_KEY) {
         throw new Error('DeepSeek not available');
@@ -1443,7 +1439,7 @@ function generateEnhancedRagmcloudResponse(userMessage, clientPhone) {
 أخبرني عن طبيعة نشاط شركتك علشان أقدر أساعدك في اختيار النظام المناسب!`;
 }
 
-// ENHANCED AI Response - ALWAYS TRY DEEPSEEK FIRST
+// AI Response - ALWAYS TRY DEEPSEEK FIRST
 async function generateRagmcloudAIResponse(userMessage, clientPhone) {
     console.log('🔄 Processing message for Ragmcloud with memory:', userMessage);
     
@@ -1470,7 +1466,7 @@ async function generateRagmcloudAIResponse(userMessage, clientPhone) {
     return generateEnhancedRagmcloudResponse(userMessage, clientPhone);
 }
 
-// ENHANCED: Store messages per client with better reliability
+// Store messages per client with better reliability
 function storeClientMessage(phone, message, isFromMe) {
     try {
         const messageData = {
@@ -1513,7 +1509,7 @@ function storeClientMessage(phone, message, isFromMe) {
     }
 }
 
-// ENHANCED: Get client messages with error handling
+// Get client messages with error handling
 function getClientMessages(phone) {
     try {
         const messageFile = `./memory/messages_${phone}.json`;
@@ -1723,7 +1719,7 @@ app.get('/dashboard', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
 });
 
-// NEW: Authentication Routes
+// Authentication Routes
 app.post('/api/login', (req, res) => {
     try {
         const { username, password } = req.body;
@@ -1750,7 +1746,7 @@ app.post('/api/login', (req, res) => {
         initializeUserPerformance(user.id);
         loadUserPerformanceData(user.id);
         
-        // 🆕 Initialize user WhatsApp session
+        // Initialize user WhatsApp session
         initializeUserWhatsApp(user.id);
         
         // Create session
@@ -1784,7 +1780,7 @@ app.post('/api/logout', authenticateUser, (req, res) => {
     try {
         const userId = req.user.id;
         
-        // 🆕 Clean up user WhatsApp session
+        // Clean up user WhatsApp session
         const userSession = getUserWhatsAppSession(userId);
         if (userSession && userSession.client) {
             userSession.client.destroy();
@@ -1810,7 +1806,7 @@ app.get('/api/me', authenticateUser, (req, res) => {
     });
 });
 
-// 🆕 User WhatsApp Status Route
+// User WhatsApp Status Route
 app.get('/api/user-whatsapp-status', authenticateUser, (req, res) => {
     try {
         const userId = req.user.id;
@@ -1837,7 +1833,7 @@ app.get('/api/user-whatsapp-status', authenticateUser, (req, res) => {
     }
 });
 
-// 🆕 User WhatsApp QR Code Route
+// User WhatsApp QR Code Route
 app.get('/api/user-whatsapp-qr', authenticateUser, (req, res) => {
     try {
         const userId = req.user.id;
@@ -1853,7 +1849,7 @@ app.get('/api/user-whatsapp-qr', authenticateUser, (req, res) => {
     }
 });
 
-// 🆕 User-specific Bot Control Route
+// User-specific Bot Control Route
 app.post('/api/user-toggle-bot', authenticateUser, (req, res) => {
     try {
         const { stop } = req.body;
@@ -1875,7 +1871,7 @@ app.post('/api/user-toggle-bot', authenticateUser, (req, res) => {
     }
 });
 
-// 🆕 User-specific WhatsApp Reconnection
+// User-specific WhatsApp Reconnection
 app.post('/api/user-reconnect-whatsapp', authenticateUser, (req, res) => {
     try {
         const userId = req.user.id;
@@ -1886,7 +1882,7 @@ app.post('/api/user-reconnect-whatsapp', authenticateUser, (req, res) => {
     }
 });
 
-// NEW: User Management Routes (Admin only)
+// User Management Routes (Admin only)
 app.get('/api/users', authenticateUser, authorizeAdmin, (req, res) => {
     try {
         const usersList = users.map(user => ({
@@ -2013,7 +2009,7 @@ app.post('/api/upload-excel', authenticateUser, upload.single('excelFile'), (req
             });
         }
 
-        // 🆕 Add clients to user's imported list
+        // Add clients to user's imported list
         const userId = req.user.id;
         const userSession = getUserWhatsAppSession(userId);
         if (userSession) {
@@ -2299,7 +2295,6 @@ app.post('/api/send-message', authenticateUser, async (req, res) => {
 io.on('connection', (socket) => {
     console.log('Client connected');
     
-    // Handle user authentication for socket
     // Handle user-specific bot toggle
     socket.on('user_toggle_bot', (data) => {
         if (!socket.userId) {
@@ -2315,58 +2310,59 @@ io.on('connection', (socket) => {
             });
         }
     });
-// In your socket.io connection event, add this:
-socket.on('authenticate', (token) => {
-    try {
-        const decoded = verifyToken(token);
-        if (!decoded) {
-            socket.emit('auth_error', { error: 'Token غير صالح' });
-            return;
-        }
-        
-        const user = users.find(u => u.id === decoded.userId && u.isActive);
-        if (!user) {
-            socket.emit('auth_error', { error: 'المستخدم غير موجود' });
-            return;
-        }
-        
-        socket.userId = user.id;
-        console.log(`🔐 Socket authenticated for user ${user.name}`);
-        
-        // 🆕 CRITICAL: Send authentication success
-        socket.emit('authenticated', { 
-            userId: user.id, 
-            username: user.username 
-        });
-        
-        // Send user-specific initial data
-        const userSession = getUserWhatsAppSession(user.id);
-        if (userSession) {
-            socket.emit(`user_status_${user.id}`, { 
-                connected: userSession.isConnected, 
-                message: userSession.isConnected ? 'واتساب متصل ✅' : 
-                        userSession.status === 'qr-ready' ? 'يرجى مسح QR Code' :
-                        'جارٍ الاتصال...',
-                status: userSession.status,
-                hasQr: !!userSession.qrCode,
-                userId: user.id
+
+    socket.on('authenticate', (token) => {
+        try {
+            const decoded = verifyToken(token);
+            if (!decoded) {
+                socket.emit('auth_error', { error: 'Token غير صالح' });
+                return;
+            }
+            
+            const user = users.find(u => u.id === decoded.userId && u.isActive);
+            if (!user) {
+                socket.emit('auth_error', { error: 'المستخدم غير موجود' });
+                return;
+            }
+            
+            socket.userId = user.id;
+            console.log(`🔐 Socket authenticated for user ${user.name}`);
+            
+            // CRITICAL: Send authentication success
+            socket.emit('authenticated', { 
+                userId: user.id, 
+                username: user.username 
             });
             
-            // 🆕 CRITICAL: If QR code already exists, send it immediately
-            if (userSession.qrCode) {
-                console.log(`📱 Sending existing QR code to user ${user.id}`);
-                socket.emit(`user_qr_${user.id}`, { 
-                    qrCode: userSession.qrCode,
-                    userId: user.id,
-                    timestamp: new Date().toISOString()
+            // Send user-specific initial data
+            const userSession = getUserWhatsAppSession(user.id);
+            if (userSession) {
+                socket.emit(`user_status_${user.id}`, { 
+                    connected: userSession.isConnected, 
+                    message: userSession.isConnected ? 'واتساب متصل ✅' : 
+                            userSession.status === 'qr-ready' ? 'يرجى مسح QR Code' :
+                            'جارٍ الاتصال...',
+                    status: userSession.status,
+                    hasQr: !!userSession.qrCode,
+                    userId: user.id
                 });
+                
+                // CRITICAL: If QR code already exists, send it immediately
+                if (userSession.qrCode) {
+                    console.log(`📱 Sending existing QR code to user ${user.id}`);
+                    socket.emit(`user_qr_${user.id}`, { 
+                        qrCode: userSession.qrCode,
+                        userId: user.id,
+                        timestamp: new Date().toISOString()
+                    });
+                }
             }
+            
+        } catch (error) {
+            socket.emit('auth_error', { error: 'خطأ في المصادقة' });
         }
-        
-    } catch (error) {
-        socket.emit('auth_error', { error: 'خطأ في المصادقة' });
-    }
-});
+    });
+
     // Handle client status update
     socket.on('update_client_status', (data) => {
         updateClientStatus(data.phone, data.status);
@@ -2456,7 +2452,6 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log('🔑 DeepSeek Available:', deepseekAvailable);
     console.log('👥 User Management: ENABLED');
     console.log('🔐 Authentication: JWT + Bcrypt');
-    console.log('🆕 MULTI-USER WHATSAPP: ENABLED');
     console.log('🤖 BOT STATUS: READY');
     console.log('⏰ AUTO-REPLY DELAY: 3 SECONDS');
     console.log('🎯 AI AUTO-STATUS DETECTION: ENABLED');
@@ -2466,5 +2461,3 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log('☁️  CLOUD-OPTIMIZED WHATSAPP: ENABLED');
     console.log('📱 QR CODE FIXED: FRONTEND WILL NOW RECEIVE QR CODES');
 });
-[file content end]
-
