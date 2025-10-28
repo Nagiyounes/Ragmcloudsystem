@@ -543,12 +543,13 @@
                 <h3 class="text-xl font-bold gradient-text">تبديل المستخدم</h3>
             </div>
             <p class="text-gray-300 mb-4">أنت الآن تشاهد لوحة التحكم كـ: <span id="currentViewingUser" class="text-primary-light"></span></p>
+            <p class="text-yellow-400 text-sm mb-4">سيتم نقلك إلى واجهة المستخدم المحدد</p>
             <div class="flex space-x-3 justify-center">
-                <button id="returnToAdmin" class="btn-gold px-6 py-2 rounded-lg font-bold">
-                    <i class="fas fa-arrow-left mr-2"></i>العودة إلى حسابي
+                <button id="confirmSwitchUser" class="btn-gold px-6 py-2 rounded-lg font-bold">
+                    <i class="fas fa-check mr-2"></i>تأكيد التبديل
                 </button>
                 <button id="closeUserSwitch" class="bg-gray-600 hover:bg-gray-700 px-6 py-2 rounded-lg font-bold transition-colors">
-                    <i class="fas fa-times mr-2"></i>إغلاق
+                    <i class="fas fa-times mr-2"></i>إلغاء
                 </button>
             </div>
         </div>
@@ -619,6 +620,11 @@
                 <!-- NEW: Admin User Switch Button -->
                 <button id="userSwitchBtn" class="w-full bg-purple-600 hover:bg-purple-700 py-2 rounded-lg font-bold mb-2 transition-colors hidden">
                     <i class="fas fa-user-shield mr-2"></i>تبديل المستخدم
+                </button>
+
+                <!-- NEW: WhatsApp Disconnect Button -->
+                <button id="disconnectWhatsAppBtn" class="w-full bg-red-600 hover:bg-red-700 py-2 rounded-lg font-bold mb-2 transition-colors">
+                    <i class="fas fa-plug mr-2"></i>قطع اتصال واتساب
                 </button>
                 
                 <!-- Reconnect Button -->
@@ -880,6 +886,7 @@
         const qrCode = document.getElementById('qrCode');
         const closeQR = document.getElementById('closeQR');
         const reconnectBtn = document.getElementById('reconnectBtn');
+        const disconnectWhatsAppBtn = document.getElementById('disconnectWhatsAppBtn');
         const stopBotBtn = document.getElementById('stopBotBtn');
         const logoutBtn = document.getElementById('logoutBtn');
         const whatsappStatus = document.getElementById('whatsappStatus');
@@ -923,7 +930,7 @@
         const userManagementSection = document.getElementById('userManagementSection');
         const userSwitchBtn = document.getElementById('userSwitchBtn');
         const userSwitchOverlay = document.getElementById('userSwitchOverlay');
-        const returnToAdmin = document.getElementById('returnToAdmin');
+        const confirmSwitchUser = document.getElementById('confirmSwitchUser');
         const closeUserSwitch = document.getElementById('closeUserSwitch');
         const currentViewingUser = document.getElementById('currentViewingUser');
         const newUserName = document.getElementById('newUserName');
@@ -946,6 +953,9 @@
                     return;
                 }
 
+                // Load saved chat data first
+                loadChatData();
+
                 // Connect to Socket.io with authentication
                 socket = io({
                     timeout: 10000,
@@ -961,6 +971,9 @@
                 setTimeout(() => {
                     checkWhatsAppStatus();
                 }, 2000);
+                
+                // Auto-save chat data every 30 seconds
+                setInterval(saveChatData, 30000);
                 
                 // Auto-fill promotional message
                 bulkMessage.value = "🚀 نظام رقم كلاود ERP السحابي! حلول متكاملة للمحاسبة، المخزون، الموارد البشرية، والمزيد. جلسة استشارية مجانية! 📞 +966555111222 🌐 ragmcloud.sa";
@@ -1080,6 +1093,13 @@
                 socket.emit('user_reconnect_whatsapp');
                 showToast('🔄 جاري إعادة الاتصال...', 'warning');
             });
+
+            // NEW: WhatsApp Disconnect Button
+            disconnectWhatsAppBtn.addEventListener('click', () => {
+                if (confirm('هل أنت متأكد من قطع اتصال واتساب؟ سيتم إيقاف جميع الردود التلقائية.')) {
+                    disconnectWhatsApp();
+                }
+            });
             
             // Stop Bot Button
             stopBotBtn.addEventListener('click', () => {
@@ -1180,12 +1200,10 @@
                 currentViewingUser.textContent = isAdminViewingAs ? viewingAsUser.name : currentUser.name;
             });
             
-            returnToAdmin.addEventListener('click', () => {
-                isAdminViewingAs = false;
-                viewingAsUser = null;
-                userSwitchOverlay.classList.add('hidden');
-                updateUserInterface();
-                showToast('✅ العودة إلى حساب المدير', 'success');
+            confirmSwitchUser.addEventListener('click', () => {
+                if (viewingAsUser) {
+                    switchToUser(viewingAsUser.id);
+                }
             });
             
             closeUserSwitch.addEventListener('click', () => {
@@ -1366,13 +1384,56 @@
             });
         }
 
-        // Logout Function
+        // NEW: Disconnect WhatsApp function
+        function disconnectWhatsApp() {
+            fetch('/api/user-disconnect-whatsapp', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast('✅ تم قطع اتصال واتساب بنجاح', 'success');
+                    updateWhatsAppStatus({
+                        connected: false,
+                        message: 'تم قطع الاتصال',
+                        status: 'disconnected'
+                    });
+                } else {
+                    showToast('❌ ' + data.error, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error disconnecting WhatsApp:', error);
+                showToast('❌ فشل قطع الاتصال', 'error');
+            });
+        }
+
+        // NEW: Enhanced logout function to preserve sessions
         function logoutUser() {
-            if (confirm('هل أنت متأكد من تسجيل الخروج؟')) {
-                // Clear localStorage
+            if (confirm('هل أنت متأكد من تسجيل الخروج؟ سيتم حفظ جلسة المحادثات.')) {
+                // Don't clear chat history from localStorage
+                const performanceStats = localStorage.getItem('performanceStats');
+                const savedClients = localStorage.getItem('clients');
+                const savedMessages = localStorage.getItem('messages');
+                
+                // Clear only auth data
                 localStorage.removeItem('authToken');
                 localStorage.removeItem('currentUser');
-                localStorage.removeItem('performanceStats');
+                
+                // Restore chat data for next session
+                if (performanceStats) {
+                    localStorage.setItem('performanceStats', performanceStats);
+                }
+                if (savedClients) {
+                    localStorage.setItem('clients', savedClients);
+                }
+                if (savedMessages) {
+                    localStorage.setItem('messages', savedMessages);
+                }
                 
                 // Disconnect socket
                 if (socket) {
@@ -1380,7 +1441,7 @@
                 }
                 
                 // Show logout message
-                showToast('👋 تم تسجيل الخروج بنجاح', 'success');
+                showToast('👋 تم تسجيل الخروج بنجاح - تم حفظ المحادثات', 'success');
                 
                 // Redirect to login page
                 setTimeout(() => {
@@ -1473,6 +1534,42 @@
                 ? 'px-3 py-1 bg-purple-600 rounded-full text-sm font-bold'
                 : 'px-3 py-1 bg-primary rounded-full text-sm font-bold';
         }
+
+        // NEW: Enhanced switchToUser function with actual navigation
+        function switchToUser(userId) {
+            fetch(`/api/switch-user/${userId}`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Store the new token and user data
+                    localStorage.setItem('authToken', data.token);
+                    localStorage.setItem('currentUser', JSON.stringify(data.user));
+                    
+                    // Show success message
+                    showToast(`✅ تم التبديل إلى ${data.user.name}`, 'success');
+                    
+                    // Close the overlay
+                    userSwitchOverlay.classList.add('hidden');
+                    
+                    // Reload the page to apply the new user context
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1000);
+                } else {
+                    showToast('❌ ' + data.error, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error switching user:', error);
+                showToast('❌ فشل تبديل المستخدم', 'error');
+            });
+        }
         
         function addNewUser() {
             const name = newUserName.value.trim();
@@ -1542,22 +1639,22 @@
                 usersList.appendChild(userElement);
             });
             
+            // Update event listeners to use new handler
             document.querySelectorAll('.switch-to-user-btn').forEach(btn => {
                 btn.addEventListener('click', (e) => {
                     const userId = parseInt(e.target.closest('button').dataset.userId);
-                    switchToUser(userId);
+                    handleUserSwitch(userId);
                 });
             });
         }
-        
-        function switchToUser(userId) {
+
+        // NEW: Enhanced user switch handler
+        function handleUserSwitch(userId) {
             const targetUser = users.find(u => u.id === userId);
             if (targetUser) {
-                isAdminViewingAs = true;
                 viewingAsUser = targetUser;
-                userSwitchOverlay.classList.add('hidden');
-                updateUserInterface();
-                showToast(`👁️ تشاهد الآن كـ: ${targetUser.name}`, 'success');
+                userSwitchOverlay.classList.remove('hidden');
+                currentViewingUser.textContent = targetUser.name;
             }
         }
         
@@ -1565,6 +1662,37 @@
             newUserName.value = '';
             newUserPassword.value = '';
             newUserRole.value = 'standard';
+        }
+
+        // NEW: Save chat data periodically
+        function saveChatData() {
+            const chatData = {
+                clients: clients,
+                messages: messages,
+                lastSaved: new Date().toISOString()
+            };
+            localStorage.setItem('chatData', JSON.stringify(chatData));
+        }
+
+        // NEW: Load saved chat data
+        function loadChatData() {
+            const savedData = localStorage.getItem('chatData');
+            if (savedData) {
+                try {
+                    const chatData = JSON.parse(savedData);
+                    if (chatData.clients) {
+                        clients = chatData.clients;
+                        renderConversationsList();
+                        updateClientsCount();
+                    }
+                    if (chatData.messages) {
+                        messages = chatData.messages;
+                    }
+                    console.log('✅ Loaded saved chat data');
+                } catch (error) {
+                    console.error('Error loading chat data:', error);
+                }
+            }
         }
 
         function uploadExcelFile(file) {
@@ -1588,6 +1716,9 @@
                     clients = data.clients;
                     renderConversationsList();
                     updateClientsCount();
+                    
+                    // Save to localStorage
+                    saveChatData();
                 } else {
                     showToast('❌ ' + data.error, 'error');
                 }
@@ -1711,6 +1842,9 @@
             renderMessages(messages[currentClient.id]);
             messageInput.value = '';
             
+            // Save chat data
+            saveChatData();
+            
             updatePerformanceStats({
                 messages: parseInt(statMessages.textContent) + 1
             });
@@ -1758,7 +1892,7 @@
                     showToast('❌ ' + data.error, 'error');
                 }
             })
-            .catch(error => {
+            .catch(error) {
                 console.error('Error sending bulk messages:', error);
                 showToast('❌ فشل الإرسال الجماعي', 'error');
             });
@@ -1784,6 +1918,9 @@
                 
                 client.status = newStatus;
                 renderConversationsList();
+                
+                // Save chat data
+                saveChatData();
                 
                 if (newStatus === 'interested') {
                     updatePerformanceStats({
@@ -1984,6 +2121,9 @@
                     });
                     renderMessages(messages[currentClient.id]);
                 }
+
+                // Save chat data
+                saveChatData();
             }
         }
         
