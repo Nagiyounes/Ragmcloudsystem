@@ -2333,10 +2333,17 @@ process.on('unhandledRejection', (reason, promise) => {
 // START SERVER
 // =============================================
 
+// =============================================
+// START SERVER
+// =============================================
+
 initializeUsers();
 
-server.listen(config.port, '0.0.0.0', () => {
-    logger.info(`🚀 Server running on port ${config.port}`);
+// FIXED: Use Render's PORT environment variable
+const port = process.env.PORT || config.port;
+
+server.listen(port, '0.0.0.0', () => {
+    logger.info(`🚀 Server running on port ${port}`);
     logger.info(`🏢 Company: ${ragmcloudCompanyInfo.name}`);
     logger.info(`📞 Phone: ${ragmcloudCompanyInfo.phone}`);
     logger.info(`🌐 Website: ${ragmcloudCompanyInfo.website}`);
