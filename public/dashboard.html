@@ -6,6 +6,7 @@
     <title>رقم كلاود ERP - Smart Sales Assistant</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Fixed Socket.io CDN -->
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <script>
         tailwind.config = {
@@ -301,7 +302,7 @@
         .btn-not-interested { background: #EF4444; color: white; }
         .btn-no-reply { background: #9CA3AF; color: white; }
 
-        /* Auto-report notification */
+        /* NEW: Auto-report notification */
         .auto-report-notification {
             background: linear-gradient(135deg, #ed8936, #dd6b20);
             color: white;
@@ -318,7 +319,7 @@
             100% { opacity: 1; }
         }
 
-        /* Bot status indicator */
+        /* NEW: Bot status indicator */
         .bot-status-stopped {
             background: linear-gradient(135deg, #f56565, #c53030) !important;
         }
@@ -327,7 +328,7 @@
             background: linear-gradient(135deg, #00B98B, #007C5C) !important;
         }
 
-        /* User Management Styles */
+        /* NEW: User Management Styles */
         .user-management-section {
             transition: all 0.3s ease;
         }
@@ -357,7 +358,7 @@
             color: #EF4444;
         }
 
-        /* User Switch Overlay */
+        /* NEW: User Switch Overlay */
         .user-switch-overlay {
             position: fixed;
             top: 0;
@@ -381,7 +382,7 @@
             width: 90%;
         }
 
-        /* WhatsApp QR Code Status */
+        /* NEW: WhatsApp QR Code Status */
         .whatsapp-qr-status {
             background: linear-gradient(135deg, #ed8936, #dd6b20);
             color: white;
@@ -398,7 +399,7 @@
             box-shadow: 0 4px 12px rgba(237, 137, 54, 0.3);
         }
 
-        /* Logout Button Styles */
+        /* NEW: Logout Button Styles */
         .logout-btn {
             background: linear-gradient(135deg, #f56565, #c53030);
             color: white;
@@ -505,19 +506,36 @@
             padding: 20px;
             background: rgba(45, 55, 72, 0.8);
         }
+
+        /* FIXED: Conversation item status classes */
+        .conversation-item.client-status-interested {
+            border-left: 4px solid #10B981 !important;
+        }
+        
+        .conversation-item.client-status-busy {
+            border-left: 4px solid #F59E0B !important;
+        }
+        
+        .conversation-item.client-status-not-interested {
+            border-left: 4px solid #EF4444 !important;
+        }
+        
+        .conversation-item.client-status-no-reply {
+            border-left: 4px solid #9CA3AF !important;
+        }
     </style>
 </head>
 <body class="text-white">
     <!-- Toast Notifications -->
     <div id="toastContainer" class="fixed top-4 right-4 z-50"></div>
     
-    <!-- Auto Report Notification -->
+    <!-- NEW: Auto Report Notification -->
     <div id="autoReportNotification" class="auto-report-notification">
         <i class="fas fa-bell mr-2"></i>
         <span id="autoReportMessage"></span>
     </div>
     
-    <!-- User Switch Overlay -->
+    <!-- NEW: User Switch Overlay -->
     <div id="userSwitchOverlay" class="user-switch-overlay hidden">
         <div class="user-switch-container">
             <div class="flex items-center justify-center mb-4">
@@ -586,19 +604,19 @@
                     <span id="whatsappStatus" class="status-disconnected px-3 py-1 rounded-full text-sm font-bold">غير متصل</span>
                 </div>
 
-                <!-- Bot Status -->
+                <!-- NEW: Bot Status -->
                 <div class="flex items-center justify-between mb-4">
                     <span class="text-sm text-gray-300">حالة البوت:</span>
                     <span id="botStatus" class="bot-status-running px-3 py-1 rounded-full text-sm font-bold">نشط</span>
                 </div>
 
-                <!-- WhatsApp QR Code Button -->
+                <!-- NEW: WhatsApp QR Code Button -->
                 <div id="whatsappQrStatus" class="whatsapp-qr-status hidden">
                     <i class="fas fa-qrcode mr-2"></i>
                     <span>QR Code جاهز للمسح</span>
                 </div>
                 
-                <!-- Admin User Switch Button -->
+                <!-- NEW: Admin User Switch Button -->
                 <button id="userSwitchBtn" class="w-full bg-purple-600 hover:bg-purple-700 py-2 rounded-lg font-bold mb-2 transition-colors hidden">
                     <i class="fas fa-user-shield mr-2"></i>تبديل المستخدم
                 </button>
@@ -608,12 +626,12 @@
                     <i class="fas fa-sync-alt mr-2"></i>إعادة الاتصال
                 </button>
 
-                <!-- Stop Bot Button -->
+                <!-- NEW: Stop Bot Button -->
                 <button id="stopBotBtn" class="w-full bg-red-600 hover:bg-red-700 py-2 rounded-lg font-bold mb-2 transition-colors">
                     <i class="fas fa-stop mr-2"></i>إيقاف البوت
                 </button>
 
-                <!-- Logout Button -->
+                <!-- NEW: Logout Button -->
                 <button id="logoutBtn" class="w-full logout-btn py-2 rounded-lg font-bold mb-2">
                     <i class="fas fa-sign-out-alt mr-2"></i>تسجيل الخروج
                 </button>
@@ -633,7 +651,7 @@
                 </div>
             </div>
             
-            <!-- User Management Section (Visible only to Admin) -->
+            <!-- NEW: User Management Section (Visible only to Admin) -->
             <div id="userManagementSection" class="user-management-section p-6 border-b border-gray-600 hidden">
                 <h3 class="font-bold text-lg mb-3 gradient-text">إدارة المستخدمين</h3>
                 
@@ -709,7 +727,7 @@
                     <i class="fas fa-envelope mr-2"></i>إرسال للمدير
                 </button>
 
-                <!-- Performance Stats -->
+                <!-- NEW: Performance Stats -->
                 <div class="mt-4 p-3 bg-gray-800 rounded-lg">
                     <h4 class="font-bold text-primary-light mb-2">إحصائيات اليوم</h4>
                     <div class="grid grid-cols-2 gap-2 text-xs">
@@ -1177,7 +1195,7 @@
             addUserBtn.addEventListener('click', addNewUser);
         }
 
-        // FIXED: Render conversations list properly
+        // FIXED: Render conversations list properly - CORRECTED VERSION
         function renderConversationsList() {
             if (clients.length === 0) {
                 conversationsList.innerHTML = `
@@ -1194,19 +1212,20 @@
                 ? clients 
                 : clients.filter(client => client.status === currentStatusFilter);
 
+            // Clear the container first
             conversationsList.innerHTML = '';
 
             filteredClients.forEach(client => {
                 const conversationElement = document.createElement('div');
-                conversationElement.className = `conversation-item ${currentClient?.id === client.id ? 'active' : ''}`;
+                conversationElement.className = `conversation-item ${currentClient?.id === client.id ? 'active' : ''} client-status-${client.status}`;
                 conversationElement.dataset.clientId = client.id;
                 
                 // Get message preview (last message)
                 const lastMessage = client.lastMessage || 'لم تبدأ المحادثة بعد';
-                const lastActivity = new Date(client.lastActivity).toLocaleTimeString('ar-EG', { 
+                const lastActivity = client.lastActivity ? new Date(client.lastActivity).toLocaleTimeString('ar-EG', { 
                     hour: '2-digit', 
                     minute: '2-digit' 
-                });
+                }) : '--:--';
                 
                 conversationElement.innerHTML = `
                     <div class="conversation-avatar">
@@ -1444,6 +1463,7 @@
             if (currentUser.role === 'admin' && !isAdminViewingAs) {
                 userManagementSection.classList.remove('hidden');
                 userSwitchBtn.classList.remove('hidden');
+                loadUsers(); // Load users when admin interface is shown
             } else {
                 userManagementSection.classList.add('hidden');
                 userSwitchBtn.classList.add('hidden');
