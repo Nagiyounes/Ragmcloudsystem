@@ -493,18 +493,21 @@
             display: flex;
             flex-direction: column;
             height: 100%;
+            width: 100%;
         }
 
         .chat-messages-container {
             flex: 1;
             overflow-y: auto;
             padding: 20px;
+            width: 100%;
         }
 
         .chat-input-container {
             border-top: 1px solid rgba(255, 255, 255, 0.1);
             padding: 20px;
             background: rgba(45, 55, 72, 0.8);
+            width: 100%;
         }
 
         /* FIXED: Conversation item status classes */
@@ -522,6 +525,64 @@
         
         .conversation-item.client-status-no-reply {
             border-left: 4px solid #9CA3AF !important;
+        }
+
+        /* NEW: WhatsApp Disconnect Button */
+        .disconnect-btn {
+            background: linear-gradient(135deg, #f56565, #c53030);
+            color: white;
+            transition: all 0.3s ease;
+        }
+
+        .disconnect-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(245, 101, 101, 0.4);
+        }
+
+        /* FIXED: Chat Container Width Issues */
+        .chat-area-wrapper {
+            display: flex;
+            flex: 1;
+            width: 100%;
+            overflow: hidden;
+        }
+
+        .conversations-sidebar {
+            width: 33.333%;
+            border-left: 1px solid rgba(255, 255, 255, 0.1);
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .messages-area {
+            width: 66.667%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* FIXED: Responsive layout */
+        @media (max-width: 1024px) {
+            .conversations-sidebar {
+                width: 40%;
+            }
+            .messages-area {
+                width: 60%;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .conversations-sidebar {
+                width: 100%;
+            }
+            .messages-area {
+                width: 100%;
+                display: none;
+            }
+            .messages-area.active {
+                display: flex;
+            }
         }
     </style>
 </head>
@@ -543,13 +604,12 @@
                 <h3 class="text-xl font-bold gradient-text">تبديل المستخدم</h3>
             </div>
             <p class="text-gray-300 mb-4">أنت الآن تشاهد لوحة التحكم كـ: <span id="currentViewingUser" class="text-primary-light"></span></p>
-            <p class="text-yellow-400 text-sm mb-4">سيتم نقلك إلى واجهة المستخدم المحدد</p>
             <div class="flex space-x-3 justify-center">
-                <button id="confirmSwitchUser" class="btn-gold px-6 py-2 rounded-lg font-bold">
-                    <i class="fas fa-check mr-2"></i>تأكيد التبديل
+                <button id="returnToAdmin" class="btn-gold px-6 py-2 rounded-lg font-bold">
+                    <i class="fas fa-arrow-left mr-2"></i>العودة إلى حسابي
                 </button>
                 <button id="closeUserSwitch" class="bg-gray-600 hover:bg-gray-700 px-6 py-2 rounded-lg font-bold transition-colors">
-                    <i class="fas fa-times mr-2"></i>إلغاء
+                    <i class="fas fa-times mr-2"></i>إغلاق
                 </button>
             </div>
         </div>
@@ -621,15 +681,15 @@
                 <button id="userSwitchBtn" class="w-full bg-purple-600 hover:bg-purple-700 py-2 rounded-lg font-bold mb-2 transition-colors hidden">
                     <i class="fas fa-user-shield mr-2"></i>تبديل المستخدم
                 </button>
-
-                <!-- NEW: WhatsApp Disconnect Button -->
-                <button id="disconnectWhatsAppBtn" class="w-full bg-red-600 hover:bg-red-700 py-2 rounded-lg font-bold mb-2 transition-colors">
-                    <i class="fas fa-plug mr-2"></i>قطع اتصال واتساب
-                </button>
                 
                 <!-- Reconnect Button -->
                 <button id="reconnectBtn" class="w-full btn-gold py-2 rounded-lg font-bold mb-2">
                     <i class="fas fa-sync-alt mr-2"></i>إعادة الاتصال
+                </button>
+
+                <!-- NEW: Disconnect WhatsApp Button -->
+                <button id="disconnectBtn" class="w-full disconnect-btn py-2 rounded-lg font-bold mb-2">
+                    <i class="fas fa-plug mr-2"></i>فصل الواتساب
                 </button>
 
                 <!-- NEW: Stop Bot Button -->
@@ -792,9 +852,9 @@
             </div>
             
             <!-- FIXED: Main Chat Container with Conversations List -->
-            <div class="flex-1 flex">
+            <div class="flex-1 flex chat-area-wrapper">
                 <!-- Conversations List - Now properly displayed -->
-                <div class="w-1/3 border-l border-gray-600 h-full overflow-hidden flex flex-col">
+                <div class="conversations-sidebar">
                     <div class="p-4 border-b border-gray-600">
                         <h3 class="font-bold text-lg gradient-text mb-2">المحادثات</h3>
                         <!-- Status Filter -->
@@ -827,7 +887,7 @@
                 </div>
                 
                 <!-- FIXED: Chat Messages Area -->
-                <div class="flex-1 flex flex-col main-chat-area">
+                <div class="messages-area main-chat-area">
                     <div id="chatMessages" class="chat-messages-container">
                         <div class="text-center text-gray-400 mt-20">
                             <i class="fas fa-comments text-5xl mb-4 opacity-50"></i>
@@ -886,7 +946,7 @@
         const qrCode = document.getElementById('qrCode');
         const closeQR = document.getElementById('closeQR');
         const reconnectBtn = document.getElementById('reconnectBtn');
-        const disconnectWhatsAppBtn = document.getElementById('disconnectWhatsAppBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
         const stopBotBtn = document.getElementById('stopBotBtn');
         const logoutBtn = document.getElementById('logoutBtn');
         const whatsappStatus = document.getElementById('whatsappStatus');
@@ -930,7 +990,7 @@
         const userManagementSection = document.getElementById('userManagementSection');
         const userSwitchBtn = document.getElementById('userSwitchBtn');
         const userSwitchOverlay = document.getElementById('userSwitchOverlay');
-        const confirmSwitchUser = document.getElementById('confirmSwitchUser');
+        const returnToAdmin = document.getElementById('returnToAdmin');
         const closeUserSwitch = document.getElementById('closeUserSwitch');
         const currentViewingUser = document.getElementById('currentViewingUser');
         const newUserName = document.getElementById('newUserName');
@@ -953,9 +1013,6 @@
                     return;
                 }
 
-                // Load saved chat data first
-                loadChatData();
-
                 // Connect to Socket.io with authentication
                 socket = io({
                     timeout: 10000,
@@ -971,9 +1028,6 @@
                 setTimeout(() => {
                     checkWhatsAppStatus();
                 }, 2000);
-                
-                // Auto-save chat data every 30 seconds
-                setInterval(saveChatData, 30000);
                 
                 // Auto-fill promotional message
                 bulkMessage.value = "🚀 نظام رقم كلاود ERP السحابي! حلول متكاملة للمحاسبة، المخزون، الموارد البشرية، والمزيد. جلسة استشارية مجانية! 📞 +966555111222 🌐 ragmcloud.sa";
@@ -1075,6 +1129,23 @@
                 renderConversationsList();
                 updateClientsCount();
             });
+
+            // NEW: Navigation events
+            socket.on('navigate_to_user', (data) => {
+                if (data.success && data.redirectUrl) {
+                    window.location.href = data.redirectUrl;
+                }
+            });
+
+            // NEW: WhatsApp disconnect event
+            socket.on('whatsapp_disconnected', (data) => {
+                updateWhatsAppStatus({
+                    connected: false,
+                    message: 'تم فصل الواتساب',
+                    status: 'disconnected'
+                });
+                showToast('✅ تم فصل الواتساب بنجاح', 'success');
+            });
         }
         
         function setupEventListeners() {
@@ -1094,10 +1165,11 @@
                 showToast('🔄 جاري إعادة الاتصال...', 'warning');
             });
 
-            // NEW: WhatsApp Disconnect Button
-            disconnectWhatsAppBtn.addEventListener('click', () => {
-                if (confirm('هل أنت متأكد من قطع اتصال واتساب؟ سيتم إيقاف جميع الردود التلقائية.')) {
-                    disconnectWhatsApp();
+            // NEW: Disconnect WhatsApp
+            disconnectBtn.addEventListener('click', () => {
+                if (confirm('هل أنت متأكد من فصل الواتساب؟')) {
+                    socket.emit('disconnect_whatsapp');
+                    showToast('🔄 جاري فصل الواتساب...', 'warning');
                 }
             });
             
@@ -1200,10 +1272,12 @@
                 currentViewingUser.textContent = isAdminViewingAs ? viewingAsUser.name : currentUser.name;
             });
             
-            confirmSwitchUser.addEventListener('click', () => {
-                if (viewingAsUser) {
-                    switchToUser(viewingAsUser.id);
-                }
+            returnToAdmin.addEventListener('click', () => {
+                isAdminViewingAs = false;
+                viewingAsUser = null;
+                userSwitchOverlay.classList.add('hidden');
+                updateUserInterface();
+                showToast('✅ العودة إلى حساب المدير', 'success');
             });
             
             closeUserSwitch.addEventListener('click', () => {
@@ -1384,56 +1458,13 @@
             });
         }
 
-        // NEW: Disconnect WhatsApp function
-        function disconnectWhatsApp() {
-            fetch('/api/user-disconnect-whatsapp', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${authToken}`,
-                    'Content-Type': 'application/json'
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showToast('✅ تم قطع اتصال واتساب بنجاح', 'success');
-                    updateWhatsAppStatus({
-                        connected: false,
-                        message: 'تم قطع الاتصال',
-                        status: 'disconnected'
-                    });
-                } else {
-                    showToast('❌ ' + data.error, 'error');
-                }
-            })
-            .catch(error => {
-                console.error('Error disconnecting WhatsApp:', error);
-                showToast('❌ فشل قطع الاتصال', 'error');
-            });
-        }
-
-        // NEW: Enhanced logout function to preserve sessions
+        // Logout Function
         function logoutUser() {
-            if (confirm('هل أنت متأكد من تسجيل الخروج؟ سيتم حفظ جلسة المحادثات.')) {
-                // Don't clear chat history from localStorage
-                const performanceStats = localStorage.getItem('performanceStats');
-                const savedClients = localStorage.getItem('clients');
-                const savedMessages = localStorage.getItem('messages');
-                
-                // Clear only auth data
+            if (confirm('هل أنت متأكد من تسجيل الخروج؟')) {
+                // Clear localStorage
                 localStorage.removeItem('authToken');
                 localStorage.removeItem('currentUser');
-                
-                // Restore chat data for next session
-                if (performanceStats) {
-                    localStorage.setItem('performanceStats', performanceStats);
-                }
-                if (savedClients) {
-                    localStorage.setItem('clients', savedClients);
-                }
-                if (savedMessages) {
-                    localStorage.setItem('messages', savedMessages);
-                }
+                localStorage.removeItem('performanceStats');
                 
                 // Disconnect socket
                 if (socket) {
@@ -1441,7 +1472,7 @@
                 }
                 
                 // Show logout message
-                showToast('👋 تم تسجيل الخروج بنجاح - تم حفظ المحادثات', 'success');
+                showToast('👋 تم تسجيل الخروج بنجاح', 'success');
                 
                 // Redirect to login page
                 setTimeout(() => {
@@ -1534,42 +1565,6 @@
                 ? 'px-3 py-1 bg-purple-600 rounded-full text-sm font-bold'
                 : 'px-3 py-1 bg-primary rounded-full text-sm font-bold';
         }
-
-        // NEW: Enhanced switchToUser function with actual navigation
-        function switchToUser(userId) {
-            fetch(`/api/switch-user/${userId}`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${authToken}`,
-                    'Content-Type': 'application/json'
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    // Store the new token and user data
-                    localStorage.setItem('authToken', data.token);
-                    localStorage.setItem('currentUser', JSON.stringify(data.user));
-                    
-                    // Show success message
-                    showToast(`✅ تم التبديل إلى ${data.user.name}`, 'success');
-                    
-                    // Close the overlay
-                    userSwitchOverlay.classList.add('hidden');
-                    
-                    // Reload the page to apply the new user context
-                    setTimeout(() => {
-                        window.location.reload();
-                    }, 1000);
-                } else {
-                    showToast('❌ ' + data.error, 'error');
-                }
-            })
-            .catch(error => {
-                console.error('Error switching user:', error);
-                showToast('❌ فشل تبديل المستخدم', 'error');
-            });
-        }
         
         function addNewUser() {
             const name = newUserName.value.trim();
@@ -1639,22 +1634,22 @@
                 usersList.appendChild(userElement);
             });
             
-            // Update event listeners to use new handler
             document.querySelectorAll('.switch-to-user-btn').forEach(btn => {
                 btn.addEventListener('click', (e) => {
                     const userId = parseInt(e.target.closest('button').dataset.userId);
-                    handleUserSwitch(userId);
+                    switchToUser(userId);
                 });
             });
         }
-
-        // NEW: Enhanced user switch handler
-        function handleUserSwitch(userId) {
+        
+        function switchToUser(userId) {
             const targetUser = users.find(u => u.id === userId);
             if (targetUser) {
+                isAdminViewingAs = true;
                 viewingAsUser = targetUser;
-                userSwitchOverlay.classList.remove('hidden');
-                currentViewingUser.textContent = targetUser.name;
+                userSwitchOverlay.classList.add('hidden');
+                updateUserInterface();
+                showToast(`👁️ تشاهد الآن كـ: ${targetUser.name}`, 'success');
             }
         }
         
@@ -1662,37 +1657,6 @@
             newUserName.value = '';
             newUserPassword.value = '';
             newUserRole.value = 'standard';
-        }
-
-        // NEW: Save chat data periodically
-        function saveChatData() {
-            const chatData = {
-                clients: clients,
-                messages: messages,
-                lastSaved: new Date().toISOString()
-            };
-            localStorage.setItem('chatData', JSON.stringify(chatData));
-        }
-
-        // NEW: Load saved chat data
-        function loadChatData() {
-            const savedData = localStorage.getItem('chatData');
-            if (savedData) {
-                try {
-                    const chatData = JSON.parse(savedData);
-                    if (chatData.clients) {
-                        clients = chatData.clients;
-                        renderConversationsList();
-                        updateClientsCount();
-                    }
-                    if (chatData.messages) {
-                        messages = chatData.messages;
-                    }
-                    console.log('✅ Loaded saved chat data');
-                } catch (error) {
-                    console.error('Error loading chat data:', error);
-                }
-            }
         }
 
         function uploadExcelFile(file) {
@@ -1716,9 +1680,6 @@
                     clients = data.clients;
                     renderConversationsList();
                     updateClientsCount();
-                    
-                    // Save to localStorage
-                    saveChatData();
                 } else {
                     showToast('❌ ' + data.error, 'error');
                 }
@@ -1842,9 +1803,6 @@
             renderMessages(messages[currentClient.id]);
             messageInput.value = '';
             
-            // Save chat data
-            saveChatData();
-            
             updatePerformanceStats({
                 messages: parseInt(statMessages.textContent) + 1
             });
@@ -1892,7 +1850,7 @@
                     showToast('❌ ' + data.error, 'error');
                 }
             })
-            .catch(error) {
+            .catch(error => {
                 console.error('Error sending bulk messages:', error);
                 showToast('❌ فشل الإرسال الجماعي', 'error');
             });
@@ -1918,9 +1876,6 @@
                 
                 client.status = newStatus;
                 renderConversationsList();
-                
-                // Save chat data
-                saveChatData();
                 
                 if (newStatus === 'interested') {
                     updatePerformanceStats({
@@ -2121,9 +2076,6 @@
                     });
                     renderMessages(messages[currentClient.id]);
                 }
-
-                // Save chat data
-                saveChatData();
             }
         }
         
