@@ -1103,17 +1103,12 @@
             });
 
             // Global events (not user-specific)
-            socket.on('bot_status', (data) => {
-                isBotStopped = data.stopped;
-                updateBotStatusUI();
-            });
-
             socket.on('auto_report_notification', (data) => {
                 showAutoReportNotification(data);
             });
 
             socket.on('client_status_updated', (data) => {
-                updateClientStatus(data.clientId, data.status);
+                updateClientStatus(data.phone, data.status);
             });
 
             socket.on('performance_stats', (data) => {
@@ -1130,14 +1125,7 @@
                 updateClientsCount();
             });
 
-            // NEW: Navigation events
-            socket.on('navigate_to_user', (data) => {
-                if (data.success && data.redirectUrl) {
-                    window.location.href = data.redirectUrl;
-                }
-            });
-
-            // NEW: WhatsApp disconnect event
+            // WhatsApp disconnect event
             socket.on('whatsapp_disconnected', (data) => {
                 updateWhatsAppStatus({
                     connected: false,
@@ -1161,23 +1149,77 @@
             
             // Reconnect
             reconnectBtn.addEventListener('click', () => {
-                socket.emit('user_reconnect_whatsapp');
-                showToast('🔄 جاري إعادة الاتصال...', 'warning');
+                fetch('/api/user-reconnect-whatsapp', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        showToast('🔄 جاري إعادة الاتصال...', 'success');
+                    } else {
+                        showToast('❌ ' + data.error, 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('Reconnection error:', error);
+                    showToast('❌ فشل إعادة الاتصال', 'error');
+                });
             });
 
-            // NEW: Disconnect WhatsApp
+            // Disconnect WhatsApp
             disconnectBtn.addEventListener('click', () => {
                 if (confirm('هل أنت متأكد من فصل الواتساب؟')) {
-                    socket.emit('disconnect_whatsapp');
-                    showToast('🔄 جاري فصل الواتساب...', 'warning');
+                    fetch('/api/user-disconnect-whatsapp', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${authToken}`,
+                            'Content-Type': 'application/json'
+                        }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            showToast('✅ تم فصل الواتساب بنجاح', 'success');
+                        } else {
+                            showToast('❌ ' + data.error, 'error');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Disconnect error:', error);
+                        showToast('❌ فشل فصل الواتساب', 'error');
+                    });
                 }
             });
             
             // Stop Bot Button
             stopBotBtn.addEventListener('click', () => {
                 const newState = !isBotStopped;
-                socket.emit('user_toggle_bot', { stop: newState });
-                showToast(newState ? '🛑 جاري إيقاف البوت...' : '🚀 جاري تشغيل البوت...', newState ? 'warning' : 'success');
+                fetch('/api/user-toggle-bot', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ stop: newState })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        isBotStopped = newState;
+                        updateBotStatusUI();
+                        showToast(newState ? '🛑 تم إيقاف البوت' : '🚀 تم تشغيل البوت', 'success');
+                    } else {
+                        showToast('❌ ' + data.error, 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('Bot toggle error:', error);
+                    showToast('❌ فشل تغيير حالة البوت', 'error');
+                });
             });
 
             // Logout Button
@@ -1461,23 +1503,32 @@
         // Logout Function
         function logoutUser() {
             if (confirm('هل أنت متأكد من تسجيل الخروج؟')) {
-                // Clear localStorage
-                localStorage.removeItem('authToken');
-                localStorage.removeItem('currentUser');
-                localStorage.removeItem('performanceStats');
-                
-                // Disconnect socket
-                if (socket) {
-                    socket.disconnect();
-                }
-                
-                // Show logout message
-                showToast('👋 تم تسجيل الخروج بنجاح', 'success');
-                
-                // Redirect to login page
-                setTimeout(() => {
-                    window.location.href = '/';
-                }, 1500);
+                fetch('/api/logout', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .finally(() => {
+                    // Clear localStorage
+                    localStorage.removeItem('authToken');
+                    localStorage.removeItem('currentUser');
+                    localStorage.removeItem('performanceStats');
+                    
+                    // Disconnect socket
+                    if (socket) {
+                        socket.disconnect();
+                    }
+                    
+                    // Show logout message
+                    showToast('👋 تم تسجيل الخروج بنجاح', 'success');
+                    
+                    // Redirect to login page
+                    setTimeout(() => {
+                        window.location.href = '/';
+                    }, 1500);
+                });
             }
         }
 
@@ -1783,28 +1834,47 @@
             const message = messageInput.value.trim();
             if (!message || !currentClient) return;
             
-            socket.emit('send_message', {
-                to: currentClient.phone,
-                message: message
-            });
-            
-            const newMessage = {
-                id: Date.now(),
-                message: message,
-                fromMe: true,
-                timestamp: new Date().toISOString()
-            };
-            
-            if (!messages[currentClient.id]) {
-                messages[currentClient.id] = [];
-            }
-            messages[currentClient.id].push(newMessage);
-            
-            renderMessages(messages[currentClient.id]);
-            messageInput.value = '';
-            
-            updatePerformanceStats({
-                messages: parseInt(statMessages.textContent) + 1
+            fetch('/api/send-message', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    phone: currentClient.phone,
+                    message: message
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const newMessage = {
+                        id: Date.now(),
+                        message: message,
+                        fromMe: true,
+                        timestamp: new Date().toISOString()
+                    };
+                    
+                    if (!messages[currentClient.id]) {
+                        messages[currentClient.id] = [];
+                    }
+                    messages[currentClient.id].push(newMessage);
+                    
+                    renderMessages(messages[currentClient.id]);
+                    messageInput.value = '';
+                    
+                    updatePerformanceStats({
+                        messages: parseInt(statMessages.textContent) + 1
+                    });
+                    
+                    showToast('✅ تم إرسال الرسالة', 'success');
+                } else {
+                    showToast('❌ ' + data.error, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error sending message:', error);
+                showToast('❌ فشل إرسال الرسالة', 'error');
             });
         }
         
@@ -1869,21 +1939,38 @@
         function updateClientStatus(clientId, newStatus) {
             const client = clients.find(c => c.id === clientId);
             if (client) {
-                socket.emit('update_client_status', {
-                    phone: client.phone,
-                    status: newStatus
+                fetch('/api/update-client-status', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        phone: client.phone,
+                        status: newStatus
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        client.status = newStatus;
+                        renderConversationsList();
+                        
+                        if (newStatus === 'interested') {
+                            updatePerformanceStats({
+                                interested: parseInt(statInterested.textContent) + 1
+                            });
+                        }
+                        
+                        showToast(`✅ تم تحديث حالة العميل إلى: ${getStatusText(newStatus)}`, 'success');
+                    } else {
+                        showToast('❌ ' + data.error, 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error updating client status:', error);
+                    showToast('❌ فشل تحديث حالة العميل', 'error');
                 });
-                
-                client.status = newStatus;
-                renderConversationsList();
-                
-                if (newStatus === 'interested') {
-                    updatePerformanceStats({
-                        interested: parseInt(statInterested.textContent) + 1
-                    });
-                }
-                
-                showToast(`✅ تم تحديث حالة العميل إلى: ${getStatusText(newStatus)}`, 'success');
             }
         }
         
