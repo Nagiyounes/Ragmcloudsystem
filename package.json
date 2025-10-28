@@ -8,8 +8,7 @@
     "dev": "nodemon server.js",
     "test": "jest",
     "lint": "eslint .",
-    "clean": "rm -rf uploads/* memory/* tmp/* logs/*",
-    "postinstall": "node node_modules/puppeteer/install.js || echo 'Puppeteer install skipped'"
+    "clean": "rm -rf uploads/* memory/* tmp/* logs/*"
   },
   "keywords": [
     "whatsapp",
