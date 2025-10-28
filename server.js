@@ -83,9 +83,12 @@ if (config.nodeEnv !== 'production') {
 const app = express();
 const server = http.createServer(app);
 
+// ✅ FIX: Trust Render's proxy (1 means trust first proxy)
+app.set('trust proxy', 1);
+
 // Security middleware
 app.use(helmet({
-    contentSecurityPolicy: false, // Allow inline scripts for now
+    contentSecurityPolicy: false,
     crossOriginEmbedderPolicy: false
 }));
 
