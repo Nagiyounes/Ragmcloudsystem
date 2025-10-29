@@ -34,7 +34,7 @@ app.use((req, res, next) => {
 });
 
 // Create required directories
-const directories = ['uploads', 'memory', 'tmp', 'reports', 'sessions', 'data', 'public'];
+const directories = ['uploads', 'memory', 'tmp', 'reports', 'sessions', 'data'];
 directories.forEach(dir => {
     if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
@@ -53,14 +53,32 @@ const storage = multer.diskStorage({
 const upload = multer({ storage: storage });
 
 // =============================================
-// MULTI-USER WHATSAPP ARCHITECTURE
+// 🆕 MULTI-USER WHATSAPP ARCHITECTURE
 // =============================================
 
-const userWhatsAppSessions = new Map();
+// 🆕 User WhatsApp Sessions Management
+const userWhatsAppSessions = new Map(); // Key: userId, Value: session object
+
+// Session object structure:
+// {
+//   client: null, // The WhatsApp Web.js client instance
+//   qrCode: null, // Current QR code string
+//   status: 'disconnected', // 'disconnected', 'qr-ready', 'authenticating', 'connected'
+//   isConnected: false,
+//   isBotStopped: false,
+//   clientReplyTimers: new Map(), // User-specific reply timers
+//   importedClients: new Set(), // User-specific imported clients
+// }
+
+// NEW: User Management Variables
 let users = [];
-let currentSessions = new Map();
+let currentSessions = new Map(); // Track logged in users
 const JWT_SECRET = process.env.JWT_SECRET || 'ragmcloud-erp-secret-key-2024';
+
+// Employee Performance Tracking - NOW PER USER
 let employeePerformance = {};
+
+// DeepSeek AI Configuration
 let deepseekAvailable = false;
 
 console.log('🔑 Initializing DeepSeek AI...');
@@ -72,7 +90,7 @@ if (process.env.DEEPSEEK_API_KEY) {
     deepseekAvailable = false;
 }
 
-// Company Information
+// Comprehensive Company Information
 const ragmcloudCompanyInfo = {
     name: "رقم كلاود",
     englishName: "Ragmcloud ERP",
@@ -82,6 +100,7 @@ const ragmcloudCompanyInfo = {
     address: "الرياض - حي المغرزات - طريق الملك عبد الله",
     workingHours: "من الأحد إلى الخميس - 8 صباحاً إلى 6 مساءً",
     
+    // CORRECT PACKAGES from website
     packages: {
         basic: {
             name: "الباقة الأساسية",
@@ -178,6 +197,7 @@ const ragmcloudCompanyInfo = {
         }
     },
 
+    // Services
     services: {
         accounting: "الحلول المحاسبية المتكاملة",
         inventory: "إدارة المخزون والمستودعات",
@@ -188,6 +208,7 @@ const ragmcloudCompanyInfo = {
         integration: "التكامل مع الأنظمة الحكومية"
     },
 
+    // System Features
     features: [
         "سحابي 100% - لا حاجة لخوادم",
         "واجهة عربية سهلة الاستخدام", 
@@ -242,111 +263,401 @@ const AI_SYSTEM_PROMPT = `أنت مساعد ذكي ومحترف تمثل شرك�
 تذكر: أنت بائع محترف هدفك مساعدة العملاء في اختيار النظام المناسب لشركاتهم.`;
 
 // =============================================
-// USER-SPECIFIC DATA MANAGEMENT
+// 🆕 MULTI-USER WHATSAPP FUNCTIONS
 // =============================================
 
-function getUserClientMessages(userId, phone) {
-    try {
-        const userDir = `./memory/user_${userId}`;
-        if (!fs.existsSync(userDir)) {
-            fs.mkdirSync(userDir, { recursive: true });
-        }
-        
-        const messageFile = `${userDir}/messages_${phone}.json`;
-        
-        if (fs.existsSync(messageFile)) {
-            const messagesData = fs.readFileSync(messageFile, 'utf8');
-            return JSON.parse(messagesData);
-        }
-    } catch (error) {
-        console.error(`Error getting user ${userId} client messages:`, error);
-    }
+// 🆕 IMPROVED WhatsApp Client with Better Cloud Support
+function initializeUserWhatsApp(userId) {
+    console.log(`🔄 Starting WhatsApp for user ${userId}...`);
     
-    return [];
-}
-
-function storeUserClientMessage(userId, phone, message, isFromMe) {
     try {
-        const userDir = `./memory/user_${userId}`;
-        if (!fs.existsSync(userDir)) {
-            fs.mkdirSync(userDir, { recursive: true });
+        // Check if user already has an active session
+        if (userWhatsAppSessions.has(userId) && userWhatsAppSessions.get(userId).status === 'connected') {
+            console.log(`✅ User ${userId} already has an active WhatsApp session`);
+            return userWhatsAppSessions.get(userId);
         }
 
-        const messageData = {
-            message: message,
-            fromMe: isFromMe,
-            timestamp: new Date().toISOString(),
-            userId: userId
+        // Initialize a new session object
+        const userSession = {
+            client: null,
+            qrCode: null,
+            status: 'disconnected',
+            isConnected: false,
+            isBotStopped: false,
+            clientReplyTimers: new Map(),
+            importedClients: new Set()
         };
-
-        let clientMessages = [];
-        const messageFile = `${userDir}/messages_${phone}.json`;
         
-        if (fs.existsSync(messageFile)) {
-            try {
-                const messagesData = fs.readFileSync(messageFile, 'utf8');
-                clientMessages = JSON.parse(messagesData);
-            } catch (error) {
-                console.error('Error reading message file:', error);
-                clientMessages = [];
+        userWhatsAppSessions.set(userId, userSession);
+
+        // 🆕 IMPROVED WhatsApp Client Configuration for Cloud
+        userSession.client = new Client({
+            authStrategy: new LocalAuth({ 
+                clientId: `ragmcloud-user-${userId}`,
+                dataPath: `./sessions/user-${userId}` // Separate sessions per user
+            }),
+            puppeteer: {
+                headless: true,
+                args: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-accelerated-2d-canvas',
+                    '--no-first-run',
+                    '--no-zygote',
+                    '--disable-gpu',
+                    '--single-process', // 🆕 Important for cloud
+                    '--no-zygote',
+                    '--disable-setuid-sandbox',
+                    '--disable-web-security',
+                    '--disable-features=VizDisplayCompositor',
+                    '--disable-ipc-flooding-protection',
+                    '--disable-background-timer-throttling',
+                    '--disable-backgrounding-occluded-windows',
+                    '--disable-renderer-backgrounding',
+                    '--disable-back-forward-cache',
+                    '--disable-component-extensions-with-background-pages'
+                ],
+                executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || null // 🆕 For cloud environments
+            },
+            webVersionCache: {
+                type: 'remote',
+                remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html' // 🆕 Fixed version
             }
-        }
+        });
 
-        clientMessages.push(messageData);
+        // 🆕 FIXED QR Code Generation (User-specific)
+        userSession.client.on('qr', (qr) => {
+            console.log(`📱 QR CODE RECEIVED for user ${userId}`);
+            qrcode.generate(qr, { small: true });
+            
+            // Generate QR code for web interface
+            QRCode.toDataURL(qr, (err, url) => {
+                if (!err) {
+                    userSession.qrCode = url;
+                    userSession.status = 'qr-ready';
+                    
+                    console.log(`✅ QR code generated for user ${userId}`);
+                    console.log(`📡 Emitting QR to user_qr_${userId}`);
+                    
+                    // 🆕 FIXED: Emit to ALL connected clients for this user
+                    io.emit(`user_qr_${userId}`, { 
+                        qrCode: url,
+                        userId: userId,
+                        timestamp: new Date().toISOString()
+                    });
+                    
+                    // 🆕 FIXED: Also emit status update
+                    io.emit(`user_status_${userId}`, { 
+                        connected: false, 
+                        message: 'يرجى مسح QR Code للاتصال',
+                        status: 'qr-ready',
+                        hasQr: true,
+                        userId: userId
+                    });
+                    
+                } else {
+                    console.error(`❌ QR code generation failed for user ${userId}:`, err);
+                    
+                    // 🆕 FIXED: Emit error to frontend
+                    io.emit(`user_status_${userId}`, { 
+                        connected: false, 
+                        message: 'فشل توليد QR Code',
+                        status: 'error',
+                        hasQr: false,
+                        userId: userId,
+                        error: err.message
+                    });
+                }
+            });
+        });
+
+        // 🆕 Ready Event (User-specific)
+        userSession.client.on('ready', () => {
+            console.log(`✅ WhatsApp READY for user ${userId}!`);
+            userSession.isConnected = true;
+            userSession.status = 'connected';
+            
+            // 🆕 Emit user-specific status
+            io.emit(`user_status_${userId}`, { 
+                connected: true, 
+                message: 'واتساب متصل ✅',
+                status: 'connected',
+                hasQr: false,
+                userId: userId
+            });
+            
+            console.log(`✅ User ${userId} WhatsApp connected successfully`);
+        });
+
+        // 🆕 Message Event with User-specific Processing
+        userSession.client.on('message', async (message) => {
+            // Ignore status broadcasts and messages from us
+            if (message.from === 'status@broadcast' || message.fromMe) {
+                return;
+            }
+
+            console.log(`📩 User ${userId} received message from:`, message.from);
+            console.log('💬 Message content:', message.body);
+            
+            try {
+                // Store incoming message immediately
+                const clientPhone = message.from.replace('@c.us', '');
+                storeClientMessage(clientPhone, message.body, false);
+                
+                // Emit to frontend with user context
+                io.emit(`user_message_${userId}`, {
+                    from: clientPhone,
+                    message: message.body,
+                    timestamp: new Date(),
+                    fromMe: false,
+                    userId: userId
+                });
+
+                // Update client last message
+                updateClientLastMessage(clientPhone, message.body);
+
+                // Process incoming message with user-specific auto-reply
+                processUserIncomingMessage(userId, message.body, message.from).catch(error => {
+                    console.error(`❌ Error in processUserIncomingMessage for user ${userId}:`, error);
+                });
+                
+            } catch (error) {
+                console.error(`❌ Error handling message for user ${userId}:`, error);
+            }
+        });
+
+        // 🆕 Authentication Failure (User-specific)
+        userSession.client.on('auth_failure', (msg) => {
+            console.log(`❌ WhatsApp auth failed for user ${userId}:`, msg);
+            userSession.isConnected = false;
+            userSession.status = 'disconnected';
+            
+            io.emit(`user_status_${userId}`, { 
+                connected: false, 
+                message: 'فشل المصادقة',
+                status: 'auth-failed',
+                hasQr: false,
+                userId: userId
+            });
+        });
+
+        // 🆕 Disconnected Event (User-specific)
+        userSession.client.on('disconnected', (reason) => {
+            console.log(`🔌 WhatsApp disconnected for user ${userId}:`, reason);
+            userSession.isConnected = false;
+            userSession.status = 'disconnected';
+            
+            io.emit(`user_status_${userId}`, { 
+                connected: false, 
+                message: 'جارٍ إعادة الاتصال...',
+                status: 'disconnected',
+                hasQr: false,
+                userId: userId
+            });
+            
+            // Auto-reconnect after 10 seconds
+            setTimeout(() => {
+                console.log(`🔄 Attempting reconnection for user ${userId}...`);
+                initializeUserWhatsApp(userId);
+            }, 10000);
+        });
+
+        // 🆕 Better Error Handling
+        userSession.client.on('error', (error) => {
+            console.error(`❌ WhatsApp error for user ${userId}:`, error);
+        });
+
+        // Start initialization with better error handling
+        userSession.client.initialize().catch(error => {
+            console.log(`⚠️ WhatsApp init failed for user ${userId}:`, error.message);
+            
+            // Retry after 15 seconds with exponential backoff
+            setTimeout(() => {
+                console.log(`🔄 Retrying WhatsApp initialization for user ${userId}...`);
+                initializeUserWhatsApp(userId);
+            }, 15000);
+        });
         
-        if (clientMessages.length > 50) {
-            clientMessages = clientMessages.slice(-50);
-        }
-        
-        fs.writeFileSync(messageFile, JSON.stringify(clientMessages, null, 2));
-        
-        console.log(`💾 Stored message for user ${userId} - ${phone} (${isFromMe ? 'sent' : 'received'})`);
+        return userSession;
         
     } catch (error) {
-        console.error('Error storing user client message:', error);
+        console.log(`❌ Error creating WhatsApp client for user ${userId}:`, error.message);
+        setTimeout(() => initializeUserWhatsApp(userId), 15000);
+        return null;
     }
 }
 
-function getUserClients(userId) {
+// 🆕 Get User WhatsApp Session
+function getUserWhatsAppSession(userId) {
+    return userWhatsAppSessions.get(userId);
+}
+
+// 🆕 Check if User WhatsApp is Connected
+function isUserWhatsAppConnected(userId) {
+    const session = getUserWhatsAppSession(userId);
+    return session && session.isConnected;
+}
+
+// 🆕 User-specific Message Processing
+async function processUserIncomingMessage(userId, message, from) {
     try {
-        const userDir = `./memory/user_${userId}`;
-        if (!fs.existsSync(userDir)) {
-            fs.mkdirSync(userDir, { recursive: true });
+        console.log(`📩 User ${userId} processing message from ${from}: ${message}`);
+        
+        const clientPhone = from.replace('@c.us', '');
+        
+        // Store the incoming message
+        storeClientMessage(clientPhone, message, false);
+        
+        // Auto-detect client interest
+        autoDetectClientInterest(clientPhone, message);
+        
+        const userSession = getUserWhatsAppSession(userId);
+        if (!userSession) {
+            console.log(`❌ No WhatsApp session found for user ${userId}`);
+            return;
         }
         
-        const clientsFile = `${userDir}/clients.json`;
-        
-        if (fs.existsSync(clientsFile)) {
-            const clientsData = fs.readFileSync(clientsFile, 'utf8');
-            return JSON.parse(clientsData);
+        // Check if user's bot is stopped
+        if (userSession.isBotStopped) {
+            console.log(`🤖 Bot is stopped for user ${userId} - no auto-reply`);
+            return;
         }
+        
+        // Check if we should reply to this client
+        if (!shouldReplyToClient(userId, clientPhone)) {
+            console.log(`⏸️ Client not in user ${userId}'s imported list - skipping auto-reply`);
+            return;
+        }
+        
+        // Check if we should auto-reply now (3-second delay)
+        if (!shouldUserAutoReplyNow(userId, clientPhone)) {
+            console.log(`⏰ User ${userId} waiting for 3-second delay before next reply`);
+            return;
+        }
+        
+        console.log(`🤖 User ${userId} generating AI response...`);
+        
+        let aiResponse;
+        try {
+            // Generate AI response with timeout
+            aiResponse = await Promise.race([
+                generateRagmcloudAIResponse(message, clientPhone),
+                new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('AI response timeout')), 15000)
+                )
+            ]);
+        } catch (aiError) {
+            console.error(`❌ AI response error for user ${userId}:`, aiError.message);
+            // Use enhanced fallback response instead of error message
+            aiResponse = generateEnhancedRagmcloudResponse(message, clientPhone);
+        }
+        
+        // Send the response using user's WhatsApp client
+        await userSession.client.sendMessage(from, aiResponse);
+        
+        // Store the sent message
+        storeClientMessage(clientPhone, aiResponse, true);
+        
+        // Update user-specific reply timer
+        updateUserReplyTimer(userId, clientPhone);
+        
+        // Track AI reply for the specific user
+        if (currentSessions.has(userId)) {
+            trackEmployeeActivity(userId, 'ai_reply', { clientPhone: clientPhone });
+        }
+        
+        // Update client last message
+        updateClientLastMessage(clientPhone, aiResponse);
+        
+        // Emit to frontend for the specific user
+        io.emit(`user_message_${userId}`, {
+            from: clientPhone,
+            message: aiResponse,
+            timestamp: new Date(),
+            fromMe: true,
+            userId: userId
+        });
+        
+        console.log(`✅ User ${userId} auto-reply sent to ${clientPhone}`);
+        
     } catch (error) {
-        console.error(`Error getting user ${userId} clients:`, error);
+        console.error(`❌ Error processing incoming message for user ${userId}:`, error);
+        
+        // Send professional error message instead of technical one
+        try {
+            const userSession = getUserWhatsAppSession(userId);
+            if (userSession && userSession.isConnected) {
+                const professionalMessage = "عذراً، يبدو أن هناك تأخير في النظام. يرجى المحاولة مرة أخرى أو التواصل معنا مباشرة على +966555111222";
+                await userSession.client.sendMessage(from, professionalMessage);
+            }
+        } catch (sendError) {
+            console.error(`❌ User ${userId} failed to send error message:`, sendError);
+        }
     }
+}
+
+// 🆕 User-specific Auto-Reply Functions
+function shouldReplyToClient(userId, phone) {
+    const userSession = getUserWhatsAppSession(userId);
+    if (!userSession) return false;
     
-    return [];
+    // Check if client is in user's imported list
+    return userSession.importedClients.has(phone);
 }
 
-function storeUserClients(userId, clients) {
-    try {
-        const userDir = `./memory/user_${userId}`;
-        if (!fs.existsSync(userDir)) {
-            fs.mkdirSync(userDir, { recursive: true });
-        }
+function shouldUserAutoReplyNow(userId, phone) {
+    const userSession = getUserWhatsAppSession(userId);
+    if (!userSession) return true;
+    
+    const lastReplyTime = userSession.clientReplyTimers.get(phone);
+    if (!lastReplyTime) return true;
+    
+    const timeDiff = Date.now() - lastReplyTime;
+    return timeDiff >= 3000; // 3 seconds minimum between replies
+}
+
+function updateUserReplyTimer(userId, phone) {
+    const userSession = getUserWhatsAppSession(userId);
+    if (userSession) {
+        userSession.clientReplyTimers.set(phone, Date.now());
+    }
+}
+
+// 🆕 User-specific Bot Control
+function toggleUserBot(userId, stop) {
+    const userSession = getUserWhatsAppSession(userId);
+    if (userSession) {
+        userSession.isBotStopped = stop;
+        console.log(`🤖 User ${userId} bot ${stop ? 'stopped' : 'started'}`);
         
-        const clientsFile = `${userDir}/clients.json`;
-        fs.writeFileSync(clientsFile, JSON.stringify(clients, null, 2));
+        // Emit user-specific bot status
+        io.emit(`user_bot_status_${userId}`, { stopped: stop, userId: userId });
         
-        console.log(`💾 Stored ${clients.length} clients for user ${userId}`);
-    } catch (error) {
-        console.error(`Error storing user ${userId} clients:`, error);
+        return true;
+    }
+    return false;
+}
+
+// 🆕 User-specific WhatsApp Reconnection
+function manualReconnectUserWhatsApp(userId) {
+    console.log(`🔄 Manual reconnection requested for user ${userId}...`);
+    const userSession = getUserWhatsAppSession(userId);
+    
+    if (userSession && userSession.client) {
+        userSession.client.destroy().then(() => {
+            setTimeout(() => initializeUserWhatsApp(userId), 2000);
+        });
+    } else {
+        initializeUserWhatsApp(userId);
     }
 }
 
 // =============================================
-// USER MANAGEMENT FUNCTIONS
+// EXISTING FUNCTIONS (Updated for Multi-User)
 // =============================================
 
+// NEW: User Management Functions
 function initializeUsers() {
     const usersFile = './data/users.json';
     
@@ -356,6 +667,7 @@ function initializeUsers() {
             users = JSON.parse(usersData);
             console.log(`✅ Loaded ${users.length} users from file`);
         } else {
+            // Create default admin user
             const defaultPassword = bcrypt.hashSync('admin123', 10);
             users = [
                 {
@@ -445,10 +757,7 @@ function authorizeAdmin(req, res, next) {
     next();
 }
 
-// =============================================
-// PERFORMANCE TRACKING FUNCTIONS
-// =============================================
-
+// NEW: Initialize user-specific performance tracking
 function initializeUserPerformance(userId) {
     if (!employeePerformance[userId]) {
         employeePerformance[userId] = {
@@ -467,6 +776,7 @@ function initializeUserPerformance(userId) {
         };
     }
     
+    // Check if it's a new day
     const today = new Date().toISOString().split('T')[0];
     if (employeePerformance[userId].dailyStats.date !== today) {
         resetUserDailyStats(userId);
@@ -491,6 +801,7 @@ function resetUserDailyStats(userId) {
     saveUserPerformanceData(userId);
 }
 
+// NEW: Track employee activity per user
 function trackEmployeeActivity(userId, type, data = {}) {
     if (!employeePerformance[userId]) {
         initializeUserPerformance(userId);
@@ -538,10 +849,14 @@ function trackEmployeeActivity(userId, type, data = {}) {
         ...data
     });
     
+    // Check if we should auto-send report to manager (after 30 messages)
     checkAutoSendReport(userId);
+    
+    // Save performance data
     saveUserPerformanceData(userId);
 }
 
+// NEW: Save user performance data
 function saveUserPerformanceData(userId) {
     try {
         if (employeePerformance[userId]) {
@@ -556,6 +871,7 @@ function saveUserPerformanceData(userId) {
     }
 }
 
+// NEW: Load user performance data
 function loadUserPerformanceData(userId) {
     try {
         const filePath = `./memory/employee_performance_${userId}.json`;
@@ -566,6 +882,7 @@ function loadUserPerformanceData(userId) {
                 clientInteractions: new Map(data.clientInteractions || [])
             };
             
+            // Check if it's a new day
             const today = new Date().toISOString().split('T')[0];
             if (employeePerformance[userId].dailyStats.date !== today) {
                 resetUserDailyStats(userId);
@@ -579,6 +896,7 @@ function loadUserPerformanceData(userId) {
     }
 }
 
+// NEW: Generate user-specific performance report
 function generateUserPerformanceReport(userId) {
     if (!employeePerformance[userId]) {
         initializeUserPerformance(userId);
@@ -588,11 +906,13 @@ function generateUserPerformanceReport(userId) {
     const totalInteractions = stats.messagesSent + stats.aiRepliesSent;
     const interestRate = stats.clientsContacted > 0 ? (stats.interestedClients / stats.clientsContacted * 100).toFixed(1) : 0;
     
+    // Calculate performance score (0-100)
     let performanceScore = 0;
-    performanceScore += Math.min(stats.messagesSent * 2, 30);
-    performanceScore += Math.min(stats.clientsContacted * 5, 30);
-    performanceScore += Math.min(stats.interestedClients * 10, 40);
+    performanceScore += Math.min(stats.messagesSent * 2, 30); // Max 30 points for messages
+    performanceScore += Math.min(stats.clientsContacted * 5, 30); // Max 30 points for clients
+    performanceScore += Math.min(stats.interestedClients * 10, 40); // Max 40 points for interested clients
     
+    // Performance evaluation
     let performanceLevel = 'ضعيف';
     let improvementSuggestions = [];
     
@@ -606,6 +926,7 @@ function generateUserPerformanceReport(userId) {
         performanceLevel = 'مقبول';
     }
     
+    // Generate improvement suggestions
     if (stats.messagesSent < 10) {
         improvementSuggestions.push('• زيادة عدد الرسائل المرسلة');
     }
@@ -663,20 +984,24 @@ ${improvementSuggestions.join('\n')}
     return report;
 }
 
+// NEW: Check if we should auto-send report to manager
 function checkAutoSendReport(userId) {
     if (!employeePerformance[userId]) return;
     
     const messageCount = employeePerformance[userId].dailyStats.messagesSent;
     
+    // Auto-send report after every 30 messages
     if (messageCount > 0 && messageCount % 30 === 0) {
         console.log(`📊 Auto-sending report for user ${userId} after ${messageCount} messages...`);
         
+        // Send notification to frontend
         io.emit('auto_report_notification', {
             userId: userId,
             messageCount: messageCount,
             message: `تم إرسال ${messageCount} رسالة. جاري إرسال التقرير التلقائي إلى المدير...`
         });
         
+        // Auto-send report
         setTimeout(() => {
             sendReportToManager(userId).catch(error => {
                 console.error('❌ Auto-report failed for user', userId, error);
@@ -685,335 +1010,38 @@ function checkAutoSendReport(userId) {
     }
 }
 
-function calculateActiveHours(startTime, endTime) {
-    const start = new Date(startTime);
-    const end = new Date(endTime);
-    const diffMs = end - start;
-    const hours = Math.floor(diffMs / (1000 * 60 * 60));
-    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-    return `${hours} ساعة ${minutes} دقيقة`;
-}
-
-// =============================================
-// WHATSAPP FUNCTIONS
-// =============================================
-
-function initializeUserWhatsApp(userId) {
-    console.log(`🔄 Starting WhatsApp for user ${userId}...`);
-    
+// Function to determine if greeting should be sent
+function shouldSendGreeting(phone) {
     try {
-        if (userWhatsAppSessions.has(userId) && userWhatsAppSessions.get(userId).status === 'connected') {
-            console.log(`✅ User ${userId} already has an active WhatsApp session`);
-            return userWhatsAppSessions.get(userId);
+        const messages = getClientMessages(phone);
+        if (messages.length === 0) {
+            return true; // First message in conversation
         }
-
-        const userSession = {
-            client: null,
-            qrCode: null,
-            status: 'disconnected',
-            isConnected: false,
-            isBotStopped: false,
-            clientReplyTimers: new Map(),
-            importedClients: new Set()
-        };
         
-        userWhatsAppSessions.set(userId, userSession);
-
-        userSession.client = new Client({
-            authStrategy: new LocalAuth({ 
-                clientId: `ragmcloud-user-${userId}`,
-                dataPath: `./sessions/user-${userId}`
-            }),
-            puppeteer: {
-                headless: true,
-                args: [
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--disable-dev-shm-usage',
-                    '--disable-accelerated-2d-canvas',
-                    '--no-first-run',
-                    '--no-zygote',
-                    '--disable-gpu',
-                    '--single-process',
-                    '--no-zygote',
-                    '--disable-setuid-sandbox',
-                    '--disable-web-security',
-                    '--disable-features=VizDisplayCompositor',
-                    '--disable-ipc-flooding-protection',
-                    '--disable-background-timer-throttling',
-                    '--disable-backgrounding-occluded-windows',
-                    '--disable-renderer-backgrounding',
-                    '--disable-back-forward-cache',
-                    '--disable-component-extensions-with-background-pages'
-                ],
-                executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || null
-            },
-            webVersionCache: {
-                type: 'remote',
-                remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
-            }
-        });
-
-        userSession.client.on('qr', (qr) => {
-            console.log(`📱 QR CODE RECEIVED for user ${userId}`);
-            qrcode.generate(qr, { small: true });
-            
-            QRCode.toDataURL(qr, (err, url) => {
-                if (!err) {
-                    userSession.qrCode = url;
-                    userSession.status = 'qr-ready';
-                    
-                    console.log(`✅ QR code generated for user ${userId}`);
-                    
-                    io.emit(`user_qr_${userId}`, { 
-                        qrCode: url,
-                        userId: userId,
-                        timestamp: new Date().toISOString()
-                    });
-                    
-                    io.emit(`user_status_${userId}`, { 
-                        connected: false, 
-                        message: 'يرجى مسح QR Code للاتصال',
-                        status: 'qr-ready',
-                        hasQr: true,
-                        userId: userId
-                    });
-                    
-                } else {
-                    console.error(`❌ QR code generation failed for user ${userId}:`, err);
-                    
-                    io.emit(`user_status_${userId}`, { 
-                        connected: false, 
-                        message: 'فشل توليد QR Code',
-                        status: 'error',
-                        hasQr: false,
-                        userId: userId,
-                        error: err.message
-                    });
-                }
-            });
-        });
-
-        userSession.client.on('ready', () => {
-            console.log(`✅ WhatsApp READY for user ${userId}!`);
-            userSession.isConnected = true;
-            userSession.status = 'connected';
-            
-            io.emit(`user_status_${userId}`, { 
-                connected: true, 
-                message: 'واتساب متصل ✅',
-                status: 'connected',
-                hasQr: false,
-                userId: userId
-            });
-            
-            console.log(`✅ User ${userId} WhatsApp connected successfully`);
-        });
-
-        userSession.client.on('message', async (message) => {
-            if (message.from === 'status@broadcast' || message.fromMe) {
-                return;
-            }
-
-            console.log(`📩 User ${userId} received message from:`, message.from);
-            console.log('💬 Message content:', message.body);
-            
-            try {
-                const clientPhone = message.from.replace('@c.us', '');
-                
-                storeUserClientMessage(userId, clientPhone, message.body, false);
-                
-                io.emit(`user_message_${userId}`, {
-                    from: clientPhone,
-                    message: message.body,
-                    timestamp: new Date(),
-                    fromMe: false,
-                    userId: userId
-                });
-
-                updateUserClientLastMessage(userId, clientPhone, message.body);
-                processUserIncomingMessage(userId, message.body, message.from).catch(error => {
-                    console.error(`❌ Error in processUserIncomingMessage for user ${userId}:`, error);
-                });
-                
-            } catch (error) {
-                console.error(`❌ Error handling message for user ${userId}:`, error);
-            }
-        });
-
-        userSession.client.on('auth_failure', (msg) => {
-            console.log(`❌ WhatsApp auth failed for user ${userId}:`, msg);
-            userSession.isConnected = false;
-            userSession.status = 'disconnected';
-            
-            io.emit(`user_status_${userId}`, { 
-                connected: false, 
-                message: 'فشل المصادقة',
-                status: 'auth-failed',
-                hasQr: false,
-                userId: userId
-            });
-        });
-
-        userSession.client.on('disconnected', (reason) => {
-            console.log(`🔌 WhatsApp disconnected for user ${userId}:`, reason);
-            userSession.isConnected = false;
-            userSession.status = 'disconnected';
-            
-            io.emit(`user_status_${userId}`, { 
-                connected: false, 
-                message: 'جارٍ إعادة الاتصال...',
-                status: 'disconnected',
-                hasQr: false,
-                userId: userId
-            });
-            
-            setTimeout(() => {
-                console.log(`🔄 Attempting reconnection for user ${userId}...`);
-                initializeUserWhatsApp(userId);
-            }, 10000);
-        });
-
-        userSession.client.on('error', (error) => {
-            console.error(`❌ WhatsApp error for user ${userId}:`, error);
-        });
-
-        userSession.client.initialize().catch(error => {
-            console.log(`⚠️ WhatsApp init failed for user ${userId}:`, error.message);
-            
-            setTimeout(() => {
-                console.log(`🔄 Retrying WhatsApp initialization for user ${userId}...`);
-                initializeUserWhatsApp(userId);
-            }, 15000);
-        });
+        // Find the last message timestamp
+        const lastMessage = messages[messages.length - 1];
+        const lastMessageTime = new Date(lastMessage.timestamp);
+        const currentTime = new Date();
+        const hoursDiff = (currentTime - lastMessageTime) / (1000 * 60 * 60);
         
-        return userSession;
-        
+        // Return true if more than 5 hours passed
+        return hoursDiff > 5;
     } catch (error) {
-        console.log(`❌ Error creating WhatsApp client for user ${userId}:`, error.message);
-        setTimeout(() => initializeUserWhatsApp(userId), 15000);
-        return null;
+        console.error('Error checking greeting condition:', error);
+        return true; // Default to greeting if error
     }
 }
 
-function updateUserClientLastMessage(userId, phone, message) {
-    try {
-        let clients = getUserClients(userId);
-        
-        const clientIndex = clients.findIndex(client => client.phone === phone);
-        if (clientIndex !== -1) {
-            clients[clientIndex].lastMessage = message.substring(0, 50) + (message.length > 50 ? '...' : '');
-            clients[clientIndex].lastActivity = new Date().toISOString();
-            storeUserClients(userId, clients);
-            
-            io.emit(`user_clients_updated_${userId}`, clients);
-        } else {
-            const newClient = {
-                id: Date.now(),
-                name: `عميل ${phone}`,
-                phone: phone,
-                lastMessage: message.substring(0, 50) + (message.length > 50 ? '...' : ''),
-                unread: 0,
-                importedAt: new Date().toISOString(),
-                lastActivity: new Date().toISOString(),
-                status: 'no-reply'
-            };
-            clients.push(newClient);
-            storeUserClients(userId, clients);
-            io.emit(`user_clients_updated_${userId}`, clients);
-        }
-    } catch (error) {
-        console.error(`Error updating user ${userId} client last message:`, error);
-    }
-}
-
-async function processUserIncomingMessage(userId, message, from) {
-    try {
-        console.log(`📩 User ${userId} processing message from ${from}: ${message}`);
-        
-        const clientPhone = from.replace('@c.us', '');
-        
-        storeUserClientMessage(userId, clientPhone, message, false);
-        autoDetectUserClientInterest(userId, clientPhone, message);
-        
-        const userSession = getUserWhatsAppSession(userId);
-        if (!userSession) {
-            console.log(`❌ No WhatsApp session found for user ${userId}`);
-            return;
-        }
-        
-        if (userSession.isBotStopped) {
-            console.log(`🤖 Bot is stopped for user ${userId} - no auto-reply`);
-            return;
-        }
-        
-        if (!shouldReplyToUserClient(userId, clientPhone)) {
-            console.log(`⏸️ Client not in user ${userId}'s imported list - skipping auto-reply`);
-            return;
-        }
-        
-        if (!shouldUserAutoReplyNow(userId, clientPhone)) {
-            console.log(`⏰ User ${userId} waiting for 3-second delay before next reply`);
-            return;
-        }
-        
-        console.log(`🤖 User ${userId} generating AI response...`);
-        
-        let aiResponse;
-        try {
-            aiResponse = await Promise.race([
-                generateRagmcloudAIResponse(message, clientPhone),
-                new Promise((_, reject) => 
-                    setTimeout(() => reject(new Error('AI response timeout')), 15000)
-                )
-            ]);
-        } catch (aiError) {
-            console.error(`❌ AI response error for user ${userId}:`, aiError.message);
-            aiResponse = generateEnhancedRagmcloudResponse(message, clientPhone);
-        }
-        
-        await userSession.client.sendMessage(from, aiResponse);
-        storeUserClientMessage(userId, clientPhone, aiResponse, true);
-        updateUserReplyTimer(userId, clientPhone);
-        
-        if (currentSessions.has(userId)) {
-            trackEmployeeActivity(userId, 'ai_reply', { clientPhone: clientPhone });
-        }
-        
-        updateUserClientLastMessage(userId, clientPhone, aiResponse);
-        
-        io.emit(`user_message_${userId}`, {
-            from: clientPhone,
-            message: aiResponse,
-            timestamp: new Date(),
-            fromMe: true,
-            userId: userId
-        });
-        
-        console.log(`✅ User ${userId} auto-reply sent to ${clientPhone}`);
-        
-    } catch (error) {
-        console.error(`❌ Error processing incoming message for user ${userId}:`, error);
-        
-        try {
-            const userSession = getUserWhatsAppSession(userId);
-            if (userSession && userSession.isConnected) {
-                const professionalMessage = "عذراً، يبدو أن هناك تأخير في النظام. يرجى المحاولة مرة أخرى أو التواصل معنا مباشرة على +966555111222";
-                await userSession.client.sendMessage(from, professionalMessage);
-            }
-        } catch (sendError) {
-            console.error(`❌ User ${userId} failed to send error message:`, sendError);
-        }
-    }
-}
-
-function shouldReplyToUserClient(userId, phone) {
+// FIXED: Check if we should auto-reply to client (REPLY TO ALL CLIENTS)
+function shouldReplyToClient(userId, phone) {
     const userSession = getUserWhatsAppSession(userId);
     if (!userSession) return false;
     
+    // Check if client is in user's imported list
     return userSession.importedClients.has(phone);
 }
 
+// Check if we should auto-reply to client (3-second delay)
 function shouldUserAutoReplyNow(userId, phone) {
     const userSession = getUserWhatsAppSession(userId);
     if (!userSession) return true;
@@ -1022,9 +1050,10 @@ function shouldUserAutoReplyNow(userId, phone) {
     if (!lastReplyTime) return true;
     
     const timeDiff = Date.now() - lastReplyTime;
-    return timeDiff >= 3000;
+    return timeDiff >= 3000; // 3 seconds minimum between replies
 }
 
+// Update client reply timer
 function updateUserReplyTimer(userId, phone) {
     const userSession = getUserWhatsAppSession(userId);
     if (userSession) {
@@ -1032,10 +1061,12 @@ function updateUserReplyTimer(userId, phone) {
     }
 }
 
-function autoDetectUserClientInterest(userId, phone, message) {
+// Auto-detect client interest based on message content
+function autoDetectClientInterest(phone, message) {
     try {
         const msg = message.toLowerCase();
         
+        // Keywords for different interest levels
         const interestedKeywords = ['سعر', 'تكلفة', 'عرض', 'خصم', 'تجربة', 'جرب', 'مميزات', 'تفاصيل', 'متى', 'كيف', 'أرغب', 'أريد', 'شرح', 'شرح', 'تكلم', 'اتصل', 'تواصل'];
         const busyKeywords = ['لاحقاً', 'مشغول', 'بعدين', 'لاحقا', 'الوقت', 'منشغل', 'مشغول', 'شغل', 'دور', 'وظيفة'];
         const notInterestedKeywords = ['لا أريد', 'غير مهتم', 'لا أرغب', 'شكراً', 'لا شكر', 'ما ابغى', 'ما ابي', 'كفاية', 'توقف', 'لا تتصل', 'بلوك'];
@@ -1050,87 +1081,73 @@ function autoDetectUserClientInterest(userId, phone, message) {
             newStatus = 'not-interested';
         }
         
-        updateUserClientStatus(userId, phone, newStatus);
+        // Update client status in memory
+        updateClientStatus(phone, newStatus);
         
         return newStatus;
     } catch (error) {
-        console.error('Error auto-detecting user client interest:', error);
+        console.error('Error auto-detecting client interest:', error);
         return 'no-reply';
     }
 }
 
-function updateUserClientStatus(userId, phone, status) {
+// Update client status in memory
+function updateClientStatus(phone, status) {
     try {
-        let clients = getUserClients(userId);
+        let clients = [];
+        const clientsFile = './memory/clients.json';
         
+        if (fs.existsSync(clientsFile)) {
+            const clientsData = fs.readFileSync(clientsFile, 'utf8');
+            clients = JSON.parse(clientsData);
+        }
+
         const clientIndex = clients.findIndex(client => client.phone === phone);
         if (clientIndex !== -1) {
             clients[clientIndex].status = status;
             clients[clientIndex].statusUpdatedAt = new Date().toISOString();
-            storeUserClients(userId, clients);
+            fs.writeFileSync(clientsFile, JSON.stringify(clients, null, 2));
             
-            io.emit(`user_client_status_updated_${userId}`, {
+            // Emit status update to frontend
+            io.emit('client_status_updated', {
                 phone: phone,
                 status: status,
                 clients: clients
             });
             
-            console.log(`🔄 Auto-updated user ${userId} client ${phone} status to: ${status}`);
+            console.log(`🔄 Auto-updated client ${phone} status to: ${status}`);
         }
     } catch (error) {
-        console.error('Error updating user client status:', error);
+        console.error('Error updating client status:', error);
     }
 }
 
-function getUserWhatsAppSession(userId) {
-    return userWhatsAppSessions.get(userId);
-}
-
-function isUserWhatsAppConnected(userId) {
-    const session = getUserWhatsAppSession(userId);
-    return session && session.isConnected;
-}
-
-function toggleUserBot(userId, stop) {
-    const userSession = getUserWhatsAppSession(userId);
-    if (userSession) {
-        userSession.isBotStopped = stop;
-        console.log(`🤖 User ${userId} bot ${stop ? 'stopped' : 'started'}`);
-        
-        io.emit(`user_bot_status_${userId}`, { stopped: stop, userId: userId });
-        
-        return true;
-    }
-    return false;
-}
-
-function manualReconnectUserWhatsApp(userId) {
-    console.log(`🔄 Manual reconnection requested for user ${userId}...`);
-    const userSession = getUserWhatsAppSession(userId);
-    
-    if (userSession && userSession.client) {
-        userSession.client.destroy().then(() => {
-            setTimeout(() => initializeUserWhatsApp(userId), 2000);
-        });
-    } else {
-        initializeUserWhatsApp(userId);
-    }
-}
-
-// =============================================
-// AI RESPONSE FUNCTIONS
-// =============================================
-
-function shouldSendGreeting(phone) {
+// ENHANCED: Get conversation history for AI context
+function getConversationHistoryForAI(phone, maxMessages = 10) {
     try {
-        // Simplified greeting logic
-        return true;
+        const messages = getClientMessages(phone);
+        
+        // Get recent messages (last 10 messages for context)
+        const recentMessages = messages.slice(-maxMessages);
+        
+        // Format conversation history for AI
+        const conversationHistory = recentMessages.map(msg => {
+            const role = msg.fromMe ? 'assistant' : 'user';
+            return {
+                role: role,
+                content: msg.message
+            };
+        });
+        
+        console.log(`📚 Loaded ${conversationHistory.length} previous messages for context`);
+        return conversationHistory;
     } catch (error) {
-        console.error('Error checking greeting condition:', error);
-        return true;
+        console.error('Error getting conversation history:', error);
+        return [];
     }
 }
 
+// ENHANCED: DeepSeek AI API Call with Conversation Memory
 async function callDeepSeekAI(userMessage, clientPhone) {
     if (!deepseekAvailable || !process.env.DEEPSEEK_API_KEY) {
         throw new Error('DeepSeek not available');
@@ -1140,7 +1157,9 @@ async function callDeepSeekAI(userMessage, clientPhone) {
         console.log('🚀 Calling DeepSeek API...');
         
         const shouldGreet = shouldSendGreeting(clientPhone);
+        const conversationHistory = getConversationHistoryForAI(clientPhone);
         
+        // Build messages array
         const messages = [
             {
                 role: "system",
@@ -1148,6 +1167,12 @@ async function callDeepSeekAI(userMessage, clientPhone) {
             }
         ];
 
+        // Add conversation history
+        if (conversationHistory.length > 0) {
+            messages.push(...conversationHistory);
+        }
+
+        // Add current user message with context
         messages.push({
             role: "user", 
             content: `العميل يقول: "${userMessage}"
@@ -1190,12 +1215,14 @@ ${shouldGreet ? 'ملاحظة: هذه بداية المحادثة - ابدأ ب�
     }
 }
 
+// Enhanced Ragmcloud responses for when AI fails
 function generateEnhancedRagmcloudResponse(userMessage, clientPhone) {
     const msg = userMessage.toLowerCase().trim();
     const shouldGreet = shouldSendGreeting(clientPhone);
     
     console.log('🤖 Using enhanced Ragmcloud response for:', msg);
     
+    // Check for personal/irrelevant questions - REJECT THEM
     const irrelevantQuestions = [
         'من أنت', 'ما اسمك', 'who are you', 'what is your name',
         'مدير', 'المدير', 'manager', 'owner', 'صاحب',
@@ -1208,6 +1235,7 @@ function generateEnhancedRagmcloudResponse(userMessage, clientPhone) {
         return "أعتذر، هذا السؤال خارج نطاق تخصصي في أنظمة ERP. يمكنني مساعدتك في اختيار النظام المناسب لشركتك أو الإجابة على استفساراتك حول باقاتنا وخدماتنا.";
     }
     
+    // Greeting only at start or after 5 hours
     if (shouldGreet && (msg.includes('السلام') || msg.includes('سلام') || msg.includes('اهلا') || 
         msg.includes('مرحبا') || msg.includes('اهلين') || msg.includes('مساء') || 
         msg.includes('صباح') || msg.includes('hello') || msg.includes('hi'))) {
@@ -1226,6 +1254,7 @@ function generateEnhancedRagmcloudResponse(userMessage, clientPhone) {
 كيف يمكنني مساعدتك اليوم؟`;
     }
     
+    // Price/Packages questions
     if (msg.includes('سعر') || msg.includes('تكلفة') || msg.includes('باقة') || 
         msg.includes('package') || msg.includes('price') || msg.includes('كم') || 
         msg.includes('كام') || msg.includes('تعرفة')) {
@@ -1254,6 +1283,7 @@ function generateEnhancedRagmcloudResponse(userMessage, clientPhone) {
 📞 فريق المبيعات جاهز لمساعدتك: +966555111222`;
     }
     
+    // ERP System questions
     if (msg.includes('نظام') || msg.includes('erp') || msg.includes('برنامج') || 
         msg.includes('سوفت وير') || msg.includes('system')) {
         
@@ -1284,6 +1314,7 @@ function generateEnhancedRagmcloudResponse(userMessage, clientPhone) {
 📞 جرب النظام مجاناً: +966555111222`;
     }
     
+    // Accounting questions
     if (msg.includes('محاسبة') || msg.includes('محاسب') || msg.includes('حسابات') || 
         msg.includes('مالي') || msg.includes('accounting')) {
         
@@ -1311,6 +1342,7 @@ function generateEnhancedRagmcloudResponse(userMessage, clientPhone) {
 📞 استشارة محاسبية مجانية: +966555111222`;
     }
     
+    // Inventory questions  
     if (msg.includes('مخزون') || msg.includes('مستودع') || msg.includes('بضاعة') || 
         msg.includes('inventory') || msg.includes('stock')) {
         
@@ -1337,6 +1369,7 @@ function generateEnhancedRagmcloudResponse(userMessage, clientPhone) {
 📞 للاستشارة: +966555111222`;
     }
     
+    // Trial/Demo requests
     if (msg.includes('تجريب') || msg.includes('تجربة') || msg.includes('demo') || 
         msg.includes('جرب') || msg.includes('نسخة')) {
         
@@ -1361,6 +1394,7 @@ function generateEnhancedRagmcloudResponse(userMessage, clientPhone) {
 جرب وشوف الفرق في إدارة شركتك!`;
     }
     
+    // Contact requests
     if (msg.includes('اتصل') || msg.includes('تواصل') || msg.includes('رقم') || 
         msg.includes('هاتف') || msg.includes('contact')) {
         
@@ -1384,6 +1418,7 @@ function generateEnhancedRagmcloudResponse(userMessage, clientPhone) {
 فريق المبيعات جاهز لاستقبال استفساراتك وتقديم الاستشارة المجانية!`;
     }
     
+    // Default response - CONVINCING SALES APPROACH
     return `أهلاً وسهلاً بك! 👋
 
 أنت تتحدث مع مساعد رقم كلاود المتخصص في أنظمة ERP السحابية.
@@ -1407,9 +1442,11 @@ function generateEnhancedRagmcloudResponse(userMessage, clientPhone) {
 أخبرني عن طبيعة نشاط شركتك علشان أقدر أساعدك في اختيار النظام المناسب!`;
 }
 
+// ENHANCED AI Response - ALWAYS TRY DEEPSEEK FIRST
 async function generateRagmcloudAIResponse(userMessage, clientPhone) {
     console.log('🔄 Processing message for Ragmcloud with memory:', userMessage);
     
+    // ALWAYS try DeepSeek first if available
     if (deepseekAvailable) {
         try {
             console.log('🎯 Using DeepSeek with conversation memory...');
@@ -1427,14 +1464,71 @@ async function generateRagmcloudAIResponse(userMessage, clientPhone) {
         }
     }
     
+    // If DeepSeek not available, use enhanced fallback
     console.log('🤖 DeepSeek not available, using enhanced fallback');
     return generateEnhancedRagmcloudResponse(userMessage, clientPhone);
 }
 
-// =============================================
-// UTILITY FUNCTIONS
-// =============================================
+// ENHANCED: Store messages per client with better reliability
+function storeClientMessage(phone, message, isFromMe) {
+    try {
+        const messageData = {
+            message: message,
+            fromMe: isFromMe,
+            timestamp: new Date().toISOString()
+        };
 
+        let clientMessages = [];
+        const messageFile = `./memory/messages_${phone}.json`;
+        
+        // Ensure memory directory exists
+        if (!fs.existsSync('./memory')) {
+            fs.mkdirSync('./memory', { recursive: true });
+        }
+        
+        if (fs.existsSync(messageFile)) {
+            try {
+                const messagesData = fs.readFileSync(messageFile, 'utf8');
+                clientMessages = JSON.parse(messagesData);
+            } catch (error) {
+                console.error('Error reading message file:', error);
+                clientMessages = [];
+            }
+        }
+
+        clientMessages.push(messageData);
+        
+        // Keep only last 50 messages to prevent file bloat
+        if (clientMessages.length > 50) {
+            clientMessages = clientMessages.slice(-50);
+        }
+        
+        fs.writeFileSync(messageFile, JSON.stringify(clientMessages, null, 2));
+        
+        console.log(`💾 Stored message for ${phone} (${isFromMe ? 'sent' : 'received'})`);
+        
+    } catch (error) {
+        console.error('Error storing client message:', error);
+    }
+}
+
+// ENHANCED: Get client messages with error handling
+function getClientMessages(phone) {
+    try {
+        const messageFile = `./memory/messages_${phone}.json`;
+        
+        if (fs.existsSync(messageFile)) {
+            const messagesData = fs.readFileSync(messageFile, 'utf8');
+            return JSON.parse(messagesData);
+        }
+    } catch (error) {
+        console.error('Error getting client messages:', error);
+    }
+    
+    return [];
+}
+
+// Phone number formatting
 function formatPhoneNumber(phone) {
     if (!phone) return '';
     let cleaned = phone.toString().replace(/\D/g, '');
@@ -1452,6 +1546,7 @@ function formatPhoneNumber(phone) {
     return cleaned;
 }
 
+// Enhanced Excel file processing
 function processExcelFile(filePath) {
     try {
         const workbook = XLSX.readFile(filePath);
@@ -1460,6 +1555,7 @@ function processExcelFile(filePath) {
         const jsonData = XLSX.utils.sheet_to_json(worksheet);
 
         const clients = jsonData.map((row, index) => {
+            // Try multiple possible column names for name and phone
             const name = row['Name'] || row['name'] || row['الاسم'] || row['اسم'] || 
                          row['اسم العميل'] || row['Client Name'] || row['client_name'] || 
                          `عميل ${index + 1}`;
@@ -1482,6 +1578,7 @@ function processExcelFile(filePath) {
                 status: 'no-reply'
             };
         }).filter(client => {
+            // Filter only valid phone numbers
             return client.phone && client.phone.length >= 10;
         });
 
@@ -1494,12 +1591,37 @@ function processExcelFile(filePath) {
     }
 }
 
+// Update client last message
+function updateClientLastMessage(phone, message) {
+    try {
+        let clients = [];
+        const clientsFile = './memory/clients.json';
+        
+        if (fs.existsSync(clientsFile)) {
+            const clientsData = fs.readFileSync(clientsFile, 'utf8');
+            clients = JSON.parse(clientsData);
+        }
+
+        const clientIndex = clients.findIndex(client => client.phone === phone);
+        if (clientIndex !== -1) {
+            clients[clientIndex].lastMessage = message.substring(0, 50) + (message.length > 50 ? '...' : '');
+            clients[clientIndex].lastActivity = new Date().toISOString();
+            fs.writeFileSync(clientsFile, JSON.stringify(clients, null, 2));
+            io.emit('clients_updated', clients);
+        }
+    } catch (error) {
+        console.error('Error updating client last message:', error);
+    }
+}
+
+// Send report to manager
 async function sendReportToManager(userId = null) {
     try {
         let report;
         if (userId) {
             report = generateUserPerformanceReport(userId);
         } else {
+            // Generate combined report for all users
             report = "📊 **تقرير أداء الفريق الكامل**\n\n";
             currentSessions.forEach((session, uid) => {
                 if (session.isActive) {
@@ -1512,6 +1634,7 @@ async function sendReportToManager(userId = null) {
         
         console.log('📤 Sending report to manager:', managerPhone);
         
+        // Find any connected user to send the report
         let senderSession = null;
         for (const [uid, session] of userWhatsAppSessions) {
             if (session.isConnected) {
@@ -1534,6 +1657,7 @@ async function sendReportToManager(userId = null) {
     }
 }
 
+// Export report to file
 function exportReportToFile(userId = null) {
     try {
         let report, fileName;
@@ -1554,6 +1678,7 @@ function exportReportToFile(userId = null) {
         
         const filePath = path.join(__dirname, 'reports', fileName);
         
+        // Ensure reports directory exists
         if (!fs.existsSync(path.join(__dirname, 'reports'))) {
             fs.mkdirSync(path.join(__dirname, 'reports'), { recursive: true });
         }
@@ -1573,10 +1698,17 @@ function exportReportToFile(userId = null) {
     }
 }
 
-// =============================================
-// ROUTES
-// =============================================
+// Calculate active hours
+function calculateActiveHours(startTime, endTime) {
+    const start = new Date(startTime);
+    const end = new Date(endTime);
+    const diffMs = end - start;
+    const hours = Math.floor(diffMs / (1000 * 60 * 60));
+    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+    return `${hours} ساعة ${minutes} دقيقة`;
+}
 
+// Middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(express.static('public'));
@@ -1590,34 +1722,7 @@ app.get('/dashboard', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
 });
 
-app.get('/user-management', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'user-management.html'));
-});
-
-app.get('/user-dashboard/:userId', authenticateUser, authorizeAdmin, (req, res) => {
-    const targetUserId = parseInt(req.params.userId);
-    const targetUser = users.find(u => u.id === targetUserId);
-    
-    if (!targetUser) {
-        return res.status(404).json({ error: 'المستخدم غير موجود' });
-    }
-    
-    const tempToken = generateToken(targetUser);
-    
-    res.json({
-        success: true,
-        token: tempToken,
-        user: {
-            id: targetUser.id,
-            name: targetUser.name,
-            username: targetUser.username,
-            role: targetUser.role
-        },
-        message: 'تم الانتقال إلى لوحة تحكم المستخدم'
-    });
-});
-
-// Login Route
+// NEW: Authentication Routes
 app.post('/api/login', (req, res) => {
     try {
         const { username, password } = req.body;
@@ -1644,7 +1749,7 @@ app.post('/api/login', (req, res) => {
         initializeUserPerformance(user.id);
         loadUserPerformanceData(user.id);
         
-        // Initialize user WhatsApp session
+        // 🆕 Initialize user WhatsApp session
         initializeUserWhatsApp(user.id);
         
         // Create session
@@ -1678,6 +1783,7 @@ app.post('/api/logout', authenticateUser, (req, res) => {
     try {
         const userId = req.user.id;
         
+        // 🆕 Clean up user WhatsApp session
         const userSession = getUserWhatsAppSession(userId);
         if (userSession && userSession.client) {
             userSession.client.destroy();
@@ -1703,7 +1809,7 @@ app.get('/api/me', authenticateUser, (req, res) => {
     });
 });
 
-// User WhatsApp Status Route
+// 🆕 User WhatsApp Status Route
 app.get('/api/user-whatsapp-status', authenticateUser, (req, res) => {
     try {
         const userId = req.user.id;
@@ -1730,7 +1836,7 @@ app.get('/api/user-whatsapp-status', authenticateUser, (req, res) => {
     }
 });
 
-// User WhatsApp QR Code Route
+// 🆕 User WhatsApp QR Code Route
 app.get('/api/user-whatsapp-qr', authenticateUser, (req, res) => {
     try {
         const userId = req.user.id;
@@ -1746,7 +1852,7 @@ app.get('/api/user-whatsapp-qr', authenticateUser, (req, res) => {
     }
 });
 
-// User-specific Bot Control Route
+// 🆕 User-specific Bot Control Route
 app.post('/api/user-toggle-bot', authenticateUser, (req, res) => {
     try {
         const { stop } = req.body;
@@ -1768,7 +1874,7 @@ app.post('/api/user-toggle-bot', authenticateUser, (req, res) => {
     }
 });
 
-// User-specific WhatsApp Reconnection
+// 🆕 User-specific WhatsApp Reconnection
 app.post('/api/user-reconnect-whatsapp', authenticateUser, (req, res) => {
     try {
         const userId = req.user.id;
@@ -1779,7 +1885,7 @@ app.post('/api/user-reconnect-whatsapp', authenticateUser, (req, res) => {
     }
 });
 
-// User Management Routes (Admin only)
+// NEW: User Management Routes (Admin only)
 app.get('/api/users', authenticateUser, authorizeAdmin, (req, res) => {
     try {
         const usersList = users.map(user => ({
@@ -1806,6 +1912,7 @@ app.post('/api/users', authenticateUser, authorizeAdmin, (req, res) => {
             return res.status(400).json({ error: 'جميع الحقول مطلوبة' });
         }
         
+        // Check if username already exists
         if (users.find(u => u.username === username)) {
             return res.status(400).json({ error: 'اسم المستخدم موجود مسبقاً' });
         }
@@ -1824,6 +1931,7 @@ app.post('/api/users', authenticateUser, authorizeAdmin, (req, res) => {
         users.push(newUser);
         saveUsers();
         
+        // Initialize performance tracking for new user
         initializeUserPerformance(newUser.id);
         
         res.json({
@@ -1854,10 +1962,12 @@ app.put('/api/users/:id', authenticateUser, authorizeAdmin, (req, res) => {
             return res.status(404).json({ error: 'المستخدم غير موجود' });
         }
         
+        // Check if username already exists (excluding current user)
         if (username && users.find(u => u.username === username && u.id !== userId)) {
             return res.status(400).json({ error: 'اسم المستخدم موجود مسبقاً' });
         }
         
+        // Update user
         if (name) users[userIndex].name = name;
         if (username) users[userIndex].username = username;
         if (password) users[userIndex].password = bcrypt.hashSync(password, 10);
@@ -1884,64 +1994,14 @@ app.put('/api/users/:id', authenticateUser, authorizeAdmin, (req, res) => {
     }
 });
 
-app.delete('/api/users/:id', authenticateUser, authorizeAdmin, (req, res) => {
-    try {
-        const userId = parseInt(req.params.id);
-        
-        if (userId === req.user.id) {
-            return res.status(400).json({ error: 'لا يمكن حذف حسابك الخاص' });
-        }
-        
-        const userIndex = users.findIndex(u => u.id === userId);
-        if (userIndex === -1) {
-            return res.status(404).json({ error: 'المستخدم غير موجود' });
-        }
-        
-        users.splice(userIndex, 1);
-        saveUsers();
-        
-        res.json({
-            success: true,
-            message: 'تم حذف المستخدم بنجاح'
-        });
-        
-    } catch (error) {
-        console.error('Delete user error:', error);
-        res.status(500).json({ error: 'خطأ في الخادم' });
-    }
-});
-
-// User-specific Clients Route
-app.get('/api/user-clients', authenticateUser, (req, res) => {
-    try {
-        const userId = req.user.id;
-        const clients = getUserClients(userId);
-        res.json({ success: true, clients: clients });
-    } catch (error) {
-        res.json({ success: true, clients: [] });
-    }
-});
-
-// User-specific Client Messages Route
-app.get('/api/user-client-messages/:phone', authenticateUser, (req, res) => {
-    try {
-        const userId = req.user.id;
-        const phone = req.params.phone;
-        const messages = getUserClientMessages(userId, phone);
-        res.json({ success: true, messages: messages });
-    } catch (error) {
-        res.json({ success: true, messages: [] });
-    }
-});
-
-// User-specific Upload Excel
-app.post('/api/user-upload-excel', authenticateUser, upload.single('excelFile'), (req, res) => {
+// Upload Excel file
+app.post('/api/upload-excel', authenticateUser, upload.single('excelFile'), (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({ error: 'لم يتم رفع أي ملف' });
         }
 
-        console.log('📂 Processing uploaded file for user:', req.user.name);
+        console.log('📂 Processing uploaded file:', req.file.originalname);
         
         const clients = processExcelFile(req.file.path);
 
@@ -1952,6 +2012,7 @@ app.post('/api/user-upload-excel', authenticateUser, upload.single('excelFile'),
             });
         }
 
+        // 🆕 Add clients to user's imported list
         const userId = req.user.id;
         const userSession = getUserWhatsAppSession(userId);
         if (userSession) {
@@ -1960,10 +2021,12 @@ app.post('/api/user-upload-excel', authenticateUser, upload.single('excelFile'),
             });
         }
 
-        storeUserClients(userId, clients);
-        fs.unlinkSync(req.file.path);
+        // Save clients to file
+        fs.writeFileSync('./memory/clients.json', JSON.stringify(clients, null, 2));
+        fs.unlinkSync(req.file.path); // Clean up uploaded file
 
-        io.emit(`user_clients_updated_${userId}`, clients);
+        // Emit to all connected clients
+        io.emit('clients_updated', clients);
 
         res.json({ 
             success: true, 
@@ -1975,6 +2038,7 @@ app.post('/api/user-upload-excel', authenticateUser, upload.single('excelFile'),
     } catch (error) {
         console.error('❌ Error processing Excel:', error);
         
+        // Clean up uploaded file
         if (req.file && fs.existsSync(req.file.path)) {
             fs.unlinkSync(req.file.path);
         }
@@ -1982,6 +2046,32 @@ app.post('/api/user-upload-excel', authenticateUser, upload.single('excelFile'),
         res.status(500).json({ 
             error: 'فشل معالجة ملف Excel: ' + error.message 
         });
+    }
+});
+
+// Get clients list
+app.get('/api/clients', authenticateUser, (req, res) => {
+    try {
+        if (fs.existsSync('./memory/clients.json')) {
+            const clientsData = fs.readFileSync('./memory/clients.json', 'utf8');
+            const clients = JSON.parse(clientsData);
+            res.json({ success: true, clients: clients });
+        } else {
+            res.json({ success: true, clients: [] });
+        }
+    } catch (error) {
+        res.json({ success: true, clients: [] });
+    }
+});
+
+// Get client messages
+app.get('/api/client-messages/:phone', authenticateUser, (req, res) => {
+    try {
+        const phone = req.params.phone;
+        const messages = getClientMessages(phone);
+        res.json({ success: true, messages: messages });
+    } catch (error) {
+        res.json({ success: true, messages: [] });
     }
 });
 
@@ -2029,6 +2119,7 @@ app.get('/api/export-report', authenticateUser, (req, res) => {
         console.log('🔄 Exporting report...');
         const result = exportReportToFile(req.user.id);
         
+        // Send the file for download
         res.download(result.filePath, result.fileName, (err) => {
             if (err) {
                 console.error('Error downloading file:', err);
@@ -2051,7 +2142,7 @@ app.get('/api/export-report', authenticateUser, (req, res) => {
 // Bulk send endpoint
 app.post('/api/send-bulk', authenticateUser, async (req, res) => {
     try {
-        const { message, delay = 3, clients } = req.body;
+        const { message, delay = 40, clients } = req.body;
         
         console.log('📤 Bulk send request received for', clients?.length, 'clients by user', req.user.name);
 
@@ -2075,6 +2166,7 @@ app.post('/api/send-bulk', authenticateUser, async (req, res) => {
         let successCount = 0;
         let failCount = 0;
         
+        // Track bulk campaign for the user
         trackEmployeeActivity(userId, 'bulk_campaign', { 
             clientCount: clients.length,
             message: message.substring(0, 50) 
@@ -2098,6 +2190,7 @@ app.post('/api/send-bulk', authenticateUser, async (req, res) => {
             const phoneNumber = formattedPhone + '@c.us';
             
             try {
+                // Wait between messages (except first one)
                 if (i > 0) {
                     await new Promise(resolve => setTimeout(resolve, delay * 1000));
                 }
@@ -2109,6 +2202,7 @@ app.post('/api/send-bulk', authenticateUser, async (req, res) => {
                 client.lastMessage = message.substring(0, 50) + (message.length > 50 ? '...' : '');
                 client.lastSent = new Date().toISOString();
                 
+                // Track message sent for the user
                 trackEmployeeActivity(userId, 'message_sent', { 
                     clientPhone: formattedPhone,
                     clientName: client.name,
@@ -2124,7 +2218,7 @@ app.post('/api/send-bulk', authenticateUser, async (req, res) => {
                     total: clients.length
                 });
 
-                storeUserClientMessage(userId, client.phone, message, true);
+                storeClientMessage(client.phone, message, true);
                 
                 console.log(`✅ User ${userId} sent to ${client.name}: ${client.phone} (${i + 1}/${clients.length})`);
                 
@@ -2181,13 +2275,14 @@ app.post('/api/send-message', authenticateUser, async (req, res) => {
         
         await userSession.client.sendMessage(phoneNumber, message);
         
+        // Track individual message for the user
         trackEmployeeActivity(userId, 'message_sent', { 
             clientPhone: formattedPhone,
             message: message.substring(0, 30) 
         });
         
-        storeUserClientMessage(userId, phone, message, true);
-        updateUserClientLastMessage(userId, phone, message);
+        storeClientMessage(phone, message, true);
+        updateClientLastMessage(phone, message);
         
         res.json({ 
             success: true, 
@@ -2203,58 +2298,8 @@ app.post('/api/send-message', authenticateUser, async (req, res) => {
 io.on('connection', (socket) => {
     console.log('Client connected');
     
-    socket.on('authenticate', (token) => {
-        try {
-            const decoded = verifyToken(token);
-            if (!decoded) {
-                socket.emit('auth_error', { error: 'Token غير صالح' });
-                return;
-            }
-            
-            const user = users.find(u => u.id === decoded.userId && u.isActive);
-            if (!user) {
-                socket.emit('auth_error', { error: 'المستخدم غير موجود' });
-                return;
-            }
-            
-            socket.userId = user.id;
-            console.log(`🔐 Socket authenticated for user ${user.name}`);
-            
-            socket.emit('authenticated', { 
-                userId: user.id, 
-                username: user.username 
-            });
-            
-            const userSession = getUserWhatsAppSession(user.id);
-            if (userSession) {
-                socket.emit(`user_status_${user.id}`, { 
-                    connected: userSession.isConnected, 
-                    message: userSession.isConnected ? 'واتساب متصل ✅' : 
-                            userSession.status === 'qr-ready' ? 'يرجى مسح QR Code' :
-                            'جارٍ الاتصال...',
-                    status: userSession.status,
-                    hasQr: !!userSession.qrCode,
-                    userId: user.id
-                });
-                
-                if (userSession.qrCode) {
-                    console.log(`📱 Sending existing QR code to user ${user.id}`);
-                    socket.emit(`user_qr_${user.id}`, { 
-                        qrCode: userSession.qrCode,
-                        userId: user.id,
-                        timestamp: new Date().toISOString()
-                    });
-                }
-            }
-            
-            const userClients = getUserClients(user.id);
-            socket.emit(`user_clients_updated_${user.id}`, userClients);
-            
-        } catch (error) {
-            socket.emit('auth_error', { error: 'خطأ في المصادقة' });
-        }
-    });
-
+    // Handle user authentication for socket
+    // Handle user-specific bot toggle
     socket.on('user_toggle_bot', (data) => {
         if (!socket.userId) {
             socket.emit('error', { error: 'غير مصرح' });
@@ -2269,10 +2314,62 @@ io.on('connection', (socket) => {
             });
         }
     });
-
+// In your socket.io connection event, add this:
+socket.on('authenticate', (token) => {
+    try {
+        const decoded = verifyToken(token);
+        if (!decoded) {
+            socket.emit('auth_error', { error: 'Token غير صالح' });
+            return;
+        }
+        
+        const user = users.find(u => u.id === decoded.userId && u.isActive);
+        if (!user) {
+            socket.emit('auth_error', { error: 'المستخدم غير موجود' });
+            return;
+        }
+        
+        socket.userId = user.id;
+        console.log(`🔐 Socket authenticated for user ${user.name}`);
+        
+        // 🆕 CRITICAL: Send authentication success
+        socket.emit('authenticated', { 
+            userId: user.id, 
+            username: user.username 
+        });
+        
+        // Send user-specific initial data
+        const userSession = getUserWhatsAppSession(user.id);
+        if (userSession) {
+            socket.emit(`user_status_${user.id}`, { 
+                connected: userSession.isConnected, 
+                message: userSession.isConnected ? 'واتساب متصل ✅' : 
+                        userSession.status === 'qr-ready' ? 'يرجى مسح QR Code' :
+                        'جارٍ الاتصال...',
+                status: userSession.status,
+                hasQr: !!userSession.qrCode,
+                userId: user.id
+            });
+            
+            // 🆕 CRITICAL: If QR code already exists, send it immediately
+            if (userSession.qrCode) {
+                console.log(`📱 Sending existing QR code to user ${user.id}`);
+                socket.emit(`user_qr_${user.id}`, { 
+                    qrCode: userSession.qrCode,
+                    userId: user.id,
+                    timestamp: new Date().toISOString()
+                });
+            }
+        }
+        
+    } catch (error) {
+        socket.emit('auth_error', { error: 'خطأ في المصادقة' });
+    }
+});
+    // Handle client status update
     socket.on('update_client_status', (data) => {
-        if (!socket.userId) return;
-        updateUserClientStatus(socket.userId, data.phone, data.status);
+        updateClientStatus(data.phone, data.status);
+        socket.emit('client_status_updated', { success: true });
     });
 
     socket.on('send_message', async (data) => {
@@ -2309,13 +2406,14 @@ io.on('connection', (socket) => {
             
             await userSession.client.sendMessage(phoneNumber, message);
             
+            // Track individual message for the user
             trackEmployeeActivity(socket.userId, 'message_sent', { 
                 clientPhone: formattedPhone,
                 message: message.substring(0, 30) 
             });
             
-            storeUserClientMessage(socket.userId, to, message, true);
-            updateUserClientLastMessage(socket.userId, to, message);
+            storeClientMessage(to, message, true);
+            updateClientLastMessage(to, message);
             
             socket.emit('message_sent', { 
                 to: to,
@@ -2358,8 +2456,13 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log('👥 User Management: ENABLED');
     console.log('🔐 Authentication: JWT + Bcrypt');
     console.log('🆕 MULTI-USER WHATSAPP: ENABLED');
-    console.log('📁 USER-SPECIFIC DATA: ENABLED');
-    console.log('🎯 SESSION ISOLATION: COMPLETED');
-    console.log('👑 ADMIN NAVIGATION: ENABLED');
-    console.log('📊 SEPARATE USER MANAGEMENT: READY');
+    console.log('🤖 BOT STATUS: READY');
+    console.log('⏰ AUTO-REPLY DELAY: 3 SECONDS');
+    console.log('🎯 AI AUTO-STATUS DETECTION: ENABLED');
+    console.log('📊 AUTO-REPORT AFTER 30 MESSAGES: ENABLED');
+    console.log('💰 CORRECT PACKAGES: 1000, 1800, 2700, 3000 ريال');
+    console.log('🎉 MULTI-USER ARCHITECTURE: COMPLETED');
+    console.log('☁️  CLOUD-OPTIMIZED WHATSAPP: ENABLED');
+    console.log('📱 QR CODE FIXED: FRONTEND WILL NOW RECEIVE QR CODES');
 });
+
