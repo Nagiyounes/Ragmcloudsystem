@@ -3,16 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>لوحة التحكم - رقم كلاود</title>
+    <title>رقم كلاود ERP - Smart Sales Assistant</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Fixed Socket.io CDN -->
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#007C5C',
+                        'primary-dark': '#006A4E',
+                        'primary-light': '#00B98B',
+                        luxury: {
+                            gold: '#D4AF37',
+                            'dark-bg': '#1a1f2e',
+                            'card-bg': '#2d3748',
+                            'sidebar-bg': '#2d3748'
+                        }
+                    },
+                    fontFamily: {
+                        'tajawal': ['Tajawal', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800&display=swap');
         
         body {
             font-family: 'Tajawal', sans-serif;
             background: linear-gradient(135deg, #1a1f2e 0%, #2d3748 100%);
-            min-height: 100vh;
         }
         
         .glass-effect {
@@ -26,6 +49,10 @@
             backdrop-filter: blur(20px);
             border: 1px solid rgba(212, 175, 55, 0.3);
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+        
+        .gold-border {
+            border: 2px solid #D4AF37;
         }
         
         .gradient-text {
@@ -45,6 +72,137 @@
             transform: translateY(-2px);
             box-shadow: 0 4px 20px rgba(212, 175, 55, 0.4);
         }
+        
+        .status-connected {
+            background: linear-gradient(135deg, #00B98B, #007C5C);
+            color: white;
+        }
+        
+        .status-disconnected {
+            background: linear-gradient(135deg, #f56565, #c53030);
+            color: white;
+        }
+        
+        .client-item {
+            transition: all 0.3s ease;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .client-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+        
+        .client-item.active {
+            background: rgba(0, 124, 92, 0.2);
+            border-right: 3px solid #00B98B;
+        }
+        
+        .unread-badge {
+            background: linear-gradient(135deg, #f56565, #c53030);
+            color: white;
+        }
+        
+        /* IMPROVED CHAT STYLES */
+        .chat-container {
+            height: calc(100vh - 280px);
+            overflow-y: auto;
+            scroll-behavior: smooth;
+            padding: 10px;
+        }
+        
+        .chat-bubble {
+            max-width: 75%;
+            padding: 8px 12px;
+            border-radius: 12px;
+            margin-bottom: 6px;
+            position: relative;
+            font-size: 14px;
+            line-height: 1.4;
+            word-wrap: break-word;
+        }
+        
+        .chat-bubble.sent {
+            background: linear-gradient(135deg, #007C5C, #00B98B);
+            margin-left: auto;
+            border-bottom-right-radius: 4px;
+        }
+        
+        .chat-bubble.received {
+            background: rgba(255, 255, 255, 0.1);
+            margin-right: auto;
+            border-bottom-left-radius: 4px;
+        }
+        
+        .message-content {
+            word-wrap: break-word;
+            line-height: 1.4;
+        }
+        
+        .chat-time {
+            text-align: left;
+            direction: ltr;
+            font-size: 11px;
+            opacity: 0.7;
+            margin-top: 2px;
+        }
+        
+        .scroll-to-bottom {
+            position: absolute;
+            bottom: 80px;
+            right: 20px;
+            background: rgba(0, 124, 92, 0.9);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            z-index: 100;
+        }
+        
+        .scroll-to-bottom.visible {
+            opacity: 1;
+        }
+        
+        .scroll-to-bottom:hover {
+            background: rgba(0, 124, 92, 1);
+            transform: scale(1.1);
+        }
+        
+        /* Client Interest Status Colors */
+        .client-status-interested {
+            border-left: 4px solid #10B981 !important;
+        }
+        
+        .client-status-busy {
+            border-left: 4px solid #F59E0B !important;
+        }
+        
+        .client-status-not-interested {
+            border-left: 4px solid #EF4444 !important;
+        }
+        
+        .client-status-no-reply {
+            border-left: 4px solid #9CA3AF !important;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-left: 5px;
+        }
+        
+        .dot-interested { background-color: #10B981; }
+        .dot-busy { background-color: #F59E0B; }
+        .dot-not-interested { background-color: #EF4444; }
+        .dot-no-reply { background-color: #9CA3AF; }
         
         .toast {
             position: fixed;
@@ -72,306 +230,506 @@
             background: linear-gradient(135deg, #f56565, #c53030);
         }
         
-        .chat-container {
-            max-width: 800px;
-            margin: 0 auto;
+        .toast.warning {
+            background: linear-gradient(135deg, #ed8936, #dd6b20);
         }
         
-        .message-bubble {
-            max-width: 70%;
-            padding: 12px 16px;
-            border-radius: 18px;
-            margin-bottom: 8px;
-            position: relative;
-            word-wrap: break-word;
+        .qr-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
         }
         
-        .message-bubble.sent {
-            background: linear-gradient(135deg, #007C5C, #00B98B);
-            margin-left: auto;
-            margin-right: 0;
-            border-bottom-right-radius: 4px;
+        .qr-container {
+            background: rgba(45, 55, 72, 0.95);
+            padding: 30px;
+            border-radius: 20px;
+            text-align: center;
+            border: 2px solid #D4AF37;
         }
         
-        .message-bubble.received {
-            background: rgba(255, 255, 255, 0.1);
-            margin-right: auto;
-            margin-left: 0;
-            border-bottom-left-radius: 4px;
+        /* Scrollbar Styling */
+        ::-webkit-scrollbar {
+            width: 6px;
         }
         
-        .status-connected {
-            background: linear-gradient(135deg, #00B98B, #007C5C);
-        }
-        
-        .status-disconnected {
-            background: linear-gradient(135deg, #f56565, #c53030);
-        }
-        
-        .status-qr {
-            background: linear-gradient(135deg, #D4AF37, #FFD700);
-        }
-        
-        .client-status-interested {
-            border-right: 4px solid #00B98B;
-        }
-        
-        .client-status-busy {
-            border-right: 4px solid #D4AF37;
-        }
-        
-        .client-status-not-interested {
-            border-right: 4px solid #f56565;
-        }
-        
-        .client-status-no-reply {
-            border-right: 4px solid #a0aec0;
-        }
-        
-        .progress-bar {
-            height: 6px;
+        ::-webkit-scrollbar-track {
             background: rgba(255, 255, 255, 0.1);
             border-radius: 3px;
-            overflow: hidden;
         }
         
-        .progress-fill {
+        ::-webkit-scrollbar-thumb {
+            background: linear-gradient(135deg, #D4AF37, #FFD700);
+            border-radius: 3px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(135deg, #FFD700, #D4AF37);
+        }
+        
+        /* Client Status Filter */
+        .status-filter {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .status-filter-btn {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .status-filter-btn.active {
+            transform: scale(1.05);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+        
+        .btn-all { background: #6B7280; color: white; }
+        .btn-interested { background: #10B981; color: white; }
+        .btn-busy { background: #F59E0B; color: white; }
+        .btn-not-interested { background: #EF4444; color: white; }
+        .btn-no-reply { background: #9CA3AF; color: white; }
+
+        /* NEW: Auto-report notification */
+        .auto-report-notification {
+            background: linear-gradient(135deg, #ed8936, #dd6b20);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            animation: pulse 2s infinite;
+            display: none;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+
+        /* NEW: Bot status indicator */
+        .bot-status-stopped {
+            background: linear-gradient(135deg, #f56565, #c53030) !important;
+        }
+
+        .bot-status-running {
+            background: linear-gradient(135deg, #00B98B, #007C5C) !important;
+        }
+
+        /* NEW: User Management Styles */
+        .user-management-section {
+            transition: all 0.3s ease;
+        }
+
+        .user-item {
+            transition: all 0.3s ease;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .user-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .role-admin {
+            border-left: 4px solid #D4AF37 !important;
+        }
+
+        .role-standard {
+            border-left: 4px solid #007C5C !important;
+        }
+
+        .user-active {
+            color: #10B981;
+        }
+
+        .user-inactive {
+            color: #EF4444;
+        }
+
+        /* NEW: User Switch Overlay */
+        .user-switch-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
             height: 100%;
-            background: linear-gradient(135deg, #00B98B, #007C5C);
-            transition: width 0.3s ease;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .user-switch-container {
+            background: rgba(45, 55, 72, 0.95);
+            padding: 30px;
+            border-radius: 20px;
+            text-align: center;
+            border: 2px solid #D4AF37;
+            max-width: 500px;
+            width: 90%;
+        }
+
+        /* NEW: WhatsApp QR Code Status */
+        .whatsapp-qr-status {
+            background: linear-gradient(135deg, #ed8936, #dd6b20);
+            color: white;
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .whatsapp-qr-status:hover {
+            transform: scale(1.02);
+            box-shadow: 0 4px 12px rgba(237, 137, 54, 0.3);
+        }
+
+        /* NEW: Logout Button Styles */
+        .logout-btn {
+            background: linear-gradient(135deg, #f56565, #c53030);
+            color: white;
+            transition: all 0.3s ease;
+        }
+
+        .logout-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(245, 101, 101, 0.4);
         }
     </style>
 </head>
 <body class="text-white">
-    <!-- Navigation -->
-    <nav class="bg-gray-900 border-b border-gray-700">
-        <div class="container mx-auto px-4">
-            <div class="flex justify-between items-center py-4">
-                <div class="flex items-center space-x-4 space-x-reverse">
-                    <a href="/dashboard" class="flex items-center space-x-2 space-x-reverse">
-                        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-[#007C5C] to-[#00B98B] flex items-center justify-center">
-                            <i class="fas fa-cloud text-white"></i>
-                        </div>
-                        <span class="text-xl font-bold gradient-text">رقم كلاود</span>
-                    </a>
-                </div>
-                
-                <div class="flex items-center space-x-4 space-x-reverse">
-                    <span id="userWelcome" class="text-gray-300"></span>
-                    <div id="adminControls" class="hidden">
-                        <a href="/user-management" class="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-lg transition-colors mr-2">
-                            <i class="fas fa-users mr-2"></i>إدارة المستخدمين
-                        </a>
-                    </div>
-                    <button onclick="logout()" class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg transition-colors">
-                        <i class="fas fa-sign-out-alt mr-2"></i>تسجيل الخروج
-                    </button>
-                </div>
-            </div>
-        </div>
-    </nav>
-
     <!-- Toast Notifications -->
     <div id="toastContainer" class="fixed top-4 right-4 z-50"></div>
-
-    <div class="container mx-auto px-4 py-8">
-        <!-- WhatsApp Status -->
-        <div class="luxury-card rounded-2xl p-6 mb-8">
-            <div class="flex justify-between items-center">
-                <div class="flex items-center space-x-4 space-x-reverse">
-                    <div id="whatsappStatus" class="status-disconnected px-4 py-2 rounded-full text-sm font-bold">
-                        <i class="fas fa-times-circle mr-2"></i>واتساب غير متصل
-                    </div>
-                    <div id="botStatus" class="bg-green-600 px-4 py-2 rounded-full text-sm font-bold">
-                        <i class="fas fa-robot mr-2"></i>البوت نشط
+    
+    <!-- NEW: Auto Report Notification -->
+    <div id="autoReportNotification" class="auto-report-notification">
+        <i class="fas fa-bell mr-2"></i>
+        <span id="autoReportMessage"></span>
+    </div>
+    
+    <!-- NEW: User Switch Overlay -->
+    <div id="userSwitchOverlay" class="user-switch-overlay hidden">
+        <div class="user-switch-container">
+            <div class="flex items-center justify-center mb-4">
+                <i class="fas fa-user-shield text-3xl text-primary-light mr-3"></i>
+                <h3 class="text-xl font-bold gradient-text">تبديل المستخدم</h3>
+            </div>
+            <p class="text-gray-300 mb-4">أنت الآن تشاهد لوحة التحكم كـ: <span id="currentViewingUser" class="text-primary-light"></span></p>
+            <div class="flex space-x-3 justify-center">
+                <button id="returnToAdmin" class="btn-gold px-6 py-2 rounded-lg font-bold">
+                    <i class="fas fa-arrow-left mr-2"></i>العودة إلى حسابي
+                </button>
+                <button id="closeUserSwitch" class="bg-gray-600 hover:bg-gray-700 px-6 py-2 rounded-lg font-bold transition-colors">
+                    <i class="fas fa-times mr-2"></i>إغلاق
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- QR Overlay -->
+    <div id="qrOverlay" class="qr-overlay hidden">
+        <div class="qr-container luxury-card">
+            <div class="flex items-center justify-center mb-4">
+                <i class="fab fa-whatsapp text-3xl text-green-400 mr-3"></i>
+                <h3 class="text-xl font-bold gradient-text">Scan QR Code</h3>
+            </div>
+            <p class="text-gray-300 mb-4">Scan this QR code with WhatsApp to connect</p>
+            <div id="qrCode" class="mb-4 flex justify-center"></div>
+            <button id="closeQR" class="btn-gold px-6 py-2 rounded-lg font-bold">
+                <i class="fas fa-times mr-2"></i>إغلاق
+            </button>
+        </div>
+    </div>
+    
+    <div class="flex h-screen">
+        <!-- Left Sidebar -->
+        <div class="w-80 luxury-card rounded-r-2xl m-3 flex flex-col">
+            <!-- Header -->
+            <div class="p-6 border-b border-gray-600">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center">
+                        <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-primary-light flex items-center justify-center text-white mr-3">
+                            <i class="fas fa-cloud"></i>
+                        </div>
+                        <div>
+                            <h1 class="text-xl font-bold gradient-text">رقم كلاود</h1>
+                            <p class="text-sm text-gray-400">ERP Sales Assistant</p>
+                        </div>
                     </div>
                 </div>
-                <div class="flex space-x-2 space-x-reverse">
-                    <button onclick="toggleBot()" id="toggleBotBtn" class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg transition-colors">
-                        <i class="fas fa-pause mr-2"></i>إيقاف البوت
-                    </button>
-                    <button onclick="reconnectWhatsApp()" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition-colors">
-                        <i class="fas fa-sync-alt mr-2"></i>إعادة الاتصال
-                    </button>
-                    <button onclick="sendReportToManager()" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg transition-colors">
-                        <i class="fas fa-chart-line mr-2"></i>إرسال تقرير
-                    </button>
+                
+                <!-- User Info -->
+                <div class="flex items-center justify-between mb-4">
+                    <span class="text-sm text-gray-300">المستخدم:</span>
+                    <span id="currentUserName" class="px-3 py-1 bg-primary rounded-full text-sm font-bold">...</span>
+                </div>
+
+                <!-- User Role -->
+                <div class="flex items-center justify-between mb-4">
+                    <span class="text-sm text-gray-300">الدور:</span>
+                    <span id="currentUserRole" class="px-3 py-1 bg-purple-600 rounded-full text-sm font-bold">...</span>
+                </div>
+                
+                <!-- WhatsApp Status -->
+                <div class="flex items-center justify-between mb-4">
+                    <span class="text-sm text-gray-300">حالة الواتساب:</span>
+                    <span id="whatsappStatus" class="status-disconnected px-3 py-1 rounded-full text-sm font-bold">غير متصل</span>
+                </div>
+
+                <!-- NEW: Bot Status -->
+                <div class="flex items-center justify-between mb-4">
+                    <span class="text-sm text-gray-300">حالة البوت:</span>
+                    <span id="botStatus" class="bot-status-running px-3 py-1 rounded-full text-sm font-bold">نشط</span>
+                </div>
+
+                <!-- NEW: WhatsApp QR Code Button -->
+                <div id="whatsappQrStatus" class="whatsapp-qr-status hidden">
+                    <i class="fas fa-qrcode mr-2"></i>
+                    <span>QR Code جاهز للمسح</span>
+                </div>
+                
+                <!-- NEW: Admin User Switch Button -->
+                <button id="userSwitchBtn" class="w-full bg-purple-600 hover:bg-purple-700 py-2 rounded-lg font-bold mb-2 transition-colors hidden">
+                    <i class="fas fa-user-shield mr-2"></i>تبديل المستخدم
+                </button>
+                
+                <!-- Reconnect Button -->
+                <button id="reconnectBtn" class="w-full btn-gold py-2 rounded-lg font-bold mb-2">
+                    <i class="fas fa-sync-alt mr-2"></i>إعادة الاتصال
+                </button>
+
+                <!-- NEW: Stop Bot Button -->
+                <button id="stopBotBtn" class="w-full bg-red-600 hover:bg-red-700 py-2 rounded-lg font-bold mb-2 transition-colors">
+                    <i class="fas fa-stop mr-2"></i>إيقاف البوت
+                </button>
+
+                <!-- NEW: Logout Button -->
+                <button id="logoutBtn" class="w-full logout-btn py-2 rounded-lg font-bold mb-2">
+                    <i class="fas fa-sign-out-alt mr-2"></i>تسجيل الخروج
+                </button>
+                
+                <!-- AI Mode Toggle -->
+                <div class="flex items-center justify-between p-3 bg-gray-700 rounded-lg">
+                    <span class="text-sm text-gray-300">وضع الذكاء الاصطناعي</span>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="aiToggle" class="sr-only peer" checked>
+                        <div class="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                    </label>
+                </div>
+                
+                <!-- AI Status -->
+                <div id="aiStatus" class="mt-2 p-2 bg-green-900 bg-opacity-20 rounded-lg text-center">
+                    <span class="text-green-400 text-sm">🤖 الذكاء الاصطناعي مفعل</span>
                 </div>
             </div>
             
-            <!-- QR Code Modal -->
-            <div id="qrModal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 hidden">
-                <div class="luxury-card rounded-2xl p-8 max-w-md w-full mx-4">
-                    <div class="text-center">
-                        <h3 class="text-xl font-bold text-[#00B98B] mb-4">مسح رمز QR للاتصال</h3>
-                        <img id="qrCodeImage" src="" alt="QR Code" class="mx-auto mb-4 rounded-lg">
-                        <p class="text-gray-400 mb-4">افتح واتساب على هاتفك → الإعدادات → الأجهزة المرتبطة → ربط جهاز</p>
-                        <button onclick="closeQRModal()" class="bg-red-600 hover:bg-red-700 px-6 py-2 rounded-lg transition-colors">
-                            إغلاق
-                        </button>
+            <!-- NEW: User Management Section (Visible only to Admin) -->
+            <div id="userManagementSection" class="user-management-section p-6 border-b border-gray-600 hidden">
+                <h3 class="font-bold text-lg mb-3 gradient-text">إدارة المستخدمين</h3>
+                
+                <!-- Add User Form -->
+                <div class="mb-4 p-3 bg-gray-800 rounded-lg">
+                    <h4 class="font-bold text-primary-light mb-2">إضافة مستخدم جديد</h4>
+                    <input type="text" id="newUserName" placeholder="اسم المستخدم" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-sm mb-2 focus:outline-none focus:border-primary">
+                    <input type="password" id="newUserPassword" placeholder="كلمة المرور" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-sm mb-2 focus:outline-none focus:border-primary">
+                    <select id="newUserRole" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-sm mb-2 focus:outline-none focus:border-primary">
+                        <option value="standard">مستخدم عادي</option>
+                        <option value="admin">مدير</option>
+                    </select>
+                    <button id="addUserBtn" class="w-full bg-primary hover:bg-primary-dark py-2 rounded-lg font-bold transition-colors">
+                        <i class="fas fa-user-plus mr-2"></i>إضافة مستخدم
+                    </button>
+                </div>
+                
+                <!-- Users List -->
+                <div class="max-h-40 overflow-y-auto">
+                    <h4 class="font-bold text-primary-light mb-2">المستخدمين</h4>
+                    <div id="usersList">
+                        <!-- Users will be populated here -->
+                    </div>
+                </div>
+            </div>
+            
+            <!-- File Upload Section -->
+            <div class="p-6 border-b border-gray-600">
+                <h3 class="font-bold text-lg mb-3 gradient-text">رفع قاعدة العملاء</h3>
+                <input type="file" id="excelFile" accept=".xlsx,.xls" class="hidden">
+                <button id="uploadBtn" class="w-full bg-gray-700 hover:bg-gray-600 py-3 rounded-lg font-bold mb-2 transition-colors">
+                    <i class="fas fa-upload mr-2"></i>رفع ملف Excel
+                </button>
+                <div id="fileInfo" class="hidden text-sm text-gray-400 text-center p-2 bg-gray-800 rounded">
+                    <i class="fas fa-file-excel text-primary-light mr-1"></i> لم يتم رفع أي ملف
+                </div>
+            </div>
+            
+            <!-- Bulk Message Section -->
+            <div class="p-6 border-b border-gray-600">
+                <h3 class="font-bold text-lg mb-3 gradient-text">الإرسال الجماعي</h3>
+                <textarea 
+                    id="bulkMessage" 
+                    rows="4" 
+                    class="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 text-sm mb-3 resize-none focus:outline-none focus:border-primary"
+                    placeholder="اكتب الرسالة الترويجية هنا..."></textarea>
+                
+                <div class="flex items-center justify-between mb-3">
+                    <span class="text-sm text-gray-300">فاصل الزمني (ثواني):</span>
+                    <input type="number" id="sendDelay" value="40" min="40" max="120" class="w-20 bg-gray-600 border border-gray-500 rounded px-2 py-1 text-center">
+                </div>
+                
+                <button id="sendBulkBtn" class="w-full btn-gold py-3 rounded-lg font-bold mb-2">
+                    <i class="fas fa-paper-plane mr-2"></i> 🚀 إرسال عروض ترويجية
+                </button>
+                
+                <button id="retryBulkBtn" class="w-full bg-yellow-600 hover:bg-yellow-700 py-2 rounded-lg font-bold mb-2 hidden transition-colors">
+                    <i class="fas fa-redo mr-2"></i> إعادة المحاولة (طريقة بديلة)
+                </button>
+                
+                <div class="text-xs text-gray-400 text-center">
+                    سيتم الإرسال إلى <span id="clientsCount">0</span> عميل
+                </div>
+            </div>
+            
+            <!-- Reports Section -->
+            <div class="p-6">
+                <h3 class="font-bold text-lg mb-3 gradient-text">التقارير والإحصائيات</h3>
+                <button id="exportReportBtn" class="w-full bg-gray-700 hover:bg-gray-600 py-2 rounded-lg font-bold mb-2 transition-colors">
+                    <i class="fas fa-download mr-2"></i>تصدير تقرير
+                </button>
+                <button id="sendReportBtn" class="w-full bg-gray-700 hover:bg-gray-600 py-2 rounded-lg font-bold transition-colors">
+                    <i class="fas fa-envelope mr-2"></i>إرسال للمدير
+                </button>
+
+                <!-- NEW: Performance Stats -->
+                <div class="mt-4 p-3 bg-gray-800 rounded-lg">
+                    <h4 class="font-bold text-primary-light mb-2">إحصائيات اليوم</h4>
+                    <div class="grid grid-cols-2 gap-2 text-xs">
+                        <div class="flex justify-between">
+                            <span>الرسائل:</span>
+                            <span id="statMessages" class="text-primary-light">0</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>الردود الآلية:</span>
+                            <span id="statAIReplies" class="text-primary-light">0</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>العملاء:</span>
+                            <span id="statClients" class="text-primary-light">0</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>المهتمين:</span>
+                            <span id="statInterested" class="text-primary-light">0</span>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
-
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <!-- Left Column - Stats & Clients -->
-            <div class="lg:col-span-1 space-y-8">
-                <!-- Performance Stats -->
-                <div class="luxury-card rounded-2xl p-6">
-                    <h2 class="text-xl font-bold text-[#00B98B] mb-4">
-                        <i class="fas fa-chart-bar mr-2"></i>إحصائيات الأداء
-                    </h2>
-                    <div class="space-y-4">
-                        <div>
-                            <div class="flex justify-between text-sm mb-1">
-                                <span>الرسائل المرسلة</span>
-                                <span id="messagesSent">0</span>
-                            </div>
-                            <div class="progress-bar">
-                                <div id="messagesProgress" class="progress-fill" style="width: 0%"></div>
-                            </div>
+        
+        <!-- Right Chat Area -->
+        <div class="flex-1 flex flex-col m-3 luxury-card rounded-l-2xl relative">
+            <!-- Chat Header -->
+            <div class="p-6 border-b border-gray-600">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center">
+                        <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-primary-light flex items-center justify-center text-white mr-3">
+                            <i class="fas fa-user"></i>
                         </div>
                         <div>
-                            <div class="flex justify-between text-sm mb-1">
-                                <span>العملاء المتواصل معهم</span>
-                                <span id="clientsContacted">0</span>
-                            </div>
-                            <div class="progress-bar">
-                                <div id="clientsProgress" class="progress-fill" style="width: 0%"></div>
-                            </div>
-                        </div>
-                        <div>
-                            <div class="flex justify-between text-sm mb-1">
-                                <span>الردود الآلية</span>
-                                <span id="aiReplies">0</span>
-                            </div>
-                            <div class="progress-bar">
-                                <div id="aiProgress" class="progress-fill" style="width: 0%"></div>
-                            </div>
-                        </div>
-                        <div>
-                            <div class="flex justify-between text-sm mb-1">
-                                <span>العملاء المهتمين</span>
-                                <span id="interestedClients">0</span>
-                            </div>
-                            <div class="progress-bar">
-                                <div id="interestProgress" class="progress-fill" style="width: 0%"></div>
-                            </div>
+                            <h2 id="currentClientName" class="text-xl font-bold">اختر عميلاً</h2>
+                            <p id="currentClientPhone" class="text-sm text-gray-400">لم يتم اختيار عميل</p>
                         </div>
                     </div>
-                </div>
-
-                <!-- Clients List -->
-                <div class="luxury-card rounded-2xl p-6">
-                    <div class="flex justify-between items-center mb-4">
-                        <h2 class="text-xl font-bold text-[#00B98B]">
-                            <i class="fas fa-users mr-2"></i>قائمة العملاء
-                        </h2>
-                        <span id="clientsCount" class="bg-gray-700 px-2 py-1 rounded-full text-xs">0</span>
-                    </div>
-                    
-                    <!-- Upload Excel -->
-                    <div class="mb-4">
-                        <input type="file" id="excelFile" accept=".xlsx,.xls" class="hidden">
-                        <button onclick="document.getElementById('excelFile').click()" class="w-full bg-blue-600 hover:bg-blue-700 py-2 rounded-lg transition-colors mb-2">
-                            <i class="fas fa-upload mr-2"></i>رفع ملف Excel
-                        </button>
-                        <button onclick="exportClients()" class="w-full bg-green-600 hover:bg-green-700 py-2 rounded-lg transition-colors">
-                            <i class="fas fa-download mr-2"></i>تصدير العملاء
-                        </button>
-                    </div>
-
-                    <!-- Clients Search -->
-                    <div class="mb-4">
-                        <input type="text" id="clientSearch" placeholder="بحث في العملاء..." 
-                               class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-sm focus:outline-none focus:border-[#00B98B] transition-colors">
-                    </div>
-
-                    <!-- Clients List -->
-                    <div class="space-y-2 max-h-96 overflow-y-auto">
-                        <div id="clientsList">
-                            <!-- Clients will be loaded here -->
+                    <div class="flex items-center space-x-2">
+                        <div id="activeStatus" class="hidden">
+                            <span class="px-3 py-1 bg-green-900 bg-opacity-20 text-green-400 rounded-full text-sm">
+                                <i class="fas fa-circle text-xs mr-1"></i>نشط
+                            </span>
+                        </div>
+                        <!-- Client Status Selector -->
+                        <div id="clientStatusSelector" class="hidden">
+                            <select id="statusSelect" class="bg-gray-700 border border-gray-600 rounded-lg px-3 py-1 text-sm focus:outline-none focus:border-primary">
+                                <option value="no-reply">لم يرد</option>
+                                <option value="interested">مهتم</option>
+                                <option value="busy">مشغول</option>
+                                <option value="not-interested">غير مهتم</option>
+                            </select>
                         </div>
                     </div>
                 </div>
             </div>
-
-            <!-- Middle Column - Chat -->
-            <div class="lg:col-span-2">
-                <!-- Chat Section -->
-                <div class="luxury-card rounded-2xl p-6 chat-container">
-                    <div class="flex justify-between items-center mb-6">
-                        <h2 class="text-xl font-bold text-[#00B98B]">
-                            <i class="fas fa-comments mr-2"></i>المحادثة
-                        </h2>
-                        <div class="flex items-center space-x-2 space-x-reverse">
-                            <span id="currentClient" class="text-gray-400">اختر عميلاً للمحادثة</span>
-                            <div id="clientStatus" class="hidden">
-                                <span class="px-2 py-1 rounded-full text-xs bg-gray-600" id="clientStatusBadge">حالة</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Chat Area -->
-                    <div class="bg-gray-800 rounded-lg p-4 mb-4" style="height: 400px; overflow-y: auto;">
-                        <div id="chatMessages" class="space-y-3">
-                            <div class="text-center text-gray-500 py-8">
-                                <i class="fas fa-comments text-4xl mb-2"></i>
-                                <p>اختر عميلاً لبدء المحادثة</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Message Input -->
-                    <div class="flex space-x-2 space-x-reverse">
-                        <input type="text" id="messageInput" 
-                               class="flex-1 bg-gray-700 border border-gray-600 rounded-lg p-3 focus:outline-none focus:border-[#00B98B] transition-colors" 
-                               placeholder="اكتب رسالتك هنا..." disabled>
-                        <button onclick="sendMessage()" id="sendMessageBtn" class="btn-gold px-6 py-3 rounded-lg font-bold" disabled>
-                            <i class="fas fa-paper-plane mr-2"></i>إرسال
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Bulk Messaging -->
-                <div class="luxury-card rounded-2xl p-6 mt-8">
-                    <h2 class="text-xl font-bold text-[#00B98B] mb-4">
-                        <i class="fas fa-bullhorn mr-2"></i>الإرسال الجماعي
-                    </h2>
-                    <div class="space-y-4">
-                        <textarea id="bulkMessage" rows="4" 
-                                  class="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 text-sm focus:outline-none focus:border-[#00B98B] transition-colors" 
-                                  placeholder="اكتب الرسالة الجماعية هنا..."></textarea>
-                        
-                        <div class="flex space-x-2 space-x-reverse">
-                            <select id="clientFilter" class="flex-1 bg-gray-700 border border-gray-600 rounded-lg p-2 text-sm focus:outline-none focus:border-[#00B98B] transition-colors">
-                                <option value="all">جميع العملاء</option>
-                                <option value="interested">العملاء المهتمين فقط</option>
-                                <option value="no-reply">لم يردوا بعد</option>
-                            </select>
-                            <input type="number" id="sendDelay" value="3" min="1" max="10" 
-                                   class="w-20 bg-gray-700 border border-gray-600 rounded-lg p-2 text-sm focus:outline-none focus:border-[#00B98B] transition-colors" 
-                                   placeholder="التأخير">
-                            <span class="self-center text-sm text-gray-400">ثواني</span>
-                        </div>
-                        
-                        <div class="flex justify-between items-center">
-                            <span id="selectedClientsCount" class="text-sm text-gray-400">سيتم الإرسال إلى 0 عميل</span>
-                            <button onclick="sendBulkMessage()" id="sendBulkBtn" class="btn-gold px-6 py-2 rounded-lg font-bold">
-                                <i class="fas fa-paper-plane mr-2"></i>إرسال جماعي
+            
+            <!-- Clients List / Chat Area -->
+            <div class="flex-1 flex">
+                <!-- Clients List -->
+                <div class="w-1/3 border-l border-gray-600 h-full overflow-hidden flex flex-col">
+                    <div class="p-4 border-b border-gray-600">
+                        <h3 class="font-bold text-lg gradient-text mb-2">قائمة العملاء</h3>
+                        <!-- Status Filter -->
+                        <div class="status-filter">
+                            <button class="status-filter-btn btn-all active" data-status="all">الكل</button>
+                            <button class="status-filter-btn btn-interested" data-status="interested">
+                                <span class="status-dot dot-interested"></span> مهتم
+                            </button>
+                            <button class="status-filter-btn btn-busy" data-status="busy">
+                                <span class="status-dot dot-busy"></span> مشغول
+                            </button>
+                            <button class="status-filter-btn btn-not-interested" data-status="not-interested">
+                                <span class="status-dot dot-not-interested"></span> غير مهتم
+                            </button>
+                            <button class="status-filter-btn btn-no-reply" data-status="no-reply">
+                                <span class="status-dot dot-no-reply"></span> لم يرد
                             </button>
                         </div>
-                        
-                        <!-- Progress Bar -->
-                        <div id="bulkProgress" class="hidden">
-                            <div class="flex justify-between text-sm mb-1">
-                                <span>جاري الإرسال...</span>
-                                <span id="progressText">0/0</span>
-                            </div>
-                            <div class="progress-bar">
-                                <div id="bulkProgressFill" class="progress-fill" style="width: 0%"></div>
-                            </div>
+                    </div>
+                    <div id="clientList" class="flex-1 overflow-y-auto p-2">
+                        <!-- Clients will be populated here -->
+                    </div>
+                </div>
+                
+                <!-- Chat Messages -->
+                <div class="flex-1 flex flex-col relative">
+                    <div id="chatContainer" class="chat-container">
+                        <div class="text-center text-gray-400 mt-20">
+                            <i class="fas fa-comments text-5xl mb-4 opacity-50"></i>
+                            <p class="text-xl mb-2">مرحباً في رقم كلاود ERP!</p>
+                            <p class="text-gray-500">اختر عميلاً لبدء المحادثة</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Scroll to Bottom Button -->
+                    <button id="scrollToBottom" class="scroll-to-bottom">
+                        <i class="fas fa-chevron-down"></i>
+                    </button>
+                    
+                    <!-- Message Input -->
+                    <div class="p-4 border-t border-gray-600">
+                        <div class="flex items-center">
+                            <input 
+                                type="text" 
+                                id="messageInput" 
+                                placeholder="اكتب رسالتك هنا..." 
+                                class="flex-1 bg-gray-700 border border-gray-600 rounded-l-lg p-3 focus:outline-none focus:border-primary"
+                                disabled>
+                            <button 
+                                id="sendMessageBtn" 
+                                class="bg-primary hover:bg-primary-dark px-6 py-3 rounded-r-lg font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                disabled>
+                                <i class="fas fa-paper-plane"></i>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -381,711 +739,1098 @@
 
     <script>
         // Global variables
-        let currentUser = null;
-        let currentClient = null;
-        let socket = null;
         let clients = [];
-        let performanceStats = {};
+        let currentClient = null;
+        let messages = {};
+        let isAIMode = true;
+        let socket = null;
+        let isBulkSending = false;
+        let currentStatusFilter = 'all';
         let isBotStopped = false;
+        
+        // User management variables
+        let currentUser = null;
+        let users = [];
+        let isAdminViewingAs = false;
+        let viewingAsUser = null;
+        let authToken = null;
+        
+        // DOM Elements
+        const qrOverlay = document.getElementById('qrOverlay');
+        const qrCode = document.getElementById('qrCode');
+        const closeQR = document.getElementById('closeQR');
+        const reconnectBtn = document.getElementById('reconnectBtn');
+        const stopBotBtn = document.getElementById('stopBotBtn');
+        const logoutBtn = document.getElementById('logoutBtn');
+        const whatsappStatus = document.getElementById('whatsappStatus');
+        const botStatus = document.getElementById('botStatus');
+        const aiToggle = document.getElementById('aiToggle');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const excelFile = document.getElementById('excelFile');
+        const fileInfo = document.getElementById('fileInfo');
+        const bulkMessage = document.getElementById('bulkMessage');
+        const sendDelay = document.getElementById('sendDelay');
+        const sendBulkBtn = document.getElementById('sendBulkBtn');
+        const retryBulkBtn = document.getElementById('retryBulkBtn');
+        const clientList = document.getElementById('clientList');
+        const exportReportBtn = document.getElementById('exportReportBtn');
+        const sendReportBtn = document.getElementById('sendReportBtn');
+        const currentClientName = document.getElementById('currentClientName');
+        const currentClientPhone = document.getElementById('currentClientPhone');
+        const activeStatus = document.getElementById('activeStatus');
+        const chatContainer = document.getElementById('chatContainer');
+        const messageInput = document.getElementById('messageInput');
+        const sendMessageBtn = document.getElementById('sendMessageBtn');
+        const aiStatus = document.getElementById('aiStatus');
+        const toastContainer = document.getElementById('toastContainer');
+        const clientsCount = document.getElementById('clientsCount');
+        const scrollToBottom = document.getElementById('scrollToBottom');
+        const statusSelect = document.getElementById('statusSelect');
+        const clientStatusSelector = document.getElementById('clientStatusSelector');
+        const autoReportNotification = document.getElementById('autoReportNotification');
+        const autoReportMessage = document.getElementById('autoReportMessage');
+        const whatsappQrStatus = document.getElementById('whatsappQrStatus');
+        
+        // Performance stats elements
+        const statMessages = document.getElementById('statMessages');
+        const statAIReplies = document.getElementById('statAIReplies');
+        const statClients = document.getElementById('statClients');
+        const statInterested = document.getElementById('statInterested');
 
-        // Initialize dashboard
+        // User Management Elements
+        const currentUserName = document.getElementById('currentUserName');
+        const currentUserRole = document.getElementById('currentUserRole');
+        const userManagementSection = document.getElementById('userManagementSection');
+        const userSwitchBtn = document.getElementById('userSwitchBtn');
+        const userSwitchOverlay = document.getElementById('userSwitchOverlay');
+        const returnToAdmin = document.getElementById('returnToAdmin');
+        const closeUserSwitch = document.getElementById('closeUserSwitch');
+        const currentViewingUser = document.getElementById('currentViewingUser');
+        const newUserName = document.getElementById('newUserName');
+        const newUserPassword = document.getElementById('newUserPassword');
+        const newUserRole = document.getElementById('newUserRole');
+        const addUserBtn = document.getElementById('addUserBtn');
+        const usersList = document.getElementById('usersList');
+
+        // Initialize
         document.addEventListener('DOMContentLoaded', function() {
-            initializeDashboard();
+            initializeApp();
         });
 
-        async function initializeDashboard() {
-            const token = localStorage.getItem('authToken');
-            currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
-
-            // Check authentication
-            if (!token || !currentUser.id) {
-                window.location.href = '/';
-                return;
-            }
-
-            // Show admin controls if admin
-            if (currentUser.role === 'admin') {
-                document.getElementById('adminControls').classList.remove('hidden');
-            }
-
-            document.getElementById('userWelcome').textContent = `مرحباً، ${currentUser.name}`;
-
-            // Initialize Socket.io
-            initializeSocket();
-
-            // Load initial data
-            await loadUserClients();
-            await loadPerformanceStats();
-            await checkWhatsAppStatus();
-
-            // Set up event listeners
-            setupEventListeners();
-        }
-
-        function initializeSocket() {
-            const token = localStorage.getItem('authToken');
-            
-            socket = io({
-                auth: {
-                    token: token
+        function initializeApp() {
+            try {
+                // Get auth token from localStorage
+                authToken = localStorage.getItem('authToken');
+                if (!authToken) {
+                    window.location.href = '/';
+                    return;
                 }
-            });
 
+                // Connect to Socket.io with authentication
+                socket = io({
+                    timeout: 10000,
+                    reconnectionAttempts: 5
+                });
+                
+                setupSocketEvents();
+                setupEventListeners();
+                loadCurrentUser(); // This will trigger authentication
+                
+                // 🆕 Auto-check WhatsApp status on load
+                setTimeout(() => {
+                    checkWhatsAppStatus();
+                }, 2000);
+                
+                // Auto-fill promotional message
+                bulkMessage.value = "🚀 نظام رقم كلاود ERP السحابي! حلول متكاملة للمحاسبة، المخزون، الموارد البشرية، والمزيد. جلسة استشارية مجانية! 📞 +966555111222 🌐 ragmcloud.sa";
+                
+            } catch (error) {
+                console.error('Failed to initialize app:', error);
+                showToast('❌ فشل تهيئة التطبيق', 'error');
+            }
+        }
+        
+        function setupSocketEvents() {
             socket.on('connect', () => {
-                console.log('Connected to server');
-                socket.emit('authenticate', token);
-            });
-
-            socket.on('authenticated', (data) => {
-                console.log('Socket authenticated for user:', data.userId);
-            });
-
-            socket.on('auth_error', (data) => {
-                console.error('Authentication error:', data.error);
-                showToast('❌ خطأ في المصادقة', 'error');
-            });
-
-            // User-specific WhatsApp status updates
-            socket.on(`user_status_${currentUser.id}`, (data) => {
-                updateWhatsAppStatus(data);
-            });
-
-            // User-specific QR code
-            socket.on(`user_qr_${currentUser.id}`, (data) => {
-                showQRCode(data.qrCode);
-            });
-
-            // User-specific clients updates
-            socket.on(`user_clients_updated_${currentUser.id}`, (updatedClients) => {
-                clients = updatedClients;
-                renderClientsList();
-            });
-
-            // User-specific messages
-            socket.on(`user_message_${currentUser.id}`, (data) => {
-                if (currentClient && data.from === currentClient.phone) {
-                    addMessageToChat(data.message, false);
+                console.log('✅ Connected to server');
+                showToast('✅ تم الاتصال بالخادم بنجاح', 'success');
+                
+                // Authenticate socket connection
+                if (currentUser) {
+                    console.log('🔐 Authenticating socket for user:', currentUser.id);
+                    socket.emit('authenticate', authToken);
                 }
             });
+            
+            socket.on('authenticated', (userData) => {
+                console.log('✅ Socket authenticated for user:', userData);
+                const userId = currentUser.id;
+                
+                // 🆕 FIXED: User-specific WhatsApp status
+                socket.on(`user_status_${userId}`, (data) => {
+                    console.log('📡 Received user status:', data);
+                    updateWhatsAppStatus(data);
+                });
 
-            // User-specific bot status
-            socket.on(`user_bot_status_${currentUser.id}`, (data) => {
+                // 🆕 FIXED: User-specific QR code with auto-display
+                socket.on(`user_qr_${userId}`, (data) => {
+                    console.log('📡 Received QR code for user:', userId);
+                    if (data.qrCode) {
+                        showQRCode(data.qrCode);
+                    }
+                });
+
+                // 🆕 FIXED: User-specific bot status
+                socket.on(`user_bot_status_${userId}`, (data) => {
+                    console.log('📡 Received bot status:', data);
+                    isBotStopped = data.stopped;
+                    updateBotStatusUI();
+                });
+
+                // 🆕 FIXED: User-specific messages
+                socket.on(`user_message_${userId}`, (data) => {
+                    console.log('📡 Received user message:', data);
+                    handleUserMessage(data);
+                });
+                
+                console.log(`✅ User-specific listeners setup complete for user ${userId}`);
+            });
+            
+            socket.on('disconnect', (reason) => {
+                console.log('Disconnected from server:', reason);
+                showToast('❌ فقد الاتصال بالخادم', 'error');
+            });
+            
+            socket.on('connect_error', (error) => {
+                console.error('Connection error:', error);
+                showToast('❌ خطأ في الاتصال بالخادم', 'error');
+            });
+            
+            socket.on('auth_error', (error) => {
+                console.error('Authentication error:', error);
+                showToast('❌ خطأ في المصادقة، جاري إعادة التوجيه...', 'error');
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 2000);
+            });
+
+            // Global events (not user-specific)
+            socket.on('bot_status', (data) => {
                 isBotStopped = data.stopped;
-                updateBotButton();
+                updateBotStatusUI();
             });
 
-            // Bulk send progress
+            socket.on('auto_report_notification', (data) => {
+                showAutoReportNotification(data);
+            });
+
+            socket.on('client_status_updated', (data) => {
+                updateClientStatus(data.clientId, data.status);
+            });
+
+            socket.on('performance_stats', (data) => {
+                updatePerformanceStats(data);
+            });
+
             socket.on('bulk_progress', (data) => {
-                updateBulkProgress(data);
+                handleBulkProgress(data);
             });
 
-            socket.on('disconnect', () => {
-                console.log('Disconnected from server');
-                showToast('⚠️ تم قطع الاتصال بالخادم', 'error');
+            socket.on('clients_updated', (data) => {
+                clients = data;
+                renderClientList();
+                updateClientsCount();
             });
         }
-
+        
         function setupEventListeners() {
-            // Excel file upload
-            document.getElementById('excelFile').addEventListener('change', handleExcelUpload);
+            // QR Code
+            closeQR.addEventListener('click', () => {
+                qrOverlay.classList.add('hidden');
+            });
+
+            // WhatsApp QR Status Button
+            whatsappQrStatus.addEventListener('click', () => {
+                fetchUserQRCode();
+            });
             
-            // Client search
-            document.getElementById('clientSearch').addEventListener('input', filterClients);
+            // Reconnect
+            reconnectBtn.addEventListener('click', () => {
+                socket.emit('user_reconnect_whatsapp');
+                showToast('🔄 جاري إعادة الاتصال...', 'warning');
+            });
             
-            // Message input enter key
-            document.getElementById('messageInput').addEventListener('keypress', function(e) {
-                if (e.key === 'Enter') {
+            // Stop Bot Button
+            stopBotBtn.addEventListener('click', () => {
+                const newState = !isBotStopped;
+                socket.emit('user_toggle_bot', { stop: newState });
+                showToast(newState ? '🛑 جاري إيقاف البوت...' : '🚀 جاري تشغيل البوت...', newState ? 'warning' : 'success');
+            });
+
+            // Logout Button
+            logoutBtn.addEventListener('click', () => {
+                logoutUser();
+            });
+            
+            // AI Mode Toggle
+            aiToggle.addEventListener('change', (e) => {
+                isAIMode = e.target.checked;
+                aiStatus.innerHTML = isAIMode ? 
+                    '<span class="text-green-400 text-sm">🤖 الذكاء الاصطناعي مفعل</span>' :
+                    '<span class="text-yellow-400 text-sm">⚠️ الذكاء الاصطناعي معطل</span>';
+                
+                showToast(isAIMode ? '🤖 تم تفعيل الذكاء الاصطناعي' : '⚠️ تم تعطيل الذكاء الاصطناعي', 'success');
+            });
+            
+            // File Upload
+            uploadBtn.addEventListener('click', () => {
+                excelFile.click();
+            });
+            
+            excelFile.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    uploadExcelFile(file);
+                }
+            });
+            
+            // Bulk Message
+            sendBulkBtn.addEventListener('click', () => {
+                if (!bulkMessage.value.trim()) {
+                    showToast('❌ يرجى كتابة رسالة ترويجية', 'error');
+                    return;
+                }
+                
+                if (clients.length === 0) {
+                    showToast('❌ لا يوجد عملاء للإرسال', 'error');
+                    return;
+                }
+                
+                startBulkSending();
+            });
+            
+            retryBulkBtn.addEventListener('click', () => {
+                startBulkSending(true);
+            });
+            
+            // Message Sending
+            messageInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
                     sendMessage();
                 }
             });
             
-            // Bulk message client filter
-            document.getElementById('clientFilter').addEventListener('change', updateBulkRecipients);
+            sendMessageBtn.addEventListener('click', sendMessage);
             
-            // Bulk message input
-            document.getElementById('bulkMessage').addEventListener('input', updateBulkRecipients);
-        }
-
-        async function loadUserClients() {
-            try {
-                const token = localStorage.getItem('authToken');
-                const response = await fetch('/api/user-clients', {
-                    headers: {
-                        'Authorization': `Bearer ${token}`
-                    }
+            // Status Filter
+            document.querySelectorAll('.status-filter-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const status = e.target.dataset.status;
+                    setStatusFilter(status);
                 });
-
-                const data = await response.json();
-                if (data.success) {
-                    clients = data.clients;
-                    renderClientsList();
-                    updateBulkRecipients();
+            });
+            
+            // Client Status Selector
+            statusSelect.addEventListener('change', (e) => {
+                if (currentClient) {
+                    updateClientStatus(currentClient.id, e.target.value);
                 }
-            } catch (error) {
-                console.error('Error loading clients:', error);
-                showToast('❌ فشل تحميل قائمة العملاء', 'error');
-            }
-        }
-
-        async function loadPerformanceStats() {
-            try {
-                const token = localStorage.getItem('authToken');
-                const response = await fetch('/api/employee-performance', {
-                    headers: {
-                        'Authorization': `Bearer ${token}`
-                    }
-                });
-
-                const data = await response.json();
-                if (data.success) {
-                    performanceStats = data.performance;
-                    updatePerformanceStats();
-                }
-            } catch (error) {
-                console.error('Error loading performance stats:', error);
-            }
-        }
-
-        async function checkWhatsAppStatus() {
-            try {
-                const token = localStorage.getItem('authToken');
-                const response = await fetch('/api/user-whatsapp-status', {
-                    headers: {
-                        'Authorization': `Bearer ${token}`
-                    }
-                });
-
-                const data = await response.json();
-                updateWhatsAppStatus(data);
-            } catch (error) {
-                console.error('Error checking WhatsApp status:', error);
-            }
-        }
-
-        function updateWhatsAppStatus(status) {
-            const statusElement = document.getElementById('whatsappStatus');
-            const statusClass = status.connected ? 'status-connected' : 
-                              status.hasQr ? 'status-qr' : 'status-disconnected';
+            });
             
-            statusElement.className = `${statusClass} px-4 py-2 rounded-full text-sm font-bold`;
+            // Export Report
+            exportReportBtn.addEventListener('click', () => {
+                exportReport();
+            });
             
-            if (status.connected) {
-                statusElement.innerHTML = '<i class="fas fa-check-circle mr-2"></i>واتساب متصل';
-            } else if (status.hasQr) {
-                statusElement.innerHTML = '<i class="fas fa-qrcode mr-2"></i>جاهز للمسح';
-                // Auto-show QR modal when QR is ready
-                fetchQRCode();
-            } else {
-                statusElement.innerHTML = '<i class="fas fa-times-circle mr-2"></i>واتساب غير متصل';
-            }
-        }
-
-        async function fetchQRCode() {
-            try {
-                const token = localStorage.getItem('authToken');
-                const response = await fetch('/api/user-whatsapp-qr', {
-                    headers: {
-                        'Authorization': `Bearer ${token}`
-                    }
-                });
-
-                const data = await response.json();
-                if (data.qrCode) {
-                    showQRCode(data.qrCode);
-                }
-            } catch (error) {
-                console.error('Error fetching QR code:', error);
-            }
-        }
-
-        function showQRCode(qrCode) {
-            document.getElementById('qrCodeImage').src = qrCode;
-            document.getElementById('qrModal').classList.remove('hidden');
-        }
-
-        function closeQRModal() {
-            document.getElementById('qrModal').classList.add('hidden');
-        }
-
-        function renderClientsList() {
-            const clientsList = document.getElementById('clientsList');
-            const searchTerm = document.getElementById('clientSearch').value.toLowerCase();
+            // Send Report
+            sendReportBtn.addEventListener('click', () => {
+                sendReport();
+            });
             
-            let filteredClients = clients;
-            if (searchTerm) {
-                filteredClients = clients.filter(client => 
-                    client.name.toLowerCase().includes(searchTerm) || 
-                    client.phone.includes(searchTerm)
-                );
-            }
+            // Scroll to Bottom
+            scrollToBottom.addEventListener('click', () => {
+                scrollChatToBottom();
+            });
+            
+            // User Management Event Listeners
+            userSwitchBtn.addEventListener('click', () => {
+                userSwitchOverlay.classList.remove('hidden');
+                currentViewingUser.textContent = isAdminViewingAs ? viewingAsUser.name : currentUser.name;
+            });
+            
+            returnToAdmin.addEventListener('click', () => {
+                isAdminViewingAs = false;
+                viewingAsUser = null;
+                userSwitchOverlay.classList.add('hidden');
+                updateUserInterface();
+                showToast('✅ العودة إلى حساب المدير', 'success');
+            });
+            
+            closeUserSwitch.addEventListener('click', () => {
+                userSwitchOverlay.classList.add('hidden');
+            });
+            
+            addUserBtn.addEventListener('click', addNewUser);
+        }
 
-            clientsList.innerHTML = '';
-
-            if (filteredClients.length === 0) {
-                clientsList.innerHTML = `
-                    <div class="text-center text-gray-500 py-4">
-                        <i class="fas fa-users text-2xl mb-2"></i>
-                        <p>لا يوجد عملاء</p>
-                    </div>
-                `;
+        // 🆕 IMPROVED QR Code Functions
+        function showQRCode(qrCodeUrl) {
+            console.log('🖼️ Showing QR code:', qrCodeUrl);
+            if (!qrCodeUrl) {
+                console.error('❌ No QR code URL provided');
+                showToast('❌ لم يتم توليد QR Code', 'error');
                 return;
             }
+            
+            // Clear previous QR code
+            qrCode.innerHTML = '';
+            
+            // Create new QR code image
+            const qrImage = document.createElement('img');
+            qrImage.src = qrCodeUrl;
+            qrImage.alt = "WhatsApp QR Code";
+            qrImage.className = "w-64 h-64 mx-auto";
+            qrImage.onload = function() {
+                console.log('✅ QR code image loaded successfully');
+            };
+            qrImage.onerror = function() {
+                console.error('❌ Failed to load QR code image');
+                showToast('❌ فشل تحميل QR Code', 'error');
+            };
+            
+            qrCode.appendChild(qrImage);
+            qrOverlay.classList.remove('hidden');
+            
+            // Show notification
+            showToast('📱 يرجى مسح QR Code للاتصال', 'success');
+            
+            console.log('✅ QR code overlay shown');
+        }
 
+        // 🆕 Auto-fetch QR code on page load
+        function fetchUserQRCode() {
+            console.log('🔄 Fetching user QR code...');
+            fetch('/api/user-whatsapp-qr', {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.qrCode) {
+                    console.log('✅ QR code fetched successfully');
+                    showQRCode(data.qrCode);
+                } else {
+                    console.log('ℹ️ QR code not available yet');
+                    showToast('⏳ جاري توليد QR Code...', 'warning');
+                }
+            })
+            .catch(error => {
+                console.error('❌ Error fetching QR code:', error);
+                showToast('❌ فشل جلب QR Code', 'error');
+            });
+        }
+
+        // 🆕 Improved WhatsApp status update with auto-QR display
+        function updateWhatsAppStatus(data) {
+            console.log('🔄 Updating WhatsApp status:', data);
+            whatsappStatus.textContent = data.message;
+            
+            if (data.connected) {
+                whatsappStatus.className = 'status-connected px-3 py-1 rounded-full text-sm font-bold';
+                whatsappQrStatus.classList.add('hidden');
+                qrOverlay.classList.add('hidden'); // Hide QR when connected
+            } else {
+                whatsappStatus.className = 'status-disconnected px-3 py-1 rounded-full text-sm font-bold';
+                
+                if (data.status === 'qr-ready') {
+                    whatsappQrStatus.classList.remove('hidden');
+                    // 🆕 AUTO-SHOW QR CODE when status is qr-ready
+                    if (!qrOverlay.classList.contains('hidden')) {
+                        // QR overlay is already visible, no need to show again
+                        console.log('📱 QR overlay already visible');
+                    } else {
+                        // Fetch and show QR code automatically
+                        console.log('🔄 Auto-fetching QR code for qr-ready status');
+                        setTimeout(() => fetchUserQRCode(), 1000);
+                    }
+                } else {
+                    whatsappQrStatus.classList.add('hidden');
+                    qrOverlay.classList.add('hidden');
+                }
+            }
+        }
+
+        // 🆕 Function to check WhatsApp status
+        function checkWhatsAppStatus() {
+            fetch('/api/user-whatsapp-status', {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('📡 WhatsApp status check:', data);
+                if (data.hasQr && data.qrCode) {
+                    showQRCode(data.qrCode);
+                }
+                updateWhatsAppStatus(data);
+            })
+            .catch(error => {
+                console.error('Error checking WhatsApp status:', error);
+            });
+        }
+
+        // Logout Function
+        function logoutUser() {
+            if (confirm('هل أنت متأكد من تسجيل الخروج؟')) {
+                // Clear localStorage
+                localStorage.removeItem('authToken');
+                localStorage.removeItem('currentUser');
+                localStorage.removeItem('performanceStats');
+                
+                // Disconnect socket
+                if (socket) {
+                    socket.disconnect();
+                }
+                
+                // Show logout message
+                showToast('👋 تم تسجيل الخروج بنجاح', 'success');
+                
+                // Redirect to login page
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 1500);
+            }
+        }
+
+        // User Management Functions
+        function loadCurrentUser() {
+            const savedUser = localStorage.getItem('currentUser');
+            if (savedUser) {
+                currentUser = JSON.parse(savedUser);
+                updateUserInterface();
+                
+                // 🆕 CRITICAL: Authenticate socket AFTER user is loaded
+                if (socket && socket.connected) {
+                    console.log('🔐 Authenticating socket for user:', currentUser.id);
+                    socket.emit('authenticate', authToken);
+                }
+            } else {
+                fetch('/api/me', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        currentUser = data.user;
+                        localStorage.setItem('currentUser', JSON.stringify(currentUser));
+                        updateUserInterface();
+                        
+                        // 🆕 CRITICAL: Authenticate socket AFTER user is loaded
+                        if (socket && socket.connected) {
+                            console.log('🔐 Authenticating socket for user:', currentUser.id);
+                            socket.emit('authenticate', authToken);
+                        }
+                    } else {
+                        window.location.href = '/';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading user:', error);
+                    window.location.href = '/';
+                });
+            }
+        }
+        
+        function loadUsers() {
+            if (currentUser && currentUser.role === 'admin') {
+                fetch('/api/users', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        users = data.users;
+                        renderUsersList();
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading users:', error);
+                });
+            }
+        }
+        
+        function updateUserInterface() {
+            if (!currentUser) return;
+            
+            currentUserName.textContent = currentUser.name;
+            currentUserRole.textContent = currentUser.role === 'admin' ? 'مدير' : 'مستخدم عادي';
+            
+            if (currentUser.role === 'admin' && !isAdminViewingAs) {
+                userManagementSection.classList.remove('hidden');
+                userSwitchBtn.classList.remove('hidden');
+            } else {
+                userManagementSection.classList.add('hidden');
+                userSwitchBtn.classList.add('hidden');
+            }
+            
+            currentUserRole.className = currentUser.role === 'admin' 
+                ? 'px-3 py-1 bg-purple-600 rounded-full text-sm font-bold'
+                : 'px-3 py-1 bg-primary rounded-full text-sm font-bold';
+        }
+        
+        function addNewUser() {
+            const name = newUserName.value.trim();
+            const password = newUserPassword.value.trim();
+            const role = newUserRole.value;
+            
+            if (!name || !password) {
+                showToast('❌ يرجى ملء جميع الحقول', 'error');
+                return;
+            }
+            
+            fetch('/api/users', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    name: name,
+                    username: name.toLowerCase().replace(/\s/g, ''),
+                    password: password,
+                    role: role
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast('✅ تم إضافة المستخدم بنجاح', 'success');
+                    clearUserForm();
+                    loadUsers();
+                } else {
+                    showToast('❌ ' + data.error, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error adding user:', error);
+                showToast('❌ فشل إضافة المستخدم', 'error');
+            });
+        }
+        
+        function renderUsersList() {
+            usersList.innerHTML = '';
+            
+            users.forEach(user => {
+                const userElement = document.createElement('div');
+                userElement.className = `user-item p-3 rounded-lg mb-2 ${user.role === 'admin' ? 'role-admin' : 'role-standard'} bg-gray-800`;
+                
+                userElement.innerHTML = `
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <div class="font-bold">${user.name}</div>
+                            <div class="text-xs text-gray-400">${user.role === 'admin' ? 'مدير' : 'مستخدم عادي'}</div>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <span class="text-xs ${user.isActive ? 'user-active' : 'user-inactive'}">
+                                <i class="fas fa-circle text-xs mr-1"></i>${user.isActive ? 'نشط' : 'غير نشط'}
+                            </span>
+                            ${currentUser.role === 'admin' && currentUser.id !== user.id ? `
+                                <button class="switch-to-user-btn text-xs bg-blue-600 hover:bg-blue-700 px-2 py-1 rounded transition-colors" data-user-id="${user.id}">
+                                    <i class="fas fa-eye mr-1"></i>عرض
+                                </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+                
+                usersList.appendChild(userElement);
+            });
+            
+            document.querySelectorAll('.switch-to-user-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const userId = parseInt(e.target.closest('button').dataset.userId);
+                    switchToUser(userId);
+                });
+            });
+        }
+        
+        function switchToUser(userId) {
+            const targetUser = users.find(u => u.id === userId);
+            if (targetUser) {
+                isAdminViewingAs = true;
+                viewingAsUser = targetUser;
+                userSwitchOverlay.classList.add('hidden');
+                updateUserInterface();
+                showToast(`👁️ تشاهد الآن كـ: ${targetUser.name}`, 'success');
+            }
+        }
+        
+        function clearUserForm() {
+            newUserName.value = '';
+            newUserPassword.value = '';
+            newUserRole.value = 'standard';
+        }
+
+        function uploadExcelFile(file) {
+            const formData = new FormData();
+            formData.append('excelFile', file);
+            
+            fetch('/api/upload-excel', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`
+                },
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    fileInfo.classList.remove('hidden');
+                    fileInfo.innerHTML = `<i class="fas fa-file-excel text-primary-light mr-1"></i> ${file.name} (${data.count} عميل)`;
+                    showToast(`✅ ${data.message}`, 'success');
+                    
+                    clients = data.clients;
+                    renderClientList();
+                    updateClientsCount();
+                } else {
+                    showToast('❌ ' + data.error, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error uploading file:', error);
+                showToast('❌ فشل رفع الملف', 'error');
+            });
+        }
+        
+        function loadClients() {
+            fetch('/api/clients', {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    clients = data.clients;
+                    renderClientList();
+                    updateClientsCount();
+                }
+            })
+            .catch(error => {
+                console.error('Error loading clients:', error);
+            });
+        }
+        
+        function renderClientList() {
+            clientList.innerHTML = '';
+            
+            const filteredClients = currentStatusFilter === 'all' 
+                ? clients 
+                : clients.filter(client => client.status === currentStatusFilter);
+            
             filteredClients.forEach(client => {
                 const clientElement = document.createElement('div');
-                clientElement.className = `bg-gray-700 rounded-lg p-3 cursor-pointer transition-colors hover:bg-gray-600 client-status-${client.status} ${currentClient && currentClient.phone === client.phone ? 'ring-2 ring-[#00B98B]' : ''}`;
-                clientElement.onclick = () => selectClient(client);
+                clientElement.className = `client-item p-3 rounded-lg mb-2 cursor-pointer client-status-${client.status} ${currentClient?.id === client.id ? 'active' : ''}`;
+                clientElement.dataset.clientId = client.id;
                 
                 clientElement.innerHTML = `
                     <div class="flex justify-between items-start">
                         <div class="flex-1">
-                            <div class="font-bold text-white">${client.name}</div>
-                            <div class="text-sm text-gray-400">${client.phone}</div>
-                            <div class="text-xs text-gray-500 mt-1 truncate">${client.lastMessage}</div>
+                            <div class="font-bold">${client.name}</div>
+                            <div class="text-xs text-gray-400">${client.phone}</div>
+                            <div class="text-sm mt-1 truncate">${client.lastMessage}</div>
                         </div>
-                        <div class="flex flex-col items-end space-y-1">
-                            <span class="px-2 py-1 rounded-full text-xs ${getStatusBadgeClass(client.status)}">
-                                ${getStatusText(client.status)}
-                            </span>
-                            <div class="text-xs text-gray-500">${formatTime(client.lastActivity)}</div>
+                        <div class="text-right">
+                            <div class="text-xs text-gray-500">${new Date(client.lastActivity).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</div>
+                            ${client.unread > 0 ? `
+                                <div class="unread-badge text-xs px-2 py-1 rounded-full mt-1">${client.unread}</div>
+                            ` : ''}
                         </div>
                     </div>
                 `;
                 
-                clientsList.appendChild(clientElement);
+                clientElement.addEventListener('click', () => {
+                    selectClient(client);
+                });
+                
+                clientList.appendChild(clientElement);
             });
-
-            document.getElementById('clientsCount').textContent = clients.length;
         }
-
-        function getStatusBadgeClass(status) {
-            switch(status) {
-                case 'interested': return 'bg-green-600';
-                case 'busy': return 'bg-yellow-600';
-                case 'not-interested': return 'bg-red-600';
-                default: return 'bg-gray-600';
-            }
-        }
-
-        function getStatusText(status) {
-            switch(status) {
-                case 'interested': return 'مهتم';
-                case 'busy': return 'مشغول';
-                case 'not-interested': return 'غير مهتم';
-                default: return 'لم يرد';
-            }
-        }
-
-        function filterClients() {
-            renderClientsList();
-        }
-
-        async function selectClient(client) {
+        
+        function selectClient(client) {
             currentClient = client;
-            renderClientsList();
+            currentClientName.textContent = client.name;
+            currentClientPhone.textContent = client.phone;
+            activeStatus.classList.remove('hidden');
+            clientStatusSelector.classList.remove('hidden');
+            statusSelect.value = client.status;
             
-            document.getElementById('currentClient').textContent = client.name;
-            document.getElementById('clientStatus').classList.remove('hidden');
-            document.getElementById('clientStatusBadge').textContent = getStatusText(client.status);
-            document.getElementById('clientStatusBadge').className = `px-2 py-1 rounded-full text-xs ${getStatusBadgeClass(client.status)}`;
+            messageInput.disabled = false;
+            sendMessageBtn.disabled = false;
             
-            document.getElementById('messageInput').disabled = false;
-            document.getElementById('sendMessageBtn').disabled = false;
+            document.querySelectorAll('.client-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            document.querySelector(`[data-client-id="${client.id}"]`).classList.add('active');
             
-            await loadClientMessages(client.phone);
+            loadMessages(client.id);
         }
-
-        async function loadClientMessages(phone) {
-            try {
-                const token = localStorage.getItem('authToken');
-                const response = await fetch(`/api/user-client-messages/${phone}`, {
-                    headers: {
-                        'Authorization': `Bearer ${token}`
-                    }
-                });
-
-                const data = await response.json();
-                if (data.success) {
-                    renderChatMessages(data.messages);
+        
+        function loadMessages(clientId) {
+            fetch(`/api/client-messages/${clientId}`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json'
                 }
-            } catch (error) {
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    messages[clientId] = data.messages;
+                    renderMessages(messages[clientId]);
+                }
+            })
+            .catch(error => {
                 console.error('Error loading messages:', error);
-                showToast('❌ فشل تحميل المحادثة', 'error');
-            }
+            });
         }
-
-        function renderChatMessages(messages) {
-            const chatMessages = document.getElementById('chatMessages');
-            chatMessages.innerHTML = '';
-
+        
+        function renderMessages(messages) {
+            chatContainer.innerHTML = '';
+            
             if (messages.length === 0) {
-                chatMessages.innerHTML = `
-                    <div class="text-center text-gray-500 py-8">
-                        <i class="fas fa-comments text-2xl mb-2"></i>
-                        <p>لا توجد رسائل بعد</p>
+                chatContainer.innerHTML = `
+                    <div class="text-center text-gray-400 mt-20">
+                        <i class="fas fa-comments text-5xl mb-4 opacity-50"></i>
+                        <p class="text-gray-500">لا توجد رسائل بعد</p>
                     </div>
                 `;
                 return;
             }
-
+            
             messages.forEach(message => {
-                addMessageToChat(message.message, message.fromMe, false);
-            });
-
-            // Scroll to bottom
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-        }
-
-        function addMessageToChat(message, isFromMe, animate = true) {
-            const chatMessages = document.getElementById('chatMessages');
-            
-            // Remove placeholder if exists
-            if (chatMessages.children.length === 1 && chatMessages.children[0].classList.contains('text-center')) {
-                chatMessages.innerHTML = '';
-            }
-
-            const messageElement = document.createElement('div');
-            messageElement.className = `message-bubble ${isFromMe ? 'sent' : 'received'} ${animate ? 'animate-pulse' : ''}`;
-            messageElement.innerHTML = `
-                <div class="text-white">${message}</div>
-                <div class="text-xs ${isFromMe ? 'text-green-100' : 'text-gray-400'} mt-1 text-left">
-                    ${new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}
-                </div>
-            `;
-            
-            chatMessages.appendChild(messageElement);
-            
-            // Scroll to bottom
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-            
-            // Remove animation after a delay
-            if (animate) {
-                setTimeout(() => {
-                    messageElement.classList.remove('animate-pulse');
-                }, 500);
-            }
-        }
-
-        async function sendMessage() {
-            const messageInput = document.getElementById('messageInput');
-            const message = messageInput.value.trim();
-
-            if (!message || !currentClient) {
-                return;
-            }
-
-            try {
-                const token = localStorage.getItem('authToken');
-                const response = await fetch('/api/send-message', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({
-                        phone: currentClient.phone,
-                        message: message
-                    })
-                });
-
-                const data = await response.json();
-                if (data.success) {
-                    addMessageToChat(message, true);
-                    messageInput.value = '';
-                    
-                    // Update client last message
-                    updateClientLastMessage(currentClient.phone, message);
-                    
-                    showToast('✅ تم إرسال الرسالة بنجاح', 'success');
-                } else {
-                    showToast(`❌ ${data.error}`, 'error');
-                }
-            } catch (error) {
-                console.error('Error sending message:', error);
-                showToast('❌ فشل إرسال الرسالة', 'error');
-            }
-        }
-
-        function updateClientLastMessage(phone, message) {
-            const client = clients.find(c => c.phone === phone);
-            if (client) {
-                client.lastMessage = message.substring(0, 50) + (message.length > 50 ? '...' : '');
-                client.lastActivity = new Date().toISOString();
-                renderClientsList();
-            }
-        }
-
-        async function handleExcelUpload(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-
-            const formData = new FormData();
-            formData.append('excelFile', file);
-
-            try {
-                const token = localStorage.getItem('authToken');
-                const response = await fetch('/api/user-upload-excel', {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: formData
-                });
-
-                const data = await response.json();
-                if (data.success) {
-                    showToast(`✅ تم معالجة ${data.count} عميل بنجاح`, 'success');
-                    clients = data.clients;
-                    renderClientsList();
-                    updateBulkRecipients();
-                } else {
-                    showToast(`❌ ${data.error}`, 'error');
-                }
-            } catch (error) {
-                console.error('Error uploading Excel:', error);
-                showToast('❌ فشل رفع الملف', 'error');
-            }
-
-            // Reset file input
-            event.target.value = '';
-        }
-
-        function updateBulkRecipients() {
-            const filter = document.getElementById('clientFilter').value;
-            const message = document.getElementById('bulkMessage').value.trim();
-            
-            let filteredClients = clients;
-            
-            if (filter === 'interested') {
-                filteredClients = clients.filter(client => client.status === 'interested');
-            } else if (filter === 'no-reply') {
-                filteredClients = clients.filter(client => client.status === 'no-reply');
-            }
-            
-            const enabled = filteredClients.length > 0 && message.length > 0;
-            document.getElementById('sendBulkBtn').disabled = !enabled;
-            document.getElementById('selectedClientsCount').textContent = `سيتم الإرسال إلى ${filteredClients.length} عميل`;
-        }
-
-        async function sendBulkMessage() {
-            const message = document.getElementById('bulkMessage').value.trim();
-            const delay = parseInt(document.getElementById('sendDelay').value) || 3;
-            const filter = document.getElementById('clientFilter').value;
-            
-            let filteredClients = clients;
-            if (filter === 'interested') {
-                filteredClients = clients.filter(client => client.status === 'interested');
-            } else if (filter === 'no-reply') {
-                filteredClients = clients.filter(client => client.status === 'no-reply');
-            }
-
-            if (filteredClients.length === 0 || !message) {
-                showToast('❌ لا يوجد عملاء للرسالة المحددة', 'error');
-                return;
-            }
-
-            if (!confirm(`هل أنت متأكد من إرسال الرسالة إلى ${filteredClients.length} عميل؟`)) {
-                return;
-            }
-
-            try {
-                const token = localStorage.getItem('authToken');
-                const response = await fetch('/api/send-bulk', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({
-                        message: message,
-                        delay: delay,
-                        clients: filteredClients
-                    })
-                });
-
-                const data = await response.json();
-                if (data.success) {
-                    showToast('✅ بدأ الإرسال الجماعي', 'success');
-                    // Progress will be handled via socket
-                } else {
-                    showToast(`❌ ${data.error}`, 'error');
-                }
-            } catch (error) {
-                console.error('Error sending bulk message:', error);
-                showToast('❌ فشل الإرسال الجماعي', 'error');
-            }
-        }
-
-        function updateBulkProgress(data) {
-            const progressElement = document.getElementById('bulkProgress');
-            const progressFill = document.getElementById('bulkProgressFill');
-            const progressText = document.getElementById('progressText');
-
-            if (data.type === 'start') {
-                progressElement.classList.remove('hidden');
-                progressFill.style.width = '0%';
-                progressText.textContent = `0/${data.total}`;
-            } else if (data.success !== undefined) {
-                const progress = (data.current / data.total) * 100;
-                progressFill.style.width = `${progress}%`;
-                progressText.textContent = `${data.current}/${data.total}`;
+                const messageElement = document.createElement('div');
+                messageElement.className = `chat-bubble ${message.fromMe ? 'sent' : 'received'}`;
                 
-                if (data.current === data.total) {
-                    setTimeout(() => {
-                        progressElement.classList.add('hidden');
-                        showToast('✅ تم الانتهاء من الإرسال الجماعي', 'success');
-                    }, 1000);
-                }
-            }
-        }
-
-        function updatePerformanceStats() {
-            if (!performanceStats.dailyStats) return;
-
-            const stats = performanceStats.dailyStats;
+                messageElement.innerHTML = `
+                    <div class="message-content">${message.message}</div>
+                    <div class="chat-time">${new Date(message.timestamp).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</div>
+                `;
+                
+                chatContainer.appendChild(messageElement);
+            });
             
-            document.getElementById('messagesSent').textContent = stats.messagesSent;
-            document.getElementById('clientsContacted').textContent = stats.clientsContacted;
-            document.getElementById('aiReplies').textContent = stats.aiRepliesSent;
-            document.getElementById('interestedClients').textContent = stats.interestedClients;
-
-            // Update progress bars (scaled for visualization)
-            document.getElementById('messagesProgress').style.width = `${Math.min(stats.messagesSent * 2, 100)}%`;
-            document.getElementById('clientsProgress').style.width = `${Math.min(stats.clientsContacted * 10, 100)}%`;
-            document.getElementById('aiProgress').style.width = `${Math.min(stats.aiRepliesSent * 5, 100)}%`;
-            document.getElementById('interestProgress').style.width = `${Math.min(stats.interestedClients * 20, 100)}%`;
+            scrollChatToBottom();
         }
-
-        async function toggleBot() {
-            try {
-                const token = localStorage.getItem('authToken');
-                const response = await fetch('/api/user-toggle-bot', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({
-                        stop: !isBotStopped
-                    })
-                });
-
-                const data = await response.json();
-                if (data.success) {
-                    isBotStopped = data.stopped;
-                    updateBotButton();
-                    showToast(`✅ ${data.message}`, 'success');
-                } else {
-                    showToast(`❌ ${data.error}`, 'error');
-                }
-            } catch (error) {
-                console.error('Error toggling bot:', error);
-                showToast('❌ فشل التحكم بالبوت', 'error');
+        
+        function sendMessage() {
+            const message = messageInput.value.trim();
+            if (!message || !currentClient) return;
+            
+            socket.emit('send_message', {
+                to: currentClient.phone,
+                message: message
+            });
+            
+            const newMessage = {
+                id: Date.now(),
+                message: message,
+                fromMe: true,
+                timestamp: new Date().toISOString()
+            };
+            
+            if (!messages[currentClient.id]) {
+                messages[currentClient.id] = [];
             }
+            messages[currentClient.id].push(newMessage);
+            
+            renderMessages(messages[currentClient.id]);
+            messageInput.value = '';
+            
+            updatePerformanceStats({
+                messages: parseInt(statMessages.textContent) + 1
+            });
+        }
+        
+        function startBulkSending(isRetry = false) {
+            if (isBulkSending) {
+                showToast('⚠️ جاري الإرسال بالفعل', 'warning');
+                return;
+            }
+            
+            const message = bulkMessage.value.trim();
+            const delay = parseInt(sendDelay.value);
+            
+            if (!message) {
+                showToast('❌ يرجى كتابة رسالة ترويجية', 'error');
+                return;
+            }
+            
+            if (clients.length === 0) {
+                showToast('❌ لا يوجد عملاء للإرسال', 'error');
+                return;
+            }
+            
+            fetch('/api/send-bulk', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    message: message,
+                    delay: delay,
+                    clients: clients
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast(`🚀 ${data.message}`, 'success');
+                isBulkSending = true;
+                    sendBulkBtn.disabled = true;
+                    sendBulkBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> جاري الإرسال...';
+                } else {
+                    showToast('❌ ' + data.error, 'error');
+                    }
+            })
+            .catch(error => {
+                console.error('Error sending bulk messages:', error);
+                showToast('❌ فشل الإرسال الجماعي', 'error');
+            });
         }
 
-        function updateBotButton() {
-            const button = document.getElementById('toggleBotBtn');
-            if (isBotStopped) {
-                button.innerHTML = '<i class="fas fa-play mr-2"></i>تشغيل البوت';
-                button.className = 'bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg transition-colors';
+        function handleBulkProgress(data) {
+            if (data.type === 'start') {
+                showToast(`🚀 بدء الإرسال إلى ${data.total} عميل`, 'success');
+            } else if (data.success) {
+                console.log(`✅ Sent to ${data.client}: ${data.clientPhone}`);
             } else {
-                button.innerHTML = '<i class="fas fa-pause mr-2"></i>إيقاف البوت';
-                button.className = 'bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg transition-colors';
+                console.error(`❌ Failed to send to ${data.client}: ${data.error}`);
             }
         }
-
-        async function reconnectWhatsApp() {
-            try {
-                const token = localStorage.getItem('authToken');
-                const response = await fetch('/api/user-reconnect-whatsapp', {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${token}`
-                    }
+        
+        function updateClientStatus(clientId, newStatus) {
+            const client = clients.find(c => c.id === clientId);
+            if (client) {
+                socket.emit('update_client_status', {
+                    phone: client.phone,
+                    status: newStatus
                 });
-
-                const data = await response.json();
-                if (data.success) {
-                    showToast('✅ جاري إعادة الاتصال...', 'success');
-                } else {
-                    showToast(`❌ ${data.error}`, 'error');
+                
+                client.status = newStatus;
+                renderClientList();
+                
+                if (newStatus === 'interested') {
+                    updatePerformanceStats({
+                        interested: parseInt(statInterested.textContent) + 1
+                    });
                 }
-            } catch (error) {
-                console.error('Error reconnecting WhatsApp:', error);
-                showToast('❌ فشل إعادة الاتصال', 'error');
+                
+                showToast(`✅ تم تحديث حالة العميل إلى: ${getStatusText(newStatus)}`, 'success');
             }
         }
-
-        async function sendReportToManager() {
-            try {
-                const token = localStorage.getItem('authToken');
-                const response = await fetch('/api/send-to-manager', {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${token}`
-                    }
-                });
-
-                const data = await response.json();
-                if (data.success) {
-                    showToast('✅ تم إرسال التقرير إلى المدير', 'success');
-                } else {
-                    showToast(`❌ ${data.error}`, 'error');
+        
+        function getStatusText(status) {
+            const statusMap = {
+                'interested': 'مهتم',
+                'busy': 'مشغول',
+                'not-interested': 'غير مهتم',
+                'no-reply': 'لم يرد'
+            };
+            return statusMap[status] || status;
+        }
+        
+        function setStatusFilter(status) {
+            currentStatusFilter = status;
+            
+            document.querySelectorAll('.status-filter-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.querySelector(`[data-status="${status}"]`).classList.add('active');
+            
+            renderClientList();
+        }
+        
+        function updateClientsCount() {
+            clientsCount.textContent = clients.length;
+            statClients.textContent = clients.length;
+        }
+        
+        function scrollChatToBottom() {
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+        
+        function updatePerformanceStats(stats) {
+            if (stats.messages !== undefined) statMessages.textContent = stats.messages;
+            if (stats.aiReplies !== undefined) statAIReplies.textContent = stats.aiReplies;
+            if (stats.clients !== undefined) statClients.textContent = stats.clients;
+            if (stats.interested !== undefined) statInterested.textContent = stats.interested;
+            
+            const currentStats = {
+                messages: parseInt(statMessages.textContent),
+                aiReplies: parseInt(statAIReplies.textContent),
+                clients: parseInt(statClients.textContent),
+                interested: parseInt(statInterested.textContent)
+            };
+            localStorage.setItem('performanceStats', JSON.stringify(currentStats));
+        }
+        
+        function loadPerformanceStats() {
+            fetch('/api/employee-performance', {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json'
                 }
-            } catch (error) {
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const perf = data.performance.dailyStats;
+                    updatePerformanceStats({
+                        messages: perf.messagesSent,
+                        aiReplies: perf.aiRepliesSent,
+                        clients: perf.clientsContacted,
+                        interested: perf.interestedClients
+                    });
+                }
+            })
+            .catch(error => {
+                console.error('Error loading performance stats:', error);
+                const savedStats = localStorage.getItem('performanceStats');
+                if (savedStats) {
+                    updatePerformanceStats(JSON.parse(savedStats));
+                }
+            });
+        }
+        
+        function exportReport() {
+            fetch('/api/export-report', {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`
+                }
+            })
+            .then(response => {
+                if (response.ok) {
+                    return response.blob();
+                }
+                throw new Error('Export failed');
+            })
+            .then(blob => {
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = `ragmcloud-report-${new Date().toISOString().split('T')[0]}.txt`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                showToast('📊 تم تصدير التقرير بنجاح', 'success');
+            })
+            .catch(error => {
+                console.error('Error exporting report:', error);
+                showToast('❌ فشل تصدير التقرير', 'error');
+            });
+        }
+        
+        function sendReport() {
+            fetch('/api/send-to-manager', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast('📧 تم إرسال التقرير إلى المدير بنجاح', 'success');
+                    } else {
+                    showToast('❌ ' + data.error, 'error');
+                    }
+            })
+            .catch(error => {
                 console.error('Error sending report:', error);
                 showToast('❌ فشل إرسال التقرير', 'error');
-            }
+            });
         }
-
-        function exportClients() {
-            // Implementation for exporting clients list
-            showToast('⏳ جاري تجهيز ملف التصدير...', 'success');
-            // You can implement actual export functionality here
-        }
-
-        function formatTime(dateString) {
-            const date = new Date(dateString);
-            const now = new Date();
-            const diffMs = now - date;
-            const diffMins = Math.floor(diffMs / (1000 * 60));
-            const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-            const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-            if (diffMins < 1) return 'الآن';
-            if (diffMins < 60) return `قبل ${diffMins} دقيقة`;
-            if (diffHours < 24) return `قبل ${diffHours} ساعة`;
-            if (diffDays < 7) return `قبل ${diffDays} يوم`;
-            
-            return date.toLocaleDateString('ar-SA');
-        }
-
-        function showToast(message, type) {
+        
+        function showToast(message, type = 'success') {
             const toast = document.createElement('div');
             toast.className = `toast ${type}`;
             toast.textContent = message;
-            document.getElementById('toastContainer').appendChild(toast);
+            
+            toastContainer.appendChild(toast);
             
             setTimeout(() => {
                 toast.classList.add('show');
-            }, 10);
+            }, 100);
             
             setTimeout(() => {
                 toast.classList.remove('show');
                 setTimeout(() => {
-                    if (document.getElementById('toastContainer').contains(toast)) {
-                        document.getElementById('toastContainer').removeChild(toast);
-                    }
+                    toastContainer.removeChild(toast);
                 }, 300);
-            }, 3000);
+            }, 4000);
         }
-
-        function logout() {
-            localStorage.removeItem('authToken');
-            localStorage.removeItem('currentUser');
-            window.location.href = '/';
+        
+        function showAutoReportNotification(data) {
+            autoReportMessage.textContent = data.message;
+            autoReportNotification.style.display = 'block';
+            
+            setTimeout(() => {
+                autoReportNotification.style.display = 'none';
+            }, 5000);
         }
+        
+        function updateBotStatusUI() {
+            if (isBotStopped) {
+                botStatus.textContent = 'متوقف';
+                botStatus.className = 'bot-status-stopped px-3 py-1 rounded-full text-sm font-bold';
+                stopBotBtn.innerHTML = '<i class="fas fa-play mr-2"></i>تشغيل البوت';
+            } else {
+                botStatus.textContent = 'نشط';
+                botStatus.className = 'bot-status-running px-3 py-1 rounded-full text-sm font-bold';
+                stopBotBtn.innerHTML = '<i class="fas fa-stop mr-2"></i>إيقاف البوت';
+            }
+        }
+        
+        // Chat scroll detection
+        chatContainer.addEventListener('scroll', () => {
+            const scrollThreshold = 100;
+            const isNearBottom = chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight < scrollThreshold;
+            
+            if (isNearBottom) {
+                scrollToBottom.classList.remove('visible');
+            } else {
+                scrollToBottom.classList.add('visible');
+            }
+        });
     </script>
 </body>
 </html>
