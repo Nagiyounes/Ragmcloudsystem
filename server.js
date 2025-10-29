@@ -236,10 +236,10 @@ const AI_SYSTEM_PROMPT = `أنت مساعد ذكي ومحترف تمثل شرك�
 المقر: الرياض - حي المغرزات
 
 🔹 **باقات الأسعار (سنوية):**
-• الباقة الأساسية: 1000 ريال (مستخدم واحد)
-• الباقة المتقدمة: 1800 ريال (مستخدمين) 
-• الباقة الاحترافية: 2700 ريال (3 مستخدمين)
-• الباقة المميزة: 3000 ريال (3 مستخدمين)
+• الباقة الأساسية: 1000 ريال/سنوياً
+• الباقة المتقدمة: 1800 ريال/سنوياً 
+• الباقة الاحترافية: 2700 ريال/سنوياً
+• الباقة المميزة: 3000 ريال/سنوياً
 
 🔹 **قواعد الرد الإلزامية:**
 1. **لا تجيب أبداً على:** أسئلة شخصية، سياسة، أديان، برامج أخرى، منافسين
@@ -496,7 +496,7 @@ function getUserWhatsAppSession(userId) {
 // 🆕 Check if User WhatsApp is Connected
 function isUserWhatsAppConnected(userId) {
     const session = getUserWhatsAppSession(userId);
-    return session && session.isConnected;
+    return session && session.status === 'connected';
 }
 
 // 🆕 User-specific Message Processing
@@ -1637,7 +1637,7 @@ async function sendReportToManager(userId = null) {
         // Find any connected user to send the report
         let senderSession = null;
         for (const [uid, session] of userWhatsAppSessions) {
-            if (session.isConnected) {
+            if (session.status === 'connected') {
                 senderSession = session;
                 break;
             }
@@ -1824,9 +1824,9 @@ app.get('/api/user-whatsapp-status', authenticateUser, (req, res) => {
         }
         
         res.json({
-            connected: userSession.isConnected,
+            connected: userSession.status === 'connected',
             status: userSession.status,
-            message: userSession.isConnected ? 'واتساب متصل ✅' : 
+            message: userSession.status === 'connected' ? 'واتساب متصل ✅' : 
                     userSession.status === 'qr-ready' ? 'يرجى مسح QR Code' :
                     'جارٍ الاتصال...',
             hasQr: !!userSession.qrCode
@@ -2139,7 +2139,7 @@ app.get('/api/export-report', authenticateUser, (req, res) => {
     }
 });
 
-// Bulk send endpoint
+// Bulk send endpoint - FIXED CONNECTION CHECK
 app.post('/api/send-bulk', authenticateUser, async (req, res) => {
     try {
         const { message, delay = 40, clients } = req.body;
@@ -2149,7 +2149,8 @@ app.post('/api/send-bulk', authenticateUser, async (req, res) => {
         const userId = req.user.id;
         const userSession = getUserWhatsAppSession(userId);
         
-        if (!userSession || !userSession.isConnected) {
+        // 🛠️ FIXED: Check status instead of isConnected
+        if (!userSession || userSession.status !== 'connected') {
             return res.status(400).json({ 
                 success: false, 
                 error: 'واتساب غير متصل' 
@@ -2254,7 +2255,7 @@ app.post('/api/send-bulk', authenticateUser, async (req, res) => {
     }
 });
 
-// Send individual message
+// Send individual message - FIXED CONNECTION CHECK
 app.post('/api/send-message', authenticateUser, async (req, res) => {
     try {
         const { phone, message } = req.body;
@@ -2262,7 +2263,8 @@ app.post('/api/send-message', authenticateUser, async (req, res) => {
         const userId = req.user.id;
         const userSession = getUserWhatsAppSession(userId);
         
-        if (!userSession || !userSession.isConnected) {
+        // 🛠️ FIXED: Check status instead of isConnected
+        if (!userSession || userSession.status !== 'connected') {
             return res.status(400).json({ error: 'واتساب غير متصل' });
         }
 
@@ -2299,6 +2301,58 @@ io.on('connection', (socket) => {
     console.log('Client connected');
     
     // Handle user authentication for socket
+    socket.on('authenticate', (token) => {
+        try {
+            const decoded = verifyToken(token);
+            if (!decoded) {
+                socket.emit('auth_error', { error: 'Token غير صالح' });
+                return;
+            }
+            
+            const user = users.find(u => u.id === decoded.userId && u.isActive);
+            if (!user) {
+                socket.emit('auth_error', { error: 'المستخدم غير موجود' });
+                return;
+            }
+            
+            socket.userId = user.id;
+            console.log(`🔐 Socket authenticated for user ${user.name}`);
+            
+            // 🆕 CRITICAL: Send authentication success
+            socket.emit('authenticated', { 
+                userId: user.id, 
+                username: user.username 
+            });
+            
+            // Send user-specific initial data
+            const userSession = getUserWhatsAppSession(user.id);
+            if (userSession) {
+                socket.emit(`user_status_${user.id}`, { 
+                    connected: userSession.status === 'connected', 
+                    message: userSession.status === 'connected' ? 'واتساب متصل ✅' : 
+                            userSession.status === 'qr-ready' ? 'يرجى مسح QR Code' :
+                            'جارٍ الاتصال...',
+                    status: userSession.status,
+                    hasQr: !!userSession.qrCode,
+                    userId: user.id
+                });
+                
+                // 🆕 CRITICAL: If QR code already exists, send it immediately
+                if (userSession.qrCode) {
+                    console.log(`📱 Sending existing QR code to user ${user.id}`);
+                    socket.emit(`user_qr_${user.id}`, { 
+                        qrCode: userSession.qrCode,
+                        userId: user.id,
+                        timestamp: new Date().toISOString()
+                    });
+                }
+            }
+            
+        } catch (error) {
+            socket.emit('auth_error', { error: 'خطأ في المصادقة' });
+        }
+    });
+    
     // Handle user-specific bot toggle
     socket.on('user_toggle_bot', (data) => {
         if (!socket.userId) {
@@ -2314,58 +2368,7 @@ io.on('connection', (socket) => {
             });
         }
     });
-// In your socket.io connection event, add this:
-socket.on('authenticate', (token) => {
-    try {
-        const decoded = verifyToken(token);
-        if (!decoded) {
-            socket.emit('auth_error', { error: 'Token غير صالح' });
-            return;
-        }
-        
-        const user = users.find(u => u.id === decoded.userId && u.isActive);
-        if (!user) {
-            socket.emit('auth_error', { error: 'المستخدم غير موجود' });
-            return;
-        }
-        
-        socket.userId = user.id;
-        console.log(`🔐 Socket authenticated for user ${user.name}`);
-        
-        // 🆕 CRITICAL: Send authentication success
-        socket.emit('authenticated', { 
-            userId: user.id, 
-            username: user.username 
-        });
-        
-        // Send user-specific initial data
-        const userSession = getUserWhatsAppSession(user.id);
-        if (userSession) {
-            socket.emit(`user_status_${user.id}`, { 
-                connected: userSession.isConnected, 
-                message: userSession.isConnected ? 'واتساب متصل ✅' : 
-                        userSession.status === 'qr-ready' ? 'يرجى مسح QR Code' :
-                        'جارٍ الاتصال...',
-                status: userSession.status,
-                hasQr: !!userSession.qrCode,
-                userId: user.id
-            });
-            
-            // 🆕 CRITICAL: If QR code already exists, send it immediately
-            if (userSession.qrCode) {
-                console.log(`📱 Sending existing QR code to user ${user.id}`);
-                socket.emit(`user_qr_${user.id}`, { 
-                    qrCode: userSession.qrCode,
-                    userId: user.id,
-                    timestamp: new Date().toISOString()
-                });
-            }
-        }
-        
-    } catch (error) {
-        socket.emit('auth_error', { error: 'خطأ في المصادقة' });
-    }
-});
+
     // Handle client status update
     socket.on('update_client_status', (data) => {
         updateClientStatus(data.phone, data.status);
@@ -2385,7 +2388,8 @@ socket.on('authenticate', (token) => {
             const { to, message } = data;
             
             const userSession = getUserWhatsAppSession(socket.userId);
-            if (!userSession || !userSession.isConnected) {
+            // 🛠️ FIXED: Check status instead of isConnected
+            if (!userSession || userSession.status !== 'connected') {
                 socket.emit('message_error', { 
                     to: to, 
                     error: 'واتساب غير متصل' 
@@ -2464,5 +2468,5 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log('🎉 MULTI-USER ARCHITECTURE: COMPLETED');
     console.log('☁️  CLOUD-OPTIMIZED WHATSAPP: ENABLED');
     console.log('📱 QR CODE FIXED: FRONTEND WILL NOW RECEIVE QR CODES');
+    console.log('🛠️  CONNECTION STATUS FIXED: Now properly checks status instead of isConnected');
 });
-
