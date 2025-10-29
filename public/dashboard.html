@@ -410,180 +410,6 @@
             transform: translateY(-2px);
             box-shadow: 0 4px 20px rgba(245, 101, 101, 0.4);
         }
-
-        /* FIXED: Chat List Styles */
-        .conversations-container {
-            height: calc(100vh - 200px);
-            overflow-y: auto;
-            padding: 10px;
-        }
-
-        .conversation-item {
-            display: flex;
-            align-items: center;
-            padding: 12px;
-            border-radius: 10px;
-            margin-bottom: 8px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .conversation-item:hover {
-            background: rgba(255, 255, 255, 0.05);
-        }
-
-        .conversation-item.active {
-            background: rgba(0, 124, 92, 0.2);
-            border-right: 3px solid #00B98B;
-        }
-
-        .conversation-avatar {
-            width: 50px;
-            height: 50px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, #007C5C, #00B98B);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-left: 12px;
-            flex-shrink: 0;
-        }
-
-        .conversation-content {
-            flex: 1;
-            min-width: 0;
-        }
-
-        .conversation-name {
-            font-weight: bold;
-            margin-bottom: 4px;
-            color: white;
-        }
-
-        .conversation-preview {
-            color: #9CA3AF;
-            font-size: 13px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .conversation-time {
-            color: #6B7280;
-            font-size: 11px;
-            white-space: nowrap;
-        }
-
-        .conversation-badge {
-            background: #EF4444;
-            color: white;
-            border-radius: 50%;
-            width: 20px;
-            height: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 10px;
-            margin-top: 4px;
-        }
-
-        /* FIXED: Main Chat Area Layout */
-        .main-chat-area {
-            display: flex;
-            flex-direction: column;
-            height: 100%;
-            width: 100%;
-        }
-
-        .chat-messages-container {
-            flex: 1;
-            overflow-y: auto;
-            padding: 20px;
-            width: 100%;
-        }
-
-        .chat-input-container {
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-            padding: 20px;
-            background: rgba(45, 55, 72, 0.8);
-            width: 100%;
-        }
-
-        /* FIXED: Conversation item status classes */
-        .conversation-item.client-status-interested {
-            border-left: 4px solid #10B981 !important;
-        }
-        
-        .conversation-item.client-status-busy {
-            border-left: 4px solid #F59E0B !important;
-        }
-        
-        .conversation-item.client-status-not-interested {
-            border-left: 4px solid #EF4444 !important;
-        }
-        
-        .conversation-item.client-status-no-reply {
-            border-left: 4px solid #9CA3AF !important;
-        }
-
-        /* NEW: WhatsApp Disconnect Button */
-        .disconnect-btn {
-            background: linear-gradient(135deg, #f56565, #c53030);
-            color: white;
-            transition: all 0.3s ease;
-        }
-
-        .disconnect-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 20px rgba(245, 101, 101, 0.4);
-        }
-
-        /* FIXED: Chat Container Width Issues */
-        .chat-area-wrapper {
-            display: flex;
-            flex: 1;
-            width: 100%;
-            overflow: hidden;
-        }
-
-        .conversations-sidebar {
-            width: 33.333%;
-            border-left: 1px solid rgba(255, 255, 255, 0.1);
-            height: 100%;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .messages-area {
-            width: 66.667%;
-            height: 100%;
-            display: flex;
-            flex-direction: column;
-        }
-
-        /* FIXED: Responsive layout */
-        @media (max-width: 1024px) {
-            .conversations-sidebar {
-                width: 40%;
-            }
-            .messages-area {
-                width: 60%;
-            }
-        }
-
-        @media (max-width: 768px) {
-            .conversations-sidebar {
-                width: 100%;
-            }
-            .messages-area {
-                width: 100%;
-                display: none;
-            }
-            .messages-area.active {
-                display: flex;
-            }
-        }
     </style>
 </head>
 <body class="text-white">
@@ -685,11 +511,6 @@
                 <!-- Reconnect Button -->
                 <button id="reconnectBtn" class="w-full btn-gold py-2 rounded-lg font-bold mb-2">
                     <i class="fas fa-sync-alt mr-2"></i>إعادة الاتصال
-                </button>
-
-                <!-- NEW: Disconnect WhatsApp Button -->
-                <button id="disconnectBtn" class="w-full disconnect-btn py-2 rounded-lg font-bold mb-2">
-                    <i class="fas fa-plug mr-2"></i>فصل الواتساب
                 </button>
 
                 <!-- NEW: Stop Bot Button -->
@@ -828,8 +649,8 @@
                             <i class="fas fa-user"></i>
                         </div>
                         <div>
-                            <h2 id="currentClientName" class="text-xl font-bold">اختر محادثة</h2>
-                            <p id="currentClientPhone" class="text-sm text-gray-400">لم يتم اختيار محادثة</p>
+                            <h2 id="currentClientName" class="text-xl font-bold">اختر عميلاً</h2>
+                            <p id="currentClientPhone" class="text-sm text-gray-400">لم يتم اختيار عميل</p>
                         </div>
                     </div>
                     <div class="flex items-center space-x-2">
@@ -851,12 +672,12 @@
                 </div>
             </div>
             
-            <!-- FIXED: Main Chat Container with Conversations List -->
-            <div class="flex-1 flex chat-area-wrapper">
-                <!-- Conversations List - Now properly displayed -->
-                <div class="conversations-sidebar">
+            <!-- Clients List / Chat Area -->
+            <div class="flex-1 flex">
+                <!-- Clients List -->
+                <div class="w-1/3 border-l border-gray-600 h-full overflow-hidden flex flex-col">
                     <div class="p-4 border-b border-gray-600">
-                        <h3 class="font-bold text-lg gradient-text mb-2">المحادثات</h3>
+                        <h3 class="font-bold text-lg gradient-text mb-2">قائمة العملاء</h3>
                         <!-- Status Filter -->
                         <div class="status-filter">
                             <button class="status-filter-btn btn-all active" data-status="all">الكل</button>
@@ -874,25 +695,18 @@
                             </button>
                         </div>
                     </div>
-                    
-                    <!-- FIXED: Conversations List Container -->
-                    <div id="conversationsList" class="conversations-container">
-                        <!-- Conversations will be populated here dynamically -->
-                        <div class="text-center text-gray-400 mt-10">
-                            <i class="fas fa-comments text-4xl mb-3 opacity-50"></i>
-                            <p class="text-lg">لا توجد محادثات</p>
-                            <p class="text-sm text-gray-500 mt-1">قم برفع ملف Excel لبدء المحادثات</p>
-                        </div>
+                    <div id="clientList" class="flex-1 overflow-y-auto p-2">
+                        <!-- Clients will be populated here -->
                     </div>
                 </div>
                 
-                <!-- FIXED: Chat Messages Area -->
-                <div class="messages-area main-chat-area">
-                    <div id="chatMessages" class="chat-messages-container">
+                <!-- Chat Messages -->
+                <div class="flex-1 flex flex-col relative">
+                    <div id="chatContainer" class="chat-container">
                         <div class="text-center text-gray-400 mt-20">
                             <i class="fas fa-comments text-5xl mb-4 opacity-50"></i>
                             <p class="text-xl mb-2">مرحباً في رقم كلاود ERP!</p>
-                            <p class="text-gray-500">اختر محادثة من القائمة لبدء المراسلة</p>
+                            <p class="text-gray-500">اختر عميلاً لبدء المحادثة</p>
                         </div>
                     </div>
                     
@@ -902,7 +716,7 @@
                     </button>
                     
                     <!-- Message Input -->
-                    <div class="chat-input-container">
+                    <div class="p-4 border-t border-gray-600">
                         <div class="flex items-center">
                             <input 
                                 type="text" 
@@ -946,7 +760,6 @@
         const qrCode = document.getElementById('qrCode');
         const closeQR = document.getElementById('closeQR');
         const reconnectBtn = document.getElementById('reconnectBtn');
-        const disconnectBtn = document.getElementById('disconnectBtn');
         const stopBotBtn = document.getElementById('stopBotBtn');
         const logoutBtn = document.getElementById('logoutBtn');
         const whatsappStatus = document.getElementById('whatsappStatus');
@@ -959,13 +772,13 @@
         const sendDelay = document.getElementById('sendDelay');
         const sendBulkBtn = document.getElementById('sendBulkBtn');
         const retryBulkBtn = document.getElementById('retryBulkBtn');
-        const conversationsList = document.getElementById('conversationsList');
+        const clientList = document.getElementById('clientList');
         const exportReportBtn = document.getElementById('exportReportBtn');
         const sendReportBtn = document.getElementById('sendReportBtn');
         const currentClientName = document.getElementById('currentClientName');
         const currentClientPhone = document.getElementById('currentClientPhone');
         const activeStatus = document.getElementById('activeStatus');
-        const chatMessages = document.getElementById('chatMessages');
+        const chatContainer = document.getElementById('chatContainer');
         const messageInput = document.getElementById('messageInput');
         const sendMessageBtn = document.getElementById('sendMessageBtn');
         const aiStatus = document.getElementById('aiStatus');
@@ -1021,10 +834,9 @@
                 
                 setupSocketEvents();
                 setupEventListeners();
-                loadCurrentUser();
-                loadClients(); // Load clients on startup
+                loadCurrentUser(); // This will trigger authentication
                 
-                // Auto-check WhatsApp status on load
+                // 🆕 Auto-check WhatsApp status on load
                 setTimeout(() => {
                     checkWhatsAppStatus();
                 }, 2000);
@@ -1054,13 +866,13 @@
                 console.log('✅ Socket authenticated for user:', userData);
                 const userId = currentUser.id;
                 
-                // User-specific WhatsApp status
+                // 🆕 FIXED: User-specific WhatsApp status
                 socket.on(`user_status_${userId}`, (data) => {
                     console.log('📡 Received user status:', data);
                     updateWhatsAppStatus(data);
                 });
 
-                // User-specific QR code with auto-display
+                // 🆕 FIXED: User-specific QR code with auto-display
                 socket.on(`user_qr_${userId}`, (data) => {
                     console.log('📡 Received QR code for user:', userId);
                     if (data.qrCode) {
@@ -1068,14 +880,14 @@
                     }
                 });
 
-                // User-specific bot status
+                // 🆕 FIXED: User-specific bot status
                 socket.on(`user_bot_status_${userId}`, (data) => {
                     console.log('📡 Received bot status:', data);
                     isBotStopped = data.stopped;
                     updateBotStatusUI();
                 });
 
-                // User-specific messages
+                // 🆕 FIXED: User-specific messages
                 socket.on(`user_message_${userId}`, (data) => {
                     console.log('📡 Received user message:', data);
                     handleUserMessage(data);
@@ -1103,12 +915,17 @@
             });
 
             // Global events (not user-specific)
+            socket.on('bot_status', (data) => {
+                isBotStopped = data.stopped;
+                updateBotStatusUI();
+            });
+
             socket.on('auto_report_notification', (data) => {
                 showAutoReportNotification(data);
             });
 
             socket.on('client_status_updated', (data) => {
-                updateClientStatus(data.phone, data.status);
+                updateClientStatus(data.clientId, data.status);
             });
 
             socket.on('performance_stats', (data) => {
@@ -1121,18 +938,8 @@
 
             socket.on('clients_updated', (data) => {
                 clients = data;
-                renderConversationsList();
+                renderClientList();
                 updateClientsCount();
-            });
-
-            // WhatsApp disconnect event
-            socket.on('whatsapp_disconnected', (data) => {
-                updateWhatsAppStatus({
-                    connected: false,
-                    message: 'تم فصل الواتساب',
-                    status: 'disconnected'
-                });
-                showToast('✅ تم فصل الواتساب بنجاح', 'success');
             });
         }
         
@@ -1149,77 +956,15 @@
             
             // Reconnect
             reconnectBtn.addEventListener('click', () => {
-                fetch('/api/user-reconnect-whatsapp', {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${authToken}`,
-                        'Content-Type': 'application/json'
-                    }
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        showToast('🔄 جاري إعادة الاتصال...', 'success');
-                    } else {
-                        showToast('❌ ' + data.error, 'error');
-                    }
-                })
-                .catch(error => {
-                    console.error('Reconnection error:', error);
-                    showToast('❌ فشل إعادة الاتصال', 'error');
-                });
-            });
-
-            // Disconnect WhatsApp
-            disconnectBtn.addEventListener('click', () => {
-                if (confirm('هل أنت متأكد من فصل الواتساب؟')) {
-                    fetch('/api/user-disconnect-whatsapp', {
-                        method: 'POST',
-                        headers: {
-                            'Authorization': `Bearer ${authToken}`,
-                            'Content-Type': 'application/json'
-                        }
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            showToast('✅ تم فصل الواتساب بنجاح', 'success');
-                        } else {
-                            showToast('❌ ' + data.error, 'error');
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Disconnect error:', error);
-                        showToast('❌ فشل فصل الواتساب', 'error');
-                    });
-                }
+                socket.emit('user_reconnect_whatsapp');
+                showToast('🔄 جاري إعادة الاتصال...', 'warning');
             });
             
             // Stop Bot Button
             stopBotBtn.addEventListener('click', () => {
                 const newState = !isBotStopped;
-                fetch('/api/user-toggle-bot', {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${authToken}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ stop: newState })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        isBotStopped = newState;
-                        updateBotStatusUI();
-                        showToast(newState ? '🛑 تم إيقاف البوت' : '🚀 تم تشغيل البوت', 'success');
-                    } else {
-                        showToast('❌ ' + data.error, 'error');
-                    }
-                })
-                .catch(error => {
-                    console.error('Bot toggle error:', error);
-                    showToast('❌ فشل تغيير حالة البوت', 'error');
-                });
+                socket.emit('user_toggle_bot', { stop: newState });
+                showToast(newState ? '🛑 جاري إيقاف البوت...' : '🚀 جاري تشغيل البوت...', newState ? 'warning' : 'success');
             });
 
             // Logout Button
@@ -1329,61 +1074,7 @@
             addUserBtn.addEventListener('click', addNewUser);
         }
 
-        // FIXED: Render conversations list properly - CORRECTED VERSION
-        function renderConversationsList() {
-            if (clients.length === 0) {
-                conversationsList.innerHTML = `
-                    <div class="text-center text-gray-400 mt-10">
-                        <i class="fas fa-comments text-4xl mb-3 opacity-50"></i>
-                        <p class="text-lg">لا توجد محادثات</p>
-                        <p class="text-sm text-gray-500 mt-1">قم برفع ملف Excel لبدء المحادثات</p>
-                    </div>
-                `;
-                return;
-            }
-
-            const filteredClients = currentStatusFilter === 'all' 
-                ? clients 
-                : clients.filter(client => client.status === currentStatusFilter);
-
-            // Clear the container first
-            conversationsList.innerHTML = '';
-
-            filteredClients.forEach(client => {
-                const conversationElement = document.createElement('div');
-                conversationElement.className = `conversation-item ${currentClient?.id === client.id ? 'active' : ''} client-status-${client.status}`;
-                conversationElement.dataset.clientId = client.id;
-                
-                // Get message preview (last message)
-                const lastMessage = client.lastMessage || 'لم تبدأ المحادثة بعد';
-                const lastActivity = client.lastActivity ? new Date(client.lastActivity).toLocaleTimeString('ar-EG', { 
-                    hour: '2-digit', 
-                    minute: '2-digit' 
-                }) : '--:--';
-                
-                conversationElement.innerHTML = `
-                    <div class="conversation-avatar">
-                        <i class="fas fa-user text-white"></i>
-                    </div>
-                    <div class="conversation-content">
-                        <div class="conversation-name">${client.name}</div>
-                        <div class="conversation-preview">${lastMessage}</div>
-                    </div>
-                    <div class="conversation-time">${lastActivity}</div>
-                    ${client.unread > 0 ? `
-                        <div class="conversation-badge">${client.unread}</div>
-                    ` : ''}
-                `;
-                
-                conversationElement.addEventListener('click', () => {
-                    selectClient(client);
-                });
-                
-                conversationsList.appendChild(conversationElement);
-            });
-        }
-
-        // IMPROVED: WhatsApp QR Code Functions
+        // 🆕 IMPROVED QR Code Functions
         function showQRCode(qrCodeUrl) {
             console.log('🖼️ Showing QR code:', qrCodeUrl);
             if (!qrCodeUrl) {
@@ -1417,7 +1108,7 @@
             console.log('✅ QR code overlay shown');
         }
 
-        // Auto-fetch QR code on page load
+        // 🆕 Auto-fetch QR code on page load
         function fetchUserQRCode() {
             console.log('🔄 Fetching user QR code...');
             fetch('/api/user-whatsapp-qr', {
@@ -1448,7 +1139,7 @@
             });
         }
 
-        // IMPROVED: WhatsApp status update with auto-QR display
+        // 🆕 Improved WhatsApp status update with auto-QR display
         function updateWhatsAppStatus(data) {
             console.log('🔄 Updating WhatsApp status:', data);
             whatsappStatus.textContent = data.message;
@@ -1462,7 +1153,7 @@
                 
                 if (data.status === 'qr-ready') {
                     whatsappQrStatus.classList.remove('hidden');
-                    // AUTO-SHOW QR CODE when status is qr-ready
+                    // 🆕 AUTO-SHOW QR CODE when status is qr-ready
                     if (!qrOverlay.classList.contains('hidden')) {
                         // QR overlay is already visible, no need to show again
                         console.log('📱 QR overlay already visible');
@@ -1478,7 +1169,7 @@
             }
         }
 
-        // Function to check WhatsApp status
+        // 🆕 Function to check WhatsApp status
         function checkWhatsAppStatus() {
             fetch('/api/user-whatsapp-status', {
                 method: 'GET',
@@ -1503,32 +1194,23 @@
         // Logout Function
         function logoutUser() {
             if (confirm('هل أنت متأكد من تسجيل الخروج؟')) {
-                fetch('/api/logout', {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${authToken}`,
-                        'Content-Type': 'application/json'
-                    }
-                })
-                .finally(() => {
-                    // Clear localStorage
-                    localStorage.removeItem('authToken');
-                    localStorage.removeItem('currentUser');
-                    localStorage.removeItem('performanceStats');
-                    
-                    // Disconnect socket
-                    if (socket) {
-                        socket.disconnect();
-                    }
-                    
-                    // Show logout message
-                    showToast('👋 تم تسجيل الخروج بنجاح', 'success');
-                    
-                    // Redirect to login page
-                    setTimeout(() => {
-                        window.location.href = '/';
-                    }, 1500);
-                });
+                // Clear localStorage
+                localStorage.removeItem('authToken');
+                localStorage.removeItem('currentUser');
+                localStorage.removeItem('performanceStats');
+                
+                // Disconnect socket
+                if (socket) {
+                    socket.disconnect();
+                }
+                
+                // Show logout message
+                showToast('👋 تم تسجيل الخروج بنجاح', 'success');
+                
+                // Redirect to login page
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 1500);
             }
         }
 
@@ -1539,7 +1221,7 @@
                 currentUser = JSON.parse(savedUser);
                 updateUserInterface();
                 
-                // CRITICAL: Authenticate socket AFTER user is loaded
+                // 🆕 CRITICAL: Authenticate socket AFTER user is loaded
                 if (socket && socket.connected) {
                     console.log('🔐 Authenticating socket for user:', currentUser.id);
                     socket.emit('authenticate', authToken);
@@ -1559,7 +1241,7 @@
                         localStorage.setItem('currentUser', JSON.stringify(currentUser));
                         updateUserInterface();
                         
-                        // CRITICAL: Authenticate socket AFTER user is loaded
+                        // 🆕 CRITICAL: Authenticate socket AFTER user is loaded
                         if (socket && socket.connected) {
                             console.log('🔐 Authenticating socket for user:', currentUser.id);
                             socket.emit('authenticate', authToken);
@@ -1606,7 +1288,6 @@
             if (currentUser.role === 'admin' && !isAdminViewingAs) {
                 userManagementSection.classList.remove('hidden');
                 userSwitchBtn.classList.remove('hidden');
-                loadUsers(); // Load users when admin interface is shown
             } else {
                 userManagementSection.classList.add('hidden');
                 userSwitchBtn.classList.add('hidden');
@@ -1729,7 +1410,7 @@
                     showToast(`✅ ${data.message}`, 'success');
                     
                     clients = data.clients;
-                    renderConversationsList();
+                    renderClientList();
                     updateClientsCount();
                 } else {
                     showToast('❌ ' + data.error, 'error');
@@ -1753,12 +1434,48 @@
             .then(data => {
                 if (data.success) {
                     clients = data.clients;
-                    renderConversationsList();
+                    renderClientList();
                     updateClientsCount();
                 }
             })
             .catch(error => {
                 console.error('Error loading clients:', error);
+            });
+        }
+        
+        function renderClientList() {
+            clientList.innerHTML = '';
+            
+            const filteredClients = currentStatusFilter === 'all' 
+                ? clients 
+                : clients.filter(client => client.status === currentStatusFilter);
+            
+            filteredClients.forEach(client => {
+                const clientElement = document.createElement('div');
+                clientElement.className = `client-item p-3 rounded-lg mb-2 cursor-pointer client-status-${client.status} ${currentClient?.id === client.id ? 'active' : ''}`;
+                clientElement.dataset.clientId = client.id;
+                
+                clientElement.innerHTML = `
+                    <div class="flex justify-between items-start">
+                        <div class="flex-1">
+                            <div class="font-bold">${client.name}</div>
+                            <div class="text-xs text-gray-400">${client.phone}</div>
+                            <div class="text-sm mt-1 truncate">${client.lastMessage}</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-xs text-gray-500">${new Date(client.lastActivity).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</div>
+                            ${client.unread > 0 ? `
+                                <div class="unread-badge text-xs px-2 py-1 rounded-full mt-1">${client.unread}</div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+                
+                clientElement.addEventListener('click', () => {
+                    selectClient(client);
+                });
+                
+                clientList.appendChild(clientElement);
             });
         }
         
@@ -1773,8 +1490,7 @@
             messageInput.disabled = false;
             sendMessageBtn.disabled = false;
             
-            // Update active conversation in the list
-            document.querySelectorAll('.conversation-item').forEach(item => {
+            document.querySelectorAll('.client-item').forEach(item => {
                 item.classList.remove('active');
             });
             document.querySelector(`[data-client-id="${client.id}"]`).classList.add('active');
@@ -1803,10 +1519,10 @@
         }
         
         function renderMessages(messages) {
-            chatMessages.innerHTML = '';
+            chatContainer.innerHTML = '';
             
             if (messages.length === 0) {
-                chatMessages.innerHTML = `
+                chatContainer.innerHTML = `
                     <div class="text-center text-gray-400 mt-20">
                         <i class="fas fa-comments text-5xl mb-4 opacity-50"></i>
                         <p class="text-gray-500">لا توجد رسائل بعد</p>
@@ -1824,7 +1540,7 @@
                     <div class="chat-time">${new Date(message.timestamp).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</div>
                 `;
                 
-                chatMessages.appendChild(messageElement);
+                chatContainer.appendChild(messageElement);
             });
             
             scrollChatToBottom();
@@ -1834,47 +1550,28 @@
             const message = messageInput.value.trim();
             if (!message || !currentClient) return;
             
-            fetch('/api/send-message', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${authToken}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    phone: currentClient.phone,
-                    message: message
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    const newMessage = {
-                        id: Date.now(),
-                        message: message,
-                        fromMe: true,
-                        timestamp: new Date().toISOString()
-                    };
-                    
-                    if (!messages[currentClient.id]) {
-                        messages[currentClient.id] = [];
-                    }
-                    messages[currentClient.id].push(newMessage);
-                    
-                    renderMessages(messages[currentClient.id]);
-                    messageInput.value = '';
-                    
-                    updatePerformanceStats({
-                        messages: parseInt(statMessages.textContent) + 1
-                    });
-                    
-                    showToast('✅ تم إرسال الرسالة', 'success');
-                } else {
-                    showToast('❌ ' + data.error, 'error');
-                }
-            })
-            .catch(error => {
-                console.error('Error sending message:', error);
-                showToast('❌ فشل إرسال الرسالة', 'error');
+            socket.emit('send_message', {
+                to: currentClient.phone,
+                message: message
+            });
+            
+            const newMessage = {
+                id: Date.now(),
+                message: message,
+                fromMe: true,
+                timestamp: new Date().toISOString()
+            };
+            
+            if (!messages[currentClient.id]) {
+                messages[currentClient.id] = [];
+            }
+            messages[currentClient.id].push(newMessage);
+            
+            renderMessages(messages[currentClient.id]);
+            messageInput.value = '';
+            
+            updatePerformanceStats({
+                messages: parseInt(statMessages.textContent) + 1
             });
         }
         
@@ -1913,12 +1610,12 @@
             .then(data => {
                 if (data.success) {
                     showToast(`🚀 ${data.message}`, 'success');
-                    isBulkSending = true;
+                isBulkSending = true;
                     sendBulkBtn.disabled = true;
                     sendBulkBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> جاري الإرسال...';
                 } else {
                     showToast('❌ ' + data.error, 'error');
-                }
+                    }
             })
             .catch(error => {
                 console.error('Error sending bulk messages:', error);
@@ -1939,38 +1636,21 @@
         function updateClientStatus(clientId, newStatus) {
             const client = clients.find(c => c.id === clientId);
             if (client) {
-                fetch('/api/update-client-status', {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${authToken}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        phone: client.phone,
-                        status: newStatus
-                    })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        client.status = newStatus;
-                        renderConversationsList();
-                        
-                        if (newStatus === 'interested') {
-                            updatePerformanceStats({
-                                interested: parseInt(statInterested.textContent) + 1
-                            });
-                        }
-                        
-                        showToast(`✅ تم تحديث حالة العميل إلى: ${getStatusText(newStatus)}`, 'success');
-                    } else {
-                        showToast('❌ ' + data.error, 'error');
-                    }
-                })
-                .catch(error => {
-                    console.error('Error updating client status:', error);
-                    showToast('❌ فشل تحديث حالة العميل', 'error');
+                socket.emit('update_client_status', {
+                    phone: client.phone,
+                    status: newStatus
                 });
+                
+                client.status = newStatus;
+                renderClientList();
+                
+                if (newStatus === 'interested') {
+                    updatePerformanceStats({
+                        interested: parseInt(statInterested.textContent) + 1
+                    });
+                }
+                
+                showToast(`✅ تم تحديث حالة العميل إلى: ${getStatusText(newStatus)}`, 'success');
             }
         }
         
@@ -1992,7 +1672,7 @@
             });
             document.querySelector(`[data-status="${status}"]`).classList.add('active');
             
-            renderConversationsList();
+            renderClientList();
         }
         
         function updateClientsCount() {
@@ -2001,7 +1681,7 @@
         }
         
         function scrollChatToBottom() {
-            chatMessages.scrollTop = chatMessages.scrollHeight;
+            chatContainer.scrollTop = chatContainer.scrollHeight;
         }
         
         function updatePerformanceStats(stats) {
@@ -2140,36 +1820,10 @@
             }
         }
         
-        function handleUserMessage(data) {
-            // Update the conversation list with new message
-            const client = clients.find(c => c.phone === data.from);
-            if (client) {
-                client.lastMessage = data.message;
-                client.lastActivity = new Date().toISOString();
-                if (!data.fromMe) {
-                    client.unread = (client.unread || 0) + 1;
-                }
-                renderConversationsList();
-                
-                // If this client is currently selected, show the message
-                if (currentClient && currentClient.phone === data.from) {
-                    if (!messages[currentClient.id]) {
-                        messages[currentClient.id] = [];
-                    }
-                    messages[currentClient.id].push({
-                        message: data.message,
-                        fromMe: data.fromMe,
-                        timestamp: data.timestamp
-                    });
-                    renderMessages(messages[currentClient.id]);
-                }
-            }
-        }
-        
         // Chat scroll detection
-        chatMessages.addEventListener('scroll', () => {
+        chatContainer.addEventListener('scroll', () => {
             const scrollThreshold = 100;
-            const isNearBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight < scrollThreshold;
+            const isNearBottom = chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight < scrollThreshold;
             
             if (isNearBottom) {
                 scrollToBottom.classList.remove('visible');
@@ -2177,9 +1831,6 @@
                 scrollToBottom.classList.add('visible');
             }
         });
-
-        // Load performance stats on startup
-        loadPerformanceStats();
     </script>
 </body>
 </html>
