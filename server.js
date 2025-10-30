@@ -19,11 +19,20 @@ const app = express();
 const server = http.createServer(app);
 
 // =============================================
-// 🗄️ MONGODB DATABASE CONNECTION
+// 🗄️ MONGODB DATABASE CONNECTION - FIXED
 // =============================================
 
 // Use environment variable for security
-const uri = process.env.MONGODB_URI || "mongodb+srv://ragmcloud_user:ragmcloud123@cluster0.q7bnvpm.mongodb.net/ragmcloud-erp?retryWrites=true&w=majority&appName=Cluster0";
+let uri;
+if (process.env.MONGODB_URI) {
+    uri = process.env.MONGODB_URI.trim();
+    console.log('🔑 Using MONGODB_URI from environment variable');
+} else {
+    uri = "mongodb+srv://ragmcloud_user:ragmcloud123@cluster0.q7bnvpm.mongodb.net/ragmcloud-erp?retryWrites=true&w=majority&appName=Cluster0";
+    console.log('🔑 Using default MONGODB_URI');
+}
+
+console.log('🔗 MongoDB URI:', uri.replace(/\/\/([^:]+):([^@]+)@/, '//***:***@')); // Hide password in logs
 
 // Create a MongoClient
 const client = new MongoClient(uri, {
@@ -53,7 +62,6 @@ async function connectDB() {
         return db;
     } catch (error) {
         console.error('❌ MongoDB connection error:', error.message);
-        // Don't exit process - let the app continue without DB
         return null;
     }
 }
@@ -62,6 +70,20 @@ async function connectDB() {
 connectDB().then(() => {
     console.log('🔄 Database initialization completed');
 });
+
+// Safe database operations with error handling
+async function safeDBOperation(operation, fallback = null) {
+    try {
+        if (!db) {
+            console.log('🔄 Reconnecting to database...');
+            await connectDB();
+        }
+        return await operation();
+    } catch (error) {
+        console.error('❌ Database operation failed:', error.message);
+        return fallback;
+    }
+}
 
 // CORS configuration for Socket.io
 const io = socketIo(server, {
@@ -103,22 +125,11 @@ const upload = multer({ storage: storage });
 // =============================================
 
 // 🆕 User WhatsApp Sessions Management
-const userWhatsAppSessions = new Map(); // Key: userId, Value: session object
-
-// Session object structure:
-// {
-//   client: null, // The WhatsApp Web.js client instance
-//   qrCode: null, // Current QR code string
-//   status: 'disconnected', // 'disconnected', 'qr-ready', 'authenticating', 'connected'
-//   isConnected: false,
-//   isBotStopped: false,
-//   clientReplyTimers: new Map(), // User-specific reply timers
-//   importedClients: new Set(), // User-specific imported clients
-// }
+const userWhatsAppSessions = new Map();
 
 // NEW: User Management Variables
 let users = [];
-let currentSessions = new Map(); // Track logged in users
+let currentSessions = new Map();
 const JWT_SECRET = process.env.JWT_SECRET || 'ragmcloud-erp-secret-key-2024';
 
 // Employee Performance Tracking - NOW PER USER
@@ -146,125 +157,12 @@ const ragmcloudCompanyInfo = {
     address: "الرياض - حي المغرزات - طريق الملك عبد الله",
     workingHours: "من الأحد إلى الخميس - 8 صباحاً إلى 6 مساءً",
     
-    // CORRECT PACKAGES from website
     packages: {
-        basic: {
-            name: "الباقة الأساسية",
-            price: "1000 ريال سنوياً",
-            users: "مستخدم واحد",
-            branches: "فرع واحد",
-            storage: "500 ميجابايت",
-            invoices: "500 فاتورة شهرياً",
-            features: [
-                "إدارة العملاء والفواتير",
-                "إدارة المبيعات والمشتريات",
-                "إدارة المنتجات",
-                "إرسال عروض الأسعار",
-                "إرسال الفواتير عبر البريد",
-                "دعم فني عبر البريد الإلكتروني",
-                "تحديثات النظام الدورية",
-                "تصدير التقارير إلى Excel",
-                "رفع الفواتير الإلكترونية (فاتورة)",
-                "الدعم الفني عبر المحادثة"
-            ],
-            missing: [
-                "إدارة المخزون",
-                "التقارير المفصلة",
-                "الدعم الفني الهاتفي",
-                "إدارة صلاحيات المستخدمين",
-                "تطبيق الجوال"
-            ],
-            target: "الأفراد والمشاريع الصغيرة جداً"
-        },
-        
-        advanced: {
-            name: "الباقة المتقدمة", 
-            price: "1800 ريال سنوياً",
-            users: "مستخدمين",
-            branches: "فرعين",
-            storage: "1 جيجابايت",
-            invoices: "1000 فاتورة شهرياً",
-            features: [
-                "جميع ميزات الباقة الأساسية",
-                "إدارة المخزون المتكاملة",
-                "تقارير مفصلة (20 تقرير)",
-                "دعم فني عبر الهاتف",
-                "إدارة صلاحيات المستخدمين",
-                "تطبيق الجوال",
-                "الفروع والمستخدمين الفرعيين"
-            ],
-            missing: [
-                "التنبيهات الذكية",
-                "الربط مع المتاجر الإلكترونية",
-                "إدارة متعددة الفروع",
-                "ربط النظام بالمحاسب الخارجي",
-                "تخصيص واجهة النظام"
-            ],
-            target: "الشركات الصغيرة والمتوسطة"
-        },
-        
-        professional: {
-            name: "الباقة الاحترافية",
-            price: "2700 ريال سنوياً", 
-            users: "3 مستخدمين",
-            branches: "3 فروع",
-            storage: "2 جيجابايت",
-            invoices: "2000 فاتورة شهرياً",
-            features: [
-                "جميع ميزات الباقة المتقدمة",
-                "تنبيهات ذكية",
-                "الربط مع المتاجر الإلكترونية",
-                "إدارة متعددة الفروع",
-                "ربط النظام بالمحاسب الخارجي",
-                "تخصيص واجهة النظام",
-                "30 تقرير متاح",
-                "تدريب المستخدمين"
-            ],
-            missing: [
-                "استشارات محاسبية مجانية"
-            ],
-            target: "الشركات المتوسطة والكبيرة"
-        },
-        
-        premium: {
-            name: "الباقة المميزة",
-            price: "3000 ريال سنوياً",
-            users: "3 مستخدمين", 
-            branches: "3 فروع",
-            storage: "3 جيجابايت",
-            invoices: "غير محدود",
-            features: [
-                "جميع ميزات الباقة الاحترافية",
-                "استشارات محاسبية مجانية",
-                "فواتير غير محدودة",
-                "دعم متميز"
-            ],
-            target: "الشركات الكبيرة والمؤسسات"
-        }
-    },
-
-    // Services
-    services: {
-        accounting: "الحلول المحاسبية المتكاملة",
-        inventory: "إدارة المخزون والمستودعات",
-        hr: "إدارة الموارد البشرية والرواتب",
-        crm: "إدارة علاقات العملاء",
-        sales: "إدارة المبيعات والمشتريات", 
-        reports: "التقارير والتحليلات الذكية",
-        integration: "التكامل مع الأنظمة الحكومية"
-    },
-
-    // System Features
-    features: [
-        "سحابي 100% - لا حاجة لخوادم",
-        "واجهة عربية سهلة الاستخدام", 
-        "دعم فني على مدار الساعة",
-        "تكامل مع الزكاة والضريبة",
-        "تقارير ذكية وقابلة للتخصيص",
-        "نسخ احتياطي تلقائي",
-        "تطبيق جوال متكامل",
-        "أمان عالي وحماية بيانات"
-    ]
+        basic: { name: "الباقة الأساسية", price: "1000 ريال سنوياً" },
+        advanced: { name: "الباقة المتقدمة", price: "1800 ريال سنوياً" },
+        professional: { name: "الباقة الاحترافية", price: "2700 ريال سنوياً" },
+        premium: { name: "الباقة المميزة", price: "3000 ريال سنوياً" }
+    }
 };
 
 // AI System Prompt
@@ -293,18 +191,6 @@ const AI_SYSTEM_PROMPT = `أنت مساعد ذكي ومحترف تمثل شرك�
 3. **كن مقنعاً:** ركز على فوائد النظام للعميل
 4. **اسأل عن نشاط العميل:** لتعرف أي باقة تناسبه
 5. **شجع على التواصل:** وجه العميل للاتصال بفريق المبيعات
-
-🔹 **نماذج الردود المقنعة:**
-- "نظامنا بيوفر عليك 50% من وقتك اليومي في المتابعة المحاسبية"
-- "بتقدر تتابع كل فروعك من مكان واحد بدون ما تحتاج تروح لكل فرع"
-- "التقارير بتكون جاهزة بشكل فوري علشان تتابع أداء شركتك"
-- "جرب النظام مجاناً لمدة 7 أيام وتشوف الفرق بنفسك"
-
-🔹 **كيفية التعامل مع الأسئلة:**
-- اسأل عن طبيعة نشاط العميل أولاً
-- حدد التحديات التي يواجهها
-- اقترح الباقة المناسبة لاحتياجاته
-- وجهه للاتصال بفريق المبيعات للتسجيل
 
 تذكر: أنت بائع محترف هدفك مساعدة العملاء في اختيار النظام المناسب لشركاتهم.`;
 
@@ -352,19 +238,9 @@ async function initializeUsers() {
     }
 }
 
-// Save users to database
-async function saveUsers() {
-    try {
-        // Users are now stored in MongoDB, no need for file-based saving
-        console.log('✅ Users are stored in MongoDB');
-    } catch (error) {
-        console.error('❌ Error saving users:', error);
-    }
-}
-
 // Store client message in MongoDB
 async function storeClientMessage(phone, message, isFromMe, userId = null) {
-    try {
+    return await safeDBOperation(async () => {
         await db.collection('messages').insertOne({
             phone: phone,
             message: message,
@@ -374,14 +250,12 @@ async function storeClientMessage(phone, message, isFromMe, userId = null) {
         });
         
         console.log(`💾 Stored message for ${phone} in MongoDB (${isFromMe ? 'sent' : 'received'})`);
-    } catch (error) {
-        console.error('Error storing client message in MongoDB:', error);
-    }
+    });
 }
 
 // Get client messages from MongoDB
 async function getClientMessages(phone, limit = 50) {
-    try {
+    return await safeDBOperation(async () => {
         const messages = await db.collection('messages')
             .find({ phone: phone })
             .sort({ timestamp: 1 })
@@ -389,15 +263,12 @@ async function getClientMessages(phone, limit = 50) {
             .toArray();
         
         return messages;
-    } catch (error) {
-        console.error('Error getting client messages from MongoDB:', error);
-        return [];
-    }
+    }, []);
 }
 
 // Save or update client in MongoDB
 async function saveClient(clientData, userId = null) {
-    try {
+    return await safeDBOperation(async () => {
         await db.collection('clients').updateOne(
             { phone: clientData.phone },
             {
@@ -409,15 +280,12 @@ async function saveClient(clientData, userId = null) {
             },
             { upsert: true }
         );
-    } catch (error) {
-        console.error('Error saving client to MongoDB:', error);
-        throw error;
-    }
+    });
 }
 
 // Get all clients from MongoDB
 async function getClients(userId = null) {
-    try {
+    return await safeDBOperation(async () => {
         let query = {};
         if (userId) {
             query.importedBy = new ObjectId(userId);
@@ -429,15 +297,12 @@ async function getClients(userId = null) {
             .toArray();
         
         return clients;
-    } catch (error) {
-        console.error('Error getting clients from MongoDB:', error);
-        return [];
-    }
+    }, []);
 }
 
 // Update client status in MongoDB
 async function updateClientStatus(phone, status) {
-    try {
+    return await safeDBOperation(async () => {
         await db.collection('clients').updateOne(
             { phone: phone },
             { 
@@ -457,14 +322,12 @@ async function updateClientStatus(phone, status) {
             status: status,
             clients: clients
         });
-    } catch (error) {
-        console.error('Error updating client status in MongoDB:', error);
-    }
+    });
 }
 
 // Initialize user performance tracking in MongoDB
 async function initializeUserPerformance(userId) {
-    try {
+    return await safeDBOperation(async () => {
         const today = new Date().toISOString().split('T')[0];
         const performance = await db.collection('performance').findOne({ 
             userId: new ObjectId(userId), 
@@ -493,14 +356,12 @@ async function initializeUserPerformance(userId) {
         } else {
             employeePerformance[userId] = performance;
         }
-    } catch (error) {
-        console.error('Error initializing user performance in MongoDB:', error);
-    }
+    });
 }
 
 // Track employee activity in MongoDB
 async function trackEmployeeActivity(userId, type, data = {}) {
-    try {
+    return await safeDBOperation(async () => {
         const today = new Date().toISOString().split('T')[0];
         
         // Update daily stats
@@ -522,22 +383,6 @@ async function trackEmployeeActivity(userId, type, data = {}) {
                 break;
         }
 
-        // Add to message history
-        if (type !== 'client_interested') {
-            updateFields['$push'] = {
-                messageHistory: {
-                    timestamp: new Date(),
-                    type: type,
-                    ...data
-                }
-            };
-        }
-
-        // Update client interactions
-        if (data.clientPhone) {
-            await updateClientInteraction(userId, data.clientPhone, data.clientName, today);
-        }
-
         await db.collection('performance').updateOne(
             { userId: new ObjectId(userId), date: today },
             updateFields,
@@ -552,67 +397,11 @@ async function trackEmployeeActivity(userId, type, data = {}) {
 
         // Check if we should auto-send report to manager
         checkAutoSendReport(userId);
-        
-    } catch (error) {
-        console.error('Error tracking employee activity in MongoDB:', error);
-    }
-}
-
-// Update client interaction in MongoDB
-async function updateClientInteraction(userId, clientPhone, clientName = '', date) {
-    try {
-        const performance = await db.collection('performance').findOne({ 
-            userId: new ObjectId(userId), 
-            date: date 
-        });
-
-        const existingInteraction = performance.clientInteractions.find(
-            interaction => interaction.phone === clientPhone
-        );
-
-        if (existingInteraction) {
-            // Update existing interaction
-            await db.collection('performance').updateOne(
-                { 
-                    userId: new ObjectId(userId), 
-                    date: date,
-                    'clientInteractions.phone': clientPhone 
-                },
-                {
-                    $set: {
-                        'clientInteractions.$.lastMessage': new Date()
-                    },
-                    $inc: {
-                        'clientInteractions.$.messageCount': 1
-                    }
-                }
-            );
-        } else {
-            // Add new interaction and increment clientsContacted
-            await db.collection('performance').updateOne(
-                { userId: new ObjectId(userId), date: date },
-                {
-                    $push: {
-                        clientInteractions: {
-                            phone: clientPhone,
-                            clientName: clientName,
-                            firstContact: new Date(),
-                            lastMessage: new Date(),
-                            messageCount: 1,
-                            interested: false
-                        }
-                    },
-                    $inc: { 'dailyStats.clientsContacted': 1 }
-                }
-            );
-        }
-    } catch (error) {
-        console.error('Error updating client interaction in MongoDB:', error);
-    }
+    });
 }
 
 // =============================================
-// 🆕 MULTI-USER WHATSAPP FUNCTIONS (UPDATED FOR MONGODB)
+// 🆕 MULTI-USER WHATSAPP FUNCTIONS
 // =============================================
 
 // 🆕 IMPROVED WhatsApp Client with Better Cloud Support
@@ -643,7 +432,7 @@ function initializeUserWhatsApp(userId) {
         userSession.client = new Client({
             authStrategy: new LocalAuth({ 
                 clientId: `ragmcloud-user-${userId}`,
-                dataPath: `./sessions/user-${userId}` // Separate sessions per user
+                dataPath: `./sessions/user-${userId}`
             }),
             puppeteer: {
                 headless: true,
@@ -655,7 +444,7 @@ function initializeUserWhatsApp(userId) {
                     '--no-first-run',
                     '--no-zygote',
                     '--disable-gpu',
-                    '--single-process', // 🆕 Important for cloud
+                    '--single-process',
                     '--no-zygote',
                     '--disable-setuid-sandbox',
                     '--disable-web-security',
@@ -667,11 +456,11 @@ function initializeUserWhatsApp(userId) {
                     '--disable-back-forward-cache',
                     '--disable-component-extensions-with-background-pages'
                 ],
-                executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || null // 🆕 For cloud environments
+                executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || null
             },
             webVersionCache: {
                 type: 'remote',
-                remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html' // 🆕 Fixed version
+                remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
             }
         });
 
@@ -687,7 +476,6 @@ function initializeUserWhatsApp(userId) {
                     userSession.status = 'qr-ready';
                     
                     console.log(`✅ QR code generated for user ${userId}`);
-                    console.log(`📡 Emitting QR to user_qr_${userId}`);
                     
                     // 🆕 FIXED: Emit to ALL connected clients for this user
                     io.emit(`user_qr_${userId}`, { 
@@ -747,7 +535,6 @@ function initializeUserWhatsApp(userId) {
             }
 
             console.log(`📩 User ${userId} received message from:`, message.from);
-            console.log('💬 Message content:', message.body);
             
             try {
                 const clientPhone = message.from.replace('@c.us', '');
@@ -843,16 +630,10 @@ function getUserWhatsAppSession(userId) {
     return userWhatsAppSessions.get(userId);
 }
 
-// 🆕 Check if User WhatsApp is Connected
-function isUserWhatsAppConnected(userId) {
-    const session = getUserWhatsAppSession(userId);
-    return session && session.status === 'connected';
-}
-
 // 🆕 User-specific Message Processing
 async function processUserIncomingMessage(userId, message, from) {
     try {
-        console.log(`📩 User ${userId} processing message from ${from}: ${message}`);
+        console.log(`📩 User ${userId} processing message from ${from}`);
         
         const clientPhone = from.replace('@c.us', '');
         
@@ -1066,8 +847,6 @@ function authorizeAdmin(req, res, next) {
 
 // Function to determine if greeting should be sent
 function shouldSendGreeting(phone) {
-    // This function would need to be updated to query MongoDB
-    // For now, we'll return true to keep it simple
     return true;
 }
 
@@ -1103,7 +882,7 @@ function autoDetectClientInterest(phone, message) {
 
 // Update client last message in MongoDB
 async function updateClientLastMessage(phone, message, userId = null) {
-    try {
+    return await safeDBOperation(async () => {
         await db.collection('clients').updateOne(
             { phone: phone },
             {
@@ -1118,14 +897,12 @@ async function updateClientLastMessage(phone, message, userId = null) {
         // Emit clients update
         const clients = await getClients(userId);
         io.emit('clients_updated', clients);
-    } catch (error) {
-        console.error('Error updating client last message in MongoDB:', error);
-    }
+    });
 }
 
 // ENHANCED: Get conversation history for AI context from MongoDB
 async function getConversationHistoryForAI(phone, maxMessages = 10) {
-    try {
+    return await safeDBOperation(async () => {
         const messages = await getClientMessages(phone, maxMessages);
         
         // Format conversation history for AI
@@ -1139,10 +916,7 @@ async function getConversationHistoryForAI(phone, maxMessages = 10) {
         
         console.log(`📚 Loaded ${conversationHistory.length} previous messages for context from MongoDB`);
         return conversationHistory;
-    } catch (error) {
-        console.error('Error getting conversation history from MongoDB:', error);
-        return [];
-    }
+    }, []);
 }
 
 // ENHANCED: DeepSeek AI API Call with Conversation Memory
@@ -1397,7 +1171,7 @@ function processExcelFile(filePath) {
 
 // Generate user performance report from MongoDB
 async function generateUserPerformanceReport(userId) {
-    try {
+    return await safeDBOperation(async () => {
         const today = new Date().toISOString().split('T')[0];
         const performance = await db.collection('performance').findOne({ 
             userId: new ObjectId(userId), 
@@ -1488,10 +1262,7 @@ ${improvementSuggestions.join('\n')}
     `.trim();
     
         return report;
-    } catch (error) {
-        console.error('Error generating performance report:', error);
-        return "خطأ في توليد التقرير.";
-    }
+    }, "خطأ في توليد التقرير.");
 }
 
 // Check if we should auto-send report to manager
@@ -1748,113 +1519,6 @@ app.post('/api/user-reconnect-whatsapp', authenticateUser, (req, res) => {
         res.json({ success: true, message: 'جارٍ إعادة الاتصال...' });
     } catch (error) {
         res.status(500).json({ error: 'فشل إعادة الاتصال' });
-    }
-});
-
-// NEW: User Management Routes (Admin only) - Updated for MongoDB
-app.get('/api/users', authenticateUser, authorizeAdmin, async (req, res) => {
-    try {
-        const usersList = await db.collection('users')
-            .find({})
-            .project({ password: 0 })
-            .toArray();
-        
-        res.json({ success: true, users: usersList });
-    } catch (error) {
-        res.status(500).json({ error: 'خطأ في الخادم' });
-    }
-});
-
-app.post('/api/users', authenticateUser, authorizeAdmin, async (req, res) => {
-    try {
-        const { name, username, password, role } = req.body;
-        
-        if (!name || !username || !password) {
-            return res.status(400).json({ error: 'جميع الحقول مطلوبة' });
-        }
-        
-        // Check if username already exists
-        const existingUser = await db.collection('users').findOne({ username: username });
-        if (existingUser) {
-            return res.status(400).json({ error: 'اسم المستخدم موجود مسبقاً' });
-        }
-        
-        const newUser = {
-            name: name,
-            username: username,
-            password: bcrypt.hashSync(password, 10),
-            role: role || 'standard',
-            isActive: true,
-            createdAt: new Date(),
-            lastLogin: null
-        };
-        
-        const result = await db.collection('users').insertOne(newUser);
-        
-        // Initialize performance tracking for new user
-        await initializeUserPerformance(result.insertedId.toString());
-        
-        res.json({
-            success: true,
-            user: {
-                id: result.insertedId.toString(),
-                name: newUser.name,
-                username: newUser.username,
-                role: newUser.role,
-                isActive: newUser.isActive
-            },
-            message: 'تم إضافة المستخدم بنجاح'
-        });
-        
-    } catch (error) {
-        console.error('Create user error:', error);
-        res.status(500).json({ error: 'خطأ في الخادم' });
-    }
-});
-
-app.put('/api/users/:id', authenticateUser, authorizeAdmin, async (req, res) => {
-    try {
-        const userId = req.params.id;
-        const { name, username, password, role, isActive } = req.body;
-        
-        // Check if user exists
-        const user = await db.collection('users').findOne({ _id: new ObjectId(userId) });
-        if (!user) {
-            return res.status(404).json({ error: 'المستخدم غير موجود' });
-        }
-        
-        // Check if username already exists (excluding current user)
-        if (username) {
-            const existingUser = await db.collection('users').findOne({ 
-                username: username, 
-                _id: { $ne: new ObjectId(userId) } 
-            });
-            if (existingUser) {
-                return res.status(400).json({ error: 'اسم المستخدم موجود مسبقاً' });
-            }
-        }
-        
-        // Prepare update data
-        const updateData = {};
-        if (name) updateData.name = name;
-        if (username) updateData.username = username;
-        if (password) updateData.password = bcrypt.hashSync(password, 10);
-        if (role) updateData.role = role;
-        if (isActive !== undefined) updateData.isActive = isActive;
-        
-        await db.collection('users').updateOne(
-            { _id: new ObjectId(userId) },
-            { $set: updateData }
-        );
-        
-        res.json({
-            success: true,
-            message: 'تم تحديث المستخدم بنجاح'
-        });
-        
-    } catch (error) {
-        console.error('Update user error:', error);
-        res.status(500).json({ error: 'خطأ في الخادم' });
     }
 });
 
