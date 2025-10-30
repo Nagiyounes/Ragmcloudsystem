@@ -202,12 +202,17 @@ const AI_SYSTEM_PROMPT = `أنت مساعد ذكي ومحترف تمثل شرك�
 // 🗄️ DATABASE FUNCTIONS
 // =============================================
 
-// Initialize default users
-async function initializeUsers() {
+// Create default users if they don't exist
+async function createDefaultUsers() {
     try {
-        const usersCount = await db.collection('users').countDocuments();
+        console.log('🔄 Checking for default users...');
         
-        if (usersCount === 0) {
+        // Check if admin user exists
+        const adminUser = await db.collection('users').findOne({ username: 'admin' });
+        
+        if (!adminUser) {
+            console.log('👤 Creating default admin user...');
+            
             const defaultUsers = [
                 {
                     name: 'المدير',
@@ -230,13 +235,24 @@ async function initializeUsers() {
             ];
             
             await db.collection('users').insertMany(defaultUsers);
-            console.log('✅ Created default users in MongoDB');
+            console.log('✅ Default users created successfully');
         } else {
-            console.log(`✅ Loaded ${usersCount} users from MongoDB`);
+            console.log('✅ Default users already exist');
         }
+    } catch (error) {
+        console.error('❌ Error creating default users:', error);
+    }
+}
+
+// Initialize users and load into memory
+async function initializeUsers() {
+    try {
+        // Create default users if they don't exist
+        await createDefaultUsers();
         
         // Load users into memory
         users = await db.collection('users').find({ isActive: true }).toArray();
+        console.log(`✅ Loaded ${users.length} users from MongoDB`);
     } catch (error) {
         console.error('❌ Error initializing users:', error);
     }
@@ -1008,378 +1024,168 @@ function generateEnhancedRagmcloudResponse(userMessage, clientPhone) {
     ];
     
     if (irrelevantQuestions.some(q => msg.includes(q))) {
-        return "أعتذر، هذا السؤال خارج نطاق تخصصي في أنظمة ERP. يمكنني مساعدتك في اختيار النظام المناسب لشركتك أو الإجابة على استفساراتك حول باقاتنا وخدماتنا.";
+        return "أعتذر، هذا السؤال خارج نطاق تخصصي في أنظمة ERP. يمكنني مساعدتك في اختيار الباقة المناسبة لشركتك من نظام رقم كلاود.";
     }
     
-    // Greeting only at start or after 5 hours
-    if (shouldGreet && (msg.includes('السلام') || msg.includes('سلام') || msg.includes('اهلا') || 
-        msg.includes('مرحبا') || msg.includes('اهلين') || msg.includes('مساء') || 
-        msg.includes('صباح') || msg.includes('hello') || msg.includes('hi'))) {
-        return `السلام عليكم ورحمة الله وبركاته 🌟
+    // Enhanced greeting for new conversations
+    if (shouldGreet) {
+        return `مرحباً بك في رقم كلاود! 🌟
 
-أهلاً وسهلاً بك! أنا مساعدك في نظام رقم كلاود ERP.
+نحن متخصصون في أنظمة ERP السحابية المتكاملة لتحويل إدارة شركتك.
 
-أنا هنا لمساعدتك في:
-• اختيار الباقة المناسبة لشركتك
-• شرح ميزات نظام ERP السحابي
-• الإجابة على استفساراتك التقنية والمحاسبية
+🔹 **باقاتنا السنوية:**
+• الأساسية: 1000 ريال/سنوياً
+• المتقدمة: 1800 ريال/سنوياً  
+• الاحترافية: 2700 ريال/سنوياً
+• المميزة: 3000 ريال/سنوياً
 
-📞 للاستشارة المجانية: +966555111222
-🌐 الموقع: ragmcloud.sa
-
-كيف يمكنني مساعدتك اليوم؟`;
+ما هو نشاط شركتك؟`;
     }
     
-    // Price/Packages questions
-    if (msg.includes('سعر') || msg.includes('تكلفة') || msg.includes('باقة') || 
-        msg.includes('package') || msg.includes('price') || msg.includes('كم') || 
-        msg.includes('كام') || msg.includes('تعرفة')) {
-        
-        return `🔄 جاري تحميل معلومات الباقات...
+    // Enhanced price responses
+    if (msg.includes('سعر') || msg.includes('تكلفة') || msg.includes('ثمن') || msg.includes('كم') || msg.includes('price') || msg.includes('cost')) {
+        return `أسعار باقاتنا السنوية:
 
-✅ **باقات رقم كلاود السنوية:**
+💰 **الباقة الأساسية:** 1000 ريال/سنوياً
+• إدارة المبيعات والمشتريات
+• إدارة العملاء والمخزون
+• تقارير أساسية
 
-🏷️ **الباقة الأساسية** - 1000 ريال/سنوياً
-• مستخدم واحد • فرع واحد • 500 فاتورة/شهر
+🚀 **الباقة المتقدمة:** 1800 ريال/سنوياً  
+• كل ميزات الأساسية +
+• إدارة الموارد البشرية
+• إدارة المشاريع
+• تقارير متقدمة
 
-🏷️ **الباقة المتقدمة** - 1800 ريال/سنوياً  
-• مستخدمين • فرعين • 1000 فاتورة/شهر
+🏆 **الباقة الاحترافية:** 2700 ريال/سنوياً
+• كل ميزات المتقدمة +
+• إدارة المالية
+• التحليلات المتقدمة
+• دعم فني متميز
 
-🏷️ **الباقة الاحترافية** - 2700 ريال/سنوياً
-• 3 مستخدمين • 3 فروع • 2000 فاتورة/شهر
+💎 **الباقة المميزة:** 3000 ريال/سنوياً
+• كل الميزات السابقة +
+• تكامل متقدم
+• تدريب مكثف
+• دعم على مدار الساعة
 
-🏷️ **الباقة المميزة** - 3000 ريال/سنوياً
-• 3 مستخدمين • 3 فروع • فواتير غير محدودة
-
-💡 **لأي باقة تناسبك، أحتاج أعرف:**
-• عدد المستخدمين اللي تحتاجهم؟
-• كم فرع عندك؟
-• طبيعة نشاط شركتك؟
-
-📞 فريق المبيعات جاهز لمساعدتك: +966555111222`;
+ما هو حجم شركتك ونشاطها؟`;
     }
     
-    // Default response - CONVINCING SALES APPROACH
-    return `أهلاً وسهلاً بك! 👋
+    // Enhanced feature inquiries
+    if (msg.includes('مميزات') || msg.includes('features') || msg.includes('ماذا') || msg.includes('what') || msg.includes('تفاصيل')) {
+        return `مميزات نظام رقم كلاود ERP:
 
-أنت تتحدث مع مساعد رقم كلاود المتخصص في أنظمة ERP السحابية.
+📊 **إدارة متكاملة:**
+• المبيعات والفواتير
+• المشتريات والموردين  
+• المخزون والمستودعات
+• العملاء والمبيعات
+• الموارد البشرية
+• التقارير والتحليلات
 
-🎯 **كيف يمكنني مساعدتك؟**
+☁️ **مزايا سحابية:**
+• الوصول من أي مكان
+• لا حاجة لسيرفرات
+• تحديثات تلقائية
+• نسخ احتياطية يومية
+• أمان عالي المستوى
 
-1. **اختيار الباقة المناسبة** لشركتك من بين 4 باقات
-2. **شرح الميزات** المحاسبية والإدارية  
-3. **ترتيب نسخة تجريبية** مجانية
-4. **توصيلك بفريق المبيعات** للاستشارة
+📱 **سهولة الاستخدام:**
+• واجهة عربية سهلة
+• تدريب مجاني
+• دعم فني متخصص
+• تقارير ذكية
 
-💡 **لماذا تختار رقم كلاود؟**
-• نظام سحابي 100% - لا تحتاج خوادم
-• واجهة عربية سهلة الاستخدام
-• دعم فني على مدار الساعة
-• توفير وقت وجهد إدارة الشركة
+ما هو التحدي الأكبر الذي تواجهه في إدارة شركتك؟`;
+    }
+    
+    // Enhanced contact requests
+    if (msg.includes('اتصل') || msg.includes('رقم') || msg.includes('هاتف') || msg.includes('contact') || msg.includes('call') || msg.includes('phone')) {
+        return `بكل سرور! يمكنك التواصل مع فريق المبيعات لدينا:
 
-📞 **اتصل الآن للاستشارة المجانية: +966555111222**
-🌐 **أو زور موقعنا: ragmcloud.sa**
+📞 **الهاتف:** +966555111222
+🌐 **الموقع:** https://ragmcloud.sa
+📧 **البريد:** info@ragmcloud.sa
+📍 **المقر:** الرياض - حي المغرزات
 
-أخبرني عن طبيعة نشاط شركتك علشان أقدر أساعدك في اختيار النظام المناسب!`;
+سيسعد فريقنا بمساعدتك في اختيار البackage المناسبة وتقديم عرض مفصل.
+
+هل تفضل التواصل الآن أم في وقت لاحق؟`;
+    }
+    
+    // Enhanced general response
+    return `شكراً لاهتمامك برقم كلاود! 🌟
+
+نظامنا يساعدك في:
+• إدارة المبيعات والمشتريات
+• متابعة العملاء والمخزون
+• إصدار الفواتير والتقارير
+• إدارة الموظفين والرواتب
+
+🔹 **باقاتنا السنوية تبدأ من 1000 ريال**
+
+للمساعدة في اختيار الباقة المناسبة:
+ما هو نشاط شركتك وعدد المستخدمين؟`;
 }
 
-// ENHANCED AI Response - ALWAYS TRY DEEPSEEK FIRST
+// Generate AI response with fallback
 async function generateRagmcloudAIResponse(userMessage, clientPhone) {
-    console.log('🔄 Processing message for Ragmcloud with memory:', userMessage);
-    
-    // ALWAYS try DeepSeek first if available
-    if (deepseekAvailable) {
-        try {
-            console.log('🎯 Using DeepSeek with conversation memory...');
-            
+    try {
+        console.log('🤖 Generating AI response...');
+        
+        // Try DeepSeek AI first
+        if (deepseekAvailable && process.env.DEEPSEEK_API_KEY) {
             const aiResponse = await callDeepSeekAI(userMessage, clientPhone);
-            
-            console.log('✅ DeepSeek Response successful');
-            console.log('💬 AI Reply:', aiResponse);
-            return aiResponse;
-            
-        } catch (error) {
-            console.error('❌ DeepSeek API Error:', error.message);
-            console.log('🔄 Falling back to enhanced responses...');
-            return generateEnhancedRagmcloudResponse(userMessage, clientPhone);
-        }
-    }
-    
-    // If DeepSeek not available, use enhanced fallback
-    console.log('🤖 DeepSeek not available, using enhanced fallback');
-    return generateEnhancedRagmcloudResponse(userMessage, clientPhone);
-}
-
-// Phone number formatting
-function formatPhoneNumber(phone) {
-    if (!phone) return '';
-    let cleaned = phone.toString().replace(/\D/g, '');
-    
-    if (cleaned.startsWith('0')) {
-        cleaned = '966' + cleaned.substring(1);
-    } else if (cleaned.startsWith('+966')) {
-        cleaned = cleaned.substring(1);
-    } else if (cleaned.startsWith('966')) {
-        // Already in correct format
-    } else if (cleaned.length === 9) {
-        cleaned = '966' + cleaned;
-    }
-    
-    return cleaned;
-}
-
-// Enhanced Excel file processing
-function processExcelFile(filePath) {
-    try {
-        const workbook = XLSX.readFile(filePath);
-        const sheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
-        const jsonData = XLSX.utils.sheet_to_json(worksheet);
-
-        const clients = jsonData.map((row, index) => {
-            // Try multiple possible column names for name and phone
-            const name = row['Name'] || row['name'] || row['الاسم'] || row['اسم'] || 
-                         row['اسم العميل'] || row['Client Name'] || row['client_name'] || 
-                         `عميل ${index + 1}`;
-            
-            const phone = formatPhoneNumber(
-                row['Phone'] || row['phone'] || row['الهاتف'] || row['هاتف'] || 
-                row['رقم الجوال'] || row['جوال'] || row['Phone Number'] || 
-                row['phone_number'] || row['رقم الهاتف'] || row['mobile'] || 
-                row['Mobile'] || row['الجوال']
-            );
-            
-            return {
-                id: index + 1,
-                name: name,
-                phone: phone,
-                lastMessage: 'لم يتم المراسلة بعد',
-                unread: 0,
-                importedAt: new Date().toISOString(),
-                lastActivity: new Date().toISOString(),
-                status: 'no-reply'
-            };
-        }).filter(client => {
-            // Filter only valid phone numbers
-            return client.phone && client.phone.length >= 10;
-        });
-
-        console.log('✅ Processed clients:', clients.length);
-        
-        return clients;
-    } catch (error) {
-        console.error('❌ Error processing Excel file:', error);
-        throw error;
-    }
-}
-
-// Generate user performance report from MongoDB
-async function generateUserPerformanceReport(userId) {
-    return await safeDBOperation(async () => {
-        const today = new Date().toISOString().split('T')[0];
-        const performance = await db.collection('performance').findOne({ 
-            userId: new ObjectId(userId), 
-            date: today 
-        });
-
-        if (!performance) {
-            return "لا توجد بيانات أداء لهذا اليوم.";
-        }
-
-        const stats = performance.dailyStats;
-        const totalInteractions = stats.messagesSent + stats.aiRepliesSent;
-        const interestRate = stats.clientsContacted > 0 ? (stats.interestedClients / stats.clientsContacted * 100).toFixed(1) : 0;
-        
-        // Calculate performance score (0-100)
-        let performanceScore = 0;
-        performanceScore += Math.min(stats.messagesSent * 2, 30);
-        performanceScore += Math.min(stats.clientsContacted * 5, 30);
-        performanceScore += Math.min(stats.interestedClients * 10, 40);
-        
-        // Performance evaluation
-        let performanceLevel = 'ضعيف';
-        let improvementSuggestions = [];
-        
-        if (performanceScore >= 80) {
-            performanceLevel = 'ممتاز';
-        } else if (performanceScore >= 60) {
-            performanceLevel = 'جيد جداً';
-        } else if (performanceScore >= 40) {
-            performanceLevel = 'جيد';
-        } else if (performanceScore >= 20) {
-            performanceLevel = 'مقبول';
-        }
-        
-        // Generate improvement suggestions
-        if (stats.messagesSent < 10) {
-            improvementSuggestions.push('• زيادة عدد الرسائل المرسلة');
-        }
-        if (stats.clientsContacted < 5) {
-            improvementSuggestions.push('• التواصل مع المزيد من العملاء');
-        }
-        if (stats.interestedClients < 2) {
-            improvementSuggestions.push('• تحسين جودة المحادثات لجذب عملاء مهتمين');
-        }
-        if (stats.aiRepliesSent < stats.messagesSent * 0.3) {
-            improvementSuggestions.push('• الاستفادة أكثر من الذكاء الاصطناعي في الردود');
-        }
-        
-        if (improvementSuggestions.length === 0) {
-            improvementSuggestions.push('• الاستمرار في الأداء المتميز');
-        }
-
-        const user = await db.collection('users').findOne({ _id: new ObjectId(userId) });
-        const userName = user ? user.name : 'مستخدم غير معروف';
-        
-        const report = `
-📊 **تقرير أداء الموظف - ${stats.date}**
-👤 **المستخدم:** ${userName}
-
-🕒 **الإحصاءات العامة:**
-• 📨 الرسائل المرسلة: ${stats.messagesSent}
-• 👥 العملاء المتواصل معهم: ${stats.clientsContacted}
-• 🤖 الردود الآلية: ${stats.aiRepliesSent}
-• 📢 الحملات الجماعية: ${stats.bulkCampaigns}
-• 💼 العملاء المهتمين: ${stats.interestedClients}
-• 📈 معدل الاهتمام: ${interestRate}%
-
-🎯 **التقييم:**
-• النقاط: ${performanceScore}/100
-• المستوى: ${performanceLevel}
-
-📋 **ملخص الأداء:**
-${performanceScore >= 80 ? '✅ أداء متميز في التواصل مع العملاء' : 
-  performanceScore >= 60 ? '☑️ أداء جيد يحتاج لتحسين بسيط' :
-  performanceScore >= 40 ? '📝 أداء مقبول يحتاج لتطوير' :
-  '⚠️ يحتاج تحسين في الأداء'}
-
-💡 **اقتراحات للتحسين:**
-${improvementSuggestions.join('\n')}
-
-⏰ **نشاط اليوم:**
-• بدء العمل: ${new Date(stats.startTime).toLocaleTimeString('ar-SA')}
-• آخر نشاط: ${new Date(stats.lastActivity).toLocaleTimeString('ar-SA')}
-• المدة النشطة: ${calculateActiveHours(stats.startTime, stats.lastActivity)}
-
-📞 **للمزيد من التفاصيل:** 
-يمكن مراجعة التقارير التفصيلية في النظام
-    `.trim();
-    
-        return report;
-    }, "خطأ في توليد التقرير.");
-}
-
-// Check if we should auto-send report to manager
-function checkAutoSendReport(userId) {
-    if (!employeePerformance[userId]) return;
-    
-    const messageCount = employeePerformance[userId].dailyStats.messagesSent;
-    
-    // Auto-send report after every 30 messages
-    if (messageCount > 0 && messageCount % 30 === 0) {
-        console.log(`📊 Auto-sending report for user ${userId} after ${messageCount} messages...`);
-        
-        // Send notification to frontend
-        io.emit('auto_report_notification', {
-            userId: userId,
-            messageCount: messageCount,
-            message: `تم إرسال ${messageCount} رسالة. جاري إرسال التقرير التلقائي إلى المدير...`
-        });
-        
-        // Auto-send report
-        setTimeout(() => {
-            sendReportToManager(userId).catch(error => {
-                console.error('❌ Auto-report failed for user', userId, error);
-            });
-        }, 3000);
-    }
-}
-
-// Send report to manager
-async function sendReportToManager(userId = null) {
-    try {
-        let report;
-        if (userId) {
-            report = await generateUserPerformanceReport(userId);
-        } else {
-            // Generate combined report for all users
-            report = "📊 **تقرير أداء الفريق الكامل**\n\n";
-            for (const [uid, session] of currentSessions) {
-                if (session.isActive) {
-                    report += await generateUserPerformanceReport(uid) + "\n\n" + "=".repeat(50) + "\n\n";
-                }
+            if (aiResponse && aiResponse.trim().length > 0) {
+                console.log('✅ AI response generated successfully');
+                return aiResponse;
             }
         }
         
-        const managerPhone = '966531304279@c.us';
+        // Fallback to enhanced responses
+        console.log('🔄 Using enhanced fallback response');
+        return generateEnhancedRagmcloudResponse(userMessage, clientPhone);
         
-        console.log('📤 Sending report to manager:', managerPhone);
-        
-        // Find any connected user to send the report
-        let senderSession = null;
-        for (const [uid, session] of userWhatsAppSessions) {
-            if (session.status === 'connected') {
-                senderSession = session;
-                break;
-            }
-        }
-        
-        if (!senderSession) {
-            throw new Error('لا يوجد مستخدم متصل بواتساب لإرسال التقرير');
-        }
-        
-        await senderSession.client.sendMessage(managerPhone, report);
-        
-        console.log('✅ Report sent to manager successfully');
-        return true;
     } catch (error) {
-        console.error('❌ Error sending report to manager:', error);
-        throw error;
+        console.error('❌ AI generation failed:', error.message);
+        return generateEnhancedRagmcloudResponse(userMessage, clientPhone);
     }
 }
 
-// Calculate active hours
-function calculateActiveHours(startTime, endTime) {
-    const start = new Date(startTime);
-    const end = new Date(endTime);
-    const diffMs = end - start;
-    const hours = Math.floor(diffMs / (1000 * 60 * 60));
-    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-    return `${hours} ساعة ${minutes} دقيقة`;
-}
+// =============================================
+// 🆕 USER MANAGEMENT ROUTES
+// =============================================
 
-// Middleware
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-app.use(express.static('public'));
-
-// Routes
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-app.get('/dashboard', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
-});
-
-// NEW: Authentication Routes (Updated for MongoDB)
+// Login route
 app.post('/api/login', async (req, res) => {
     try {
         const { username, password } = req.body;
+        
+        console.log('🔐 Login attempt for username:', username);
         
         if (!username || !password) {
             return res.status(400).json({ error: 'اسم المستخدم وكلمة المرور مطلوبان' });
         }
         
         const user = await db.collection('users').findOne({ username: username, isActive: true });
+        
         if (!user) {
+            console.log('❌ User not found:', username);
             return res.status(401).json({ error: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
         }
         
+        console.log('✅ User found:', user.name);
+        console.log('🔑 Checking password...');
+        
         const isPasswordValid = bcrypt.compareSync(password, user.password);
+        
         if (!isPasswordValid) {
+            console.log('❌ Invalid password for user:', username);
             return res.status(401).json({ error: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
         }
+        
+        console.log('✅ Login successful for:', user.name);
         
         // Update last login
         await db.collection('users').updateOne(
@@ -1387,62 +1193,40 @@ app.post('/api/login', async (req, res) => {
             { $set: { lastLogin: new Date() } }
         );
         
+        // Generate token
+        const token = generateToken(user);
+        
         // Initialize user performance tracking
         await initializeUserPerformance(user._id.toString());
         
-        // 🆕 Initialize user WhatsApp session
-        initializeUserWhatsApp(user._id.toString());
-        
-        // Create session
-        const token = generateToken(user);
-        currentSessions.set(user._id.toString(), {
-            user: user,
-            token: token,
-            isActive: true,
-            loginTime: new Date().toISOString()
-        });
+        // Initialize WhatsApp for this user if not already
+        if (!getUserWhatsAppSession(user._id.toString())) {
+            console.log(`🔄 Initializing WhatsApp for user ${user._id}`);
+            initializeUserWhatsApp(user._id.toString());
+        }
         
         res.json({
-            success: true,
+            message: 'تم تسجيل الدخول بنجاح',
             token: token,
             user: {
-                id: user._id.toString(),
+                id: user._id,
                 name: user.name,
                 username: user.username,
                 role: user.role
-            },
-            message: 'تم تسجيل الدخول بنجاح'
+            }
         });
         
     } catch (error) {
-        console.error('Login error:', error);
+        console.error('❌ Login error:', error);
         res.status(500).json({ error: 'خطأ في الخادم' });
     }
 });
 
-app.post('/api/logout', authenticateUser, (req, res) => {
-    try {
-        const userId = req.user._id.toString();
-        
-        // 🆕 Clean up user WhatsApp session
-        const userSession = getUserWhatsAppSession(userId);
-        if (userSession && userSession.client) {
-            userSession.client.destroy();
-        }
-        userWhatsAppSessions.delete(userId);
-        
-        currentSessions.delete(userId);
-        res.json({ success: true, message: 'تم تسجيل الخروج بنجاح' });
-    } catch (error) {
-        res.status(500).json({ error: 'خطأ في الخادم' });
-    }
-});
-
-app.get('/api/me', authenticateUser, (req, res) => {
+// Get current user profile
+app.get('/api/profile', authenticateUser, (req, res) => {
     res.json({
-        success: true,
         user: {
-            id: req.user._id.toString(),
+            id: req.user._id,
             name: req.user.name,
             username: req.user.username,
             role: req.user.role
@@ -1450,530 +1234,481 @@ app.get('/api/me', authenticateUser, (req, res) => {
     });
 });
 
-// 🆕 User WhatsApp Status Route
-app.get('/api/user-whatsapp-status', authenticateUser, (req, res) => {
+// Change password
+app.post('/api/change-password', authenticateUser, async (req, res) => {
     try {
-        const userId = req.user._id.toString();
-        const userSession = getUserWhatsAppSession(userId);
+        const { currentPassword, newPassword } = req.body;
         
-        if (!userSession) {
-            return res.json({
-                connected: false,
-                status: 'disconnected',
-                message: 'جارٍ تهيئة واتساب...'
-            });
+        if (!currentPassword || !newPassword) {
+            return res.status(400).json({ error: 'كلمة المرور الحالية والجديدة مطلوبتان' });
         }
         
-        res.json({
-            connected: userSession.status === 'connected',
-            status: userSession.status,
-            message: userSession.status === 'connected' ? 'واتساب متصل ✅' : 
-                    userSession.status === 'qr-ready' ? 'يرجى مسح QR Code' :
-                    'جارٍ الاتصال...',
-            hasQr: !!userSession.qrCode
-        });
+        // Verify current password
+        const isCurrentPasswordValid = bcrypt.compareSync(currentPassword, req.user.password);
+        if (!isCurrentPasswordValid) {
+            return res.status(401).json({ error: 'كلمة المرور الحالية غير صحيحة' });
+        }
+        
+        // Hash new password
+        const hashedNewPassword = bcrypt.hashSync(newPassword, 10);
+        
+        // Update password
+        await db.collection('users').updateOne(
+            { _id: req.user._id },
+            { $set: { password: hashedNewPassword } }
+        );
+        
+        res.json({ message: 'تم تغيير كلمة المرور بنجاح' });
+        
     } catch (error) {
+        console.error('❌ Change password error:', error);
         res.status(500).json({ error: 'خطأ في الخادم' });
     }
 });
 
-// 🆕 User WhatsApp QR Code Route
-app.get('/api/user-whatsapp-qr', authenticateUser, (req, res) => {
-    try {
-        const userId = req.user._id.toString();
-        const userSession = getUserWhatsAppSession(userId);
-        
-        if (!userSession || !userSession.qrCode) {
-            return res.status(404).json({ error: 'QR Code غير متوفر' });
-        }
-        
-        res.json({ qrCode: userSession.qrCode });
-    } catch (error) {
-        res.status(500).json({ error: 'خطأ في الخادم' });
+// =============================================
+// 🆕 USER-SPECIFIC WHATSAPP ROUTES
+// =============================================
+
+// Get user WhatsApp status
+app.get('/api/user/whatsapp-status', authenticateUser, (req, res) => {
+    const userId = req.user._id.toString();
+    const userSession = getUserWhatsAppSession(userId);
+    
+    if (!userSession) {
+        return res.json({
+            connected: false,
+            message: 'جاري التهيئة...',
+            status: 'initializing',
+            hasQr: false,
+            userId: userId
+        });
     }
+    
+    res.json({
+        connected: userSession.isConnected,
+        message: userSession.isConnected ? 'واتساب متصل ✅' : 'جارٍ الاتصال...',
+        status: userSession.status,
+        hasQr: !!userSession.qrCode,
+        qrCode: userSession.qrCode,
+        userId: userId
+    });
 });
 
-// 🆕 User-specific Bot Control Route
-app.post('/api/user-toggle-bot', authenticateUser, (req, res) => {
-    try {
-        const { stop } = req.body;
-        const userId = req.user._id.toString();
-        
-        const success = toggleUserBot(userId, stop);
-        
-        if (!success) {
-            return res.status(400).json({ error: 'فشل في التحكم بالبوت' });
-        }
-        
+// Toggle user bot
+app.post('/api/user/toggle-bot', authenticateUser, (req, res) => {
+    const userId = req.user._id.toString();
+    const { stop } = req.body;
+    
+    const success = toggleUserBot(userId, stop);
+    
+    if (success) {
         res.json({ 
-            success: true, 
-            stopped: stop,
-            message: `تم ${stop ? 'إيقاف' : 'تشغيل'} البوت بنجاح`
+            message: stop ? 'تم إيقاف الرد التلقائي' : 'تم تفعيل الرد التلقائي',
+            stopped: stop 
         });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
+    } else {
+        res.status(400).json({ error: 'فشل في تغيير حالة البوت' });
     }
 });
 
-// 🆕 User-specific WhatsApp Reconnection
-app.post('/api/user-reconnect-whatsapp', authenticateUser, (req, res) => {
-    try {
-        const userId = req.user._id.toString();
-        manualReconnectUserWhatsApp(userId);
-        res.json({ success: true, message: 'جارٍ إعادة الاتصال...' });
-    } catch (error) {
-        res.status(500).json({ error: 'فشل إعادة الاتصال' });
-    }
+// Reconnect user WhatsApp
+app.post('/api/user/reconnect-whatsapp', authenticateUser, (req, res) => {
+    const userId = req.user._id.toString();
+    
+    manualReconnectUserWhatsApp(userId);
+    
+    res.json({ message: 'جاري إعادة الاتصال...' });
 });
 
-// Upload Excel file - Updated for MongoDB
-app.post('/api/upload-excel', authenticateUser, upload.single('excelFile'), async (req, res) => {
-    try {
-        if (!req.file) {
-            return res.status(400).json({ error: 'لم يتم رفع أي ملف' });
-        }
-
-        console.log('📂 Processing uploaded file:', req.file.originalname);
-        
-        const clients = processExcelFile(req.file.path);
-
-        if (clients.length === 0) {
-            fs.unlinkSync(req.file.path);
-            return res.status(400).json({ 
-                error: 'لم يتم العثور على بيانات صالحة في الملف' 
-            });
-        }
-
-        // 🆕 Add clients to user's imported list and save to MongoDB
-        const userId = req.user._id.toString();
-        const userSession = getUserWhatsAppSession(userId);
-        
-        for (const client of clients) {
-            if (userSession) {
-                userSession.importedClients.add(client.phone);
-            }
-            await saveClient(client, userId);
-        }
-
-        fs.unlinkSync(req.file.path); // Clean up uploaded file
-
-        // Emit to all connected clients
-        const updatedClients = await getClients(userId);
-        io.emit('clients_updated', updatedClients);
-
-        res.json({ 
-            success: true, 
-            clients: updatedClients, 
-            count: clients.length,
-            message: `تم معالجة ${clients.length} عميل بنجاح`
-        });
-
-    } catch (error) {
-        console.error('❌ Error processing Excel:', error);
-        
-        // Clean up uploaded file
-        if (req.file && fs.existsSync(req.file.path)) {
-            fs.unlinkSync(req.file.path);
-        }
-        
-        res.status(500).json({ 
-            error: 'فشل معالجة ملف Excel: ' + error.message 
-        });
-    }
-});
-
-// Get clients list - Updated for MongoDB
-app.get('/api/clients', authenticateUser, async (req, res) => {
+// Get user clients
+app.get('/api/user/clients', authenticateUser, async (req, res) => {
     try {
         const userId = req.user._id.toString();
         const clients = await getClients(userId);
-        res.json({ success: true, clients: clients });
+        res.json(clients);
     } catch (error) {
-        res.json({ success: true, clients: [] });
+        console.error('❌ Error getting user clients:', error);
+        res.status(500).json({ error: 'خطأ في جلب العملاء' });
     }
 });
 
-// Get client messages - Updated for MongoDB
-app.get('/api/client-messages/:phone', authenticateUser, async (req, res) => {
-    try {
-        const phone = req.params.phone;
-        const messages = await getClientMessages(phone);
-        res.json({ success: true, messages: messages });
-    } catch (error) {
-        res.json({ success: true, messages: [] });
-    }
-});
-
-// Get employee performance data - Updated for MongoDB
-app.get('/api/employee-performance', authenticateUser, async (req, res) => {
+// Import clients for user
+app.post('/api/user/import-clients', authenticateUser, upload.single('file'), async (req, res) => {
     try {
         const userId = req.user._id.toString();
         
-        if (!employeePerformance[userId]) {
-            await initializeUserPerformance(userId);
+        if (!req.file) {
+            return res.status(400).json({ error: 'لم يتم رفع ملف' });
         }
         
-        const performanceData = employeePerformance[userId];
-        const report = await generateUserPerformanceReport(userId);
+        const filePath = req.file.path;
+        const workbook = XLSX.readFile(filePath);
+        const sheetName = workbook.SheetNames[0];
+        const data = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
         
-        res.json({ 
-            success: true, 
-            performance: performanceData,
-            report: report
-        });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Send report to manager
-app.post('/api/send-to-manager', authenticateUser, async (req, res) => {
-    try {
-        console.log('🔄 Sending report to manager...');
-        await sendReportToManager(req.user._id.toString());
-        res.json({ 
-            success: true, 
-            message: 'تم إرسال التقرير إلى المدير بنجاح'
-        });
-    } catch (error) {
-        console.error('❌ Error sending report to manager:', error);
-        res.status(500).json({ 
-            success: false, 
-            error: 'فشل إرسال التقرير: ' + error.message 
-        });
-    }
-});
-
-// Bulk send endpoint - FIXED CONNECTION CHECK
-app.post('/api/send-bulk', authenticateUser, async (req, res) => {
-    try {
-        const { message, delay = 40, clients } = req.body;
+        let importedCount = 0;
+        let errorCount = 0;
         
-        console.log('📤 Bulk send request received for', clients?.length, 'clients by user', req.user.name);
-
-        const userId = req.user._id.toString();
         const userSession = getUserWhatsAppSession(userId);
-        
-        // 🛠️ FIXED: Check status instead of isConnected
-        if (!userSession || userSession.status !== 'connected') {
-            return res.status(400).json({ 
-                success: false, 
-                error: 'واتساب غير متصل' 
-            });
+        if (!userSession) {
+            return res.status(400).json({ error: 'جلسة واتساب غير نشطة' });
         }
-
-        if (!message || !clients || clients.length === 0) {
-            return res.status(400).json({ 
-                success: false, 
-                error: 'الرسالة وقائمة العملاء مطلوبة' 
-            });
-        }
-
-        let successCount = 0;
-        let failCount = 0;
         
-        // Track bulk campaign for the user in MongoDB
-        await trackEmployeeActivity(userId, 'bulk_campaign', { 
-            clientCount: clients.length,
-            message: message.substring(0, 50) 
-        });
-        
-        io.emit('bulk_progress', {
-            type: 'start',
-            total: clients.length,
-            message: `بدأ الإرسال إلى ${clients.length} عميل`
-        });
-
-        for (let i = 0; i < clients.length; i++) {
-            const client = clients[i];
-            
-            if (!client.phone || client.phone.length < 10) {
-                failCount++;
-                continue;
-            }
-
-            const formattedPhone = formatPhoneNumber(client.phone);
-            const phoneNumber = formattedPhone + '@c.us';
-            
+        for (const row of data) {
             try {
-                // Wait between messages (except first one)
-                if (i > 0) {
-                    await new Promise(resolve => setTimeout(resolve, delay * 1000));
+                const phone = String(row.phone || row.mobile || row.Phone || row.Mobile).trim();
+                
+                if (phone && phone.length >= 10) {
+                    const cleanPhone = phone.replace(/\D/g, '');
+                    
+                    if (cleanPhone.length >= 10) {
+                        const clientData = {
+                            phone: cleanPhone,
+                            name: row.name || row.Name || 'عميل',
+                            company: row.company || row.Company || '',
+                            notes: row.notes || row.Notes || '',
+                            status: 'new',
+                            importedAt: new Date(),
+                            importedBy: new ObjectId(userId)
+                        };
+                        
+                        await saveClient(clientData, userId);
+                        userSession.importedClients.add(cleanPhone);
+                        importedCount++;
+                    } else {
+                        errorCount++;
+                    }
+                } else {
+                    errorCount++;
                 }
-                
-                await userSession.client.sendMessage(phoneNumber, message);
-                
-                successCount++;
-                
-                client.lastMessage = message.substring(0, 50) + (message.length > 50 ? '...' : '');
-                client.lastSent = new Date().toISOString();
-                
-                // Track message sent for the user in MongoDB
-                await trackEmployeeActivity(userId, 'message_sent', { 
-                    clientPhone: formattedPhone,
-                    clientName: client.name,
-                    message: message.substring(0, 30) 
-                });
-                
-                io.emit('bulk_progress', {
-                    success: true,
-                    client: client.name,
-                    clientPhone: client.phone,
-                    message: message.substring(0, 30) + '...',
-                    current: i + 1,
-                    total: clients.length
-                });
-
-                await storeClientMessage(client.phone, message, true, userId);
-                
-                console.log(`✅ User ${userId} sent to ${client.name}: ${client.phone} (${i + 1}/${clients.length})`);
-                
-            } catch (error) {
-                failCount++;
-                
-                io.emit('bulk_progress', {
-                    success: false,
-                    client: client.name,
-                    clientPhone: client.phone,
-                    error: error.message,
-                    current: i + 1,
-                    total: clients.length
-                });
-                
-                console.error(`❌ User ${userId} failed to send to ${client.name}:`, error.message);
+            } catch (rowError) {
+                console.error('Error processing row:', rowError);
+                errorCount++;
             }
         }
-
-        res.json({ 
-            success: true, 
-            message: `تم إرسال ${successCount} رسالة بنجاح وفشل ${failCount}`
+        
+        // Clean up uploaded file
+        fs.unlinkSync(filePath);
+        
+        // Track bulk import activity
+        await trackEmployeeActivity(userId, 'bulk_campaign', { count: importedCount });
+        
+        res.json({
+            message: `تم استيراد ${importedCount} عميل بنجاح`,
+            imported: importedCount,
+            errors: errorCount
         });
-
-        console.log(`🎉 User ${userId} bulk send completed: ${successCount} successful, ${failCount} failed`);
-
+        
     } catch (error) {
-        console.error('❌ Error in bulk send:', error);
-        res.status(500).json({ 
-            success: false, 
-            error: 'فشل الإرسال الجماعي: ' + error.message 
-        });
+        console.error('❌ Error importing clients:', error);
+        res.status(500).json({ error: 'خطأ في استيراد العملاء' });
     }
 });
 
-// Send individual message - FIXED CONNECTION CHECK
-app.post('/api/send-message', authenticateUser, async (req, res) => {
+// Send message to client (user-specific)
+app.post('/api/user/send-message', authenticateUser, async (req, res) => {
     try {
+        const userId = req.user._id.toString();
         const { phone, message } = req.body;
         
-        const userId = req.user._id.toString();
-        const userSession = getUserWhatsAppSession(userId);
-        
-        // 🛠️ FIXED: Check status instead of isConnected
-        if (!userSession || userSession.status !== 'connected') {
-            return res.status(400).json({ error: 'واتساب غير متصل' });
-        }
-
         if (!phone || !message) {
             return res.status(400).json({ error: 'رقم الهاتف والرسالة مطلوبان' });
         }
-
-        const formattedPhone = formatPhoneNumber(phone);
-        const phoneNumber = formattedPhone + '@c.us';
         
-        await userSession.client.sendMessage(phoneNumber, message);
+        const userSession = getUserWhatsAppSession(userId);
+        if (!userSession || !userSession.isConnected) {
+            return res.status(400).json({ error: 'جلسة واتساب غير نشطة' });
+        }
         
-        // Track individual message for the user in MongoDB
-        await trackEmployeeActivity(userId, 'message_sent', { 
-            clientPhone: formattedPhone,
-            message: message.substring(0, 30) 
-        });
+        const chatId = `${phone}@c.us`;
         
+        await userSession.client.sendMessage(chatId, message);
+        
+        // Store sent message in MongoDB
         await storeClientMessage(phone, message, true, userId);
-        await updateClientLastMessage(phone, message, userId);
         
-        res.json({ 
-            success: true, 
-            message: 'تم إرسال الرسالة بنجاح'
-        });
+        // Track message sent activity
+        await trackEmployeeActivity(userId, 'message_sent', { clientPhone: phone });
+        
+        res.json({ message: 'تم إرسال الرسالة بنجاح' });
+        
     } catch (error) {
-        console.error('Error sending message:', error);
-        res.status(500).json({ error: 'فشل إرسال الرسالة: ' + error.message });
+        console.error('❌ Error sending message:', error);
+        res.status(500).json({ error: 'خطأ في إرسال الرسالة' });
     }
 });
 
-// Socket.io
+// Get user performance
+app.get('/api/user/performance', authenticateUser, async (req, res) => {
+    try {
+        const userId = req.user._id.toString();
+        const today = new Date().toISOString().split('T')[0];
+        
+        const performance = await db.collection('performance').findOne({ 
+            userId: new ObjectId(userId), 
+            date: today 
+        });
+        
+        if (!performance) {
+            // Initialize performance for today
+            await initializeUserPerformance(userId);
+            const newPerformance = await db.collection('performance').findOne({ 
+                userId: new ObjectId(userId), 
+                date: today 
+            });
+            return res.json(newPerformance || { dailyStats: {} });
+        }
+        
+        res.json(performance);
+        
+    } catch (error) {
+        console.error('❌ Error getting user performance:', error);
+        res.status(500).json({ error: 'خطأ في جلب بيانات الأداء' });
+    }
+});
+
+// =============================================
+// ADMIN ROUTES
+// =============================================
+
+// Get all users (admin only)
+app.get('/api/admin/users', authenticateUser, authorizeAdmin, async (req, res) => {
+    try {
+        const allUsers = await db.collection('users').find({}).toArray();
+        
+        // Remove passwords from response
+        const usersWithoutPasswords = allUsers.map(user => ({
+            id: user._id,
+            name: user.name,
+            username: user.username,
+            role: user.role,
+            isActive: user.isActive,
+            createdAt: user.createdAt,
+            lastLogin: user.lastLogin
+        }));
+        
+        res.json(usersWithoutPasswords);
+        
+    } catch (error) {
+        console.error('❌ Error getting users:', error);
+        res.status(500).json({ error: 'خطأ في جلب المستخدمين' });
+    }
+});
+
+// Create new user (admin only)
+app.post('/api/admin/users', authenticateUser, authorizeAdmin, async (req, res) => {
+    try {
+        const { name, username, password, role } = req.body;
+        
+        if (!name || !username || !password || !role) {
+            return res.status(400).json({ error: 'جميع الحقول مطلوبة' });
+        }
+        
+        // Check if username already exists
+        const existingUser = await db.collection('users').findOne({ username: username });
+        if (existingUser) {
+            return res.status(400).json({ error: 'اسم المستخدم موجود مسبقاً' });
+        }
+        
+        // Hash password
+        const hashedPassword = bcrypt.hashSync(password, 10);
+        
+        const newUser = {
+            name: name,
+            username: username,
+            password: hashedPassword,
+            role: role,
+            isActive: true,
+            createdAt: new Date(),
+            lastLogin: null
+        };
+        
+        await db.collection('users').insertOne(newUser);
+        
+        res.json({ message: 'تم إنشاء المستخدم بنجاح' });
+        
+    } catch (error) {
+        console.error('❌ Error creating user:', error);
+        res.status(500).json({ error: 'خطأ في إنشاء المستخدم' });
+    }
+});
+
+// Update user (admin only)
+app.put('/api/admin/users/:id', authenticateUser, authorizeAdmin, async (req, res) => {
+    try {
+        const userId = req.params.id;
+        const { name, username, password, role, isActive } = req.body;
+        
+        const updateData = { name, username, role, isActive };
+        
+        // Only update password if provided
+        if (password) {
+            updateData.password = bcrypt.hashSync(password, 10);
+        }
+        
+        await db.collection('users').updateOne(
+            { _id: new ObjectId(userId) },
+            { $set: updateData }
+        );
+        
+        res.json({ message: 'تم تحديث المستخدم بنجاح' });
+        
+    } catch (error) {
+        console.error('❌ Error updating user:', error);
+        res.status(500).json({ error: 'خطأ في تحديث المستخدم' });
+    }
+});
+
+// Get all clients (admin only)
+app.get('/api/admin/clients', authenticateUser, authorizeAdmin, async (req, res) => {
+    try {
+        const clients = await getClients();
+        res.json(clients);
+    } catch (error) {
+        console.error('❌ Error getting all clients:', error);
+        res.status(500).json({ error: 'خطأ في جلب العملاء' });
+    }
+});
+
+// Get all performance data (admin only)
+app.get('/api/admin/performance', authenticateUser, authorizeAdmin, async (req, res) => {
+    try {
+        const { date } = req.query;
+        let query = {};
+        
+        if (date) {
+            query.date = date;
+        }
+        
+        const performanceData = await db.collection('performance')
+            .find(query)
+            .sort({ date: -1 })
+            .toArray();
+        
+        // Populate user names
+        const performanceWithUsers = await Promise.all(
+            performanceData.map(async (perf) => {
+                const user = await db.collection('users').findOne({ _id: perf.userId });
+                return {
+                    ...perf,
+                    userName: user ? user.name : 'Unknown'
+                };
+            })
+        );
+        
+        res.json(performanceWithUsers);
+        
+    } catch (error) {
+        console.error('❌ Error getting performance data:', error);
+        res.status(500).json({ error: 'خطأ في جلب بيانات الأداء' });
+    }
+});
+
+// =============================================
+// SOCKET.IO CONNECTIONS
+// =============================================
+
 io.on('connection', (socket) => {
-    console.log('Client connected');
+    console.log('🔌 New client connected:', socket.id);
     
-    // Handle user authentication for socket
-    socket.on('authenticate', async (token) => {
+    // Handle user authentication for sockets
+    socket.on('authenticate', (token) => {
         try {
             const decoded = verifyToken(token);
-            if (!decoded) {
-                socket.emit('auth_error', { error: 'Token غير صالح' });
-                return;
-            }
-            
-            const user = await db.collection('users').findOne({ _id: new ObjectId(decoded.userId), isActive: true });
-            if (!user) {
-                socket.emit('auth_error', { error: 'المستخدم غير موجود' });
-                return;
-            }
-            
-            socket.userId = user._id.toString();
-            console.log(`🔐 Socket authenticated for user ${user.name}`);
-            
-            // 🆕 CRITICAL: Send authentication success
-            socket.emit('authenticated', { 
-                userId: user._id.toString(), 
-                username: user.username 
-            });
-            
-            // Send user-specific initial data
-            const userSession = getUserWhatsAppSession(user._id.toString());
-            if (userSession) {
-                socket.emit(`user_status_${user._id.toString()}`, { 
-                    connected: userSession.status === 'connected', 
-                    message: userSession.status === 'connected' ? 'واتساب متصل ✅' : 
-                            userSession.status === 'qr-ready' ? 'يرجى مسح QR Code' :
-                            'جارٍ الاتصال...',
-                    status: userSession.status,
-                    hasQr: !!userSession.qrCode,
-                    userId: user._id.toString()
-                });
+            if (decoded) {
+                socket.userId = decoded.userId;
+                console.log(`✅ Socket ${socket.id} authenticated for user ${decoded.userId}`);
                 
-                // 🆕 CRITICAL: If QR code already exists, send it immediately
-                if (userSession.qrCode) {
-                    console.log(`📱 Sending existing QR code to user ${user._id.toString()}`);
-                    socket.emit(`user_qr_${user._id.toString()}`, { 
-                        qrCode: userSession.qrCode,
-                        userId: user._id.toString(),
-                        timestamp: new Date().toISOString()
+                // Send initial user-specific data
+                const userSession = getUserWhatsAppSession(decoded.userId);
+                if (userSession) {
+                    socket.emit(`user_status_${decoded.userId}`, {
+                        connected: userSession.isConnected,
+                        message: userSession.isConnected ? 'واتساب متصل ✅' : 'جارٍ الاتصال...',
+                        status: userSession.status,
+                        hasQr: !!userSession.qrCode,
+                        userId: decoded.userId
                     });
+                    
+                    if (userSession.qrCode) {
+                        socket.emit(`user_qr_${decoded.userId}`, {
+                            qrCode: userSession.qrCode,
+                            userId: decoded.userId,
+                            timestamp: new Date().toISOString()
+                        });
+                    }
                 }
             }
-            
         } catch (error) {
-            socket.emit('auth_error', { error: 'خطأ في المصادقة' });
+            console.error('Socket authentication error:', error);
         }
     });
     
-    // Handle user-specific bot toggle
-    socket.on('user_toggle_bot', (data) => {
-        if (!socket.userId) {
-            socket.emit('error', { error: 'غير مصرح' });
-            return;
-        }
-        
-        const success = toggleUserBot(socket.userId, data.stop);
-        if (success) {
-            io.emit(`user_bot_status_${socket.userId}`, { 
-                stopped: data.stop,
-                userId: socket.userId 
-            });
-        }
-    });
-
-    // Handle client status update
-    socket.on('update_client_status', (data) => {
-        updateClientStatus(data.phone, data.status);
-        socket.emit('client_status_updated', { success: true });
-    });
-
-    socket.on('send_message', async (data) => {
-        if (!socket.userId) {
-            socket.emit('message_error', { 
-                to: data.to, 
-                error: 'غير مصرح' 
-            });
-            return;
-        }
-        
-        try {
-            const { to, message } = data;
-            
-            const userSession = getUserWhatsAppSession(socket.userId);
-            // 🛠️ FIXED: Check status instead of isConnected
-            if (!userSession || userSession.status !== 'connected') {
-                socket.emit('message_error', { 
-                    to: to, 
-                    error: 'واتساب غير متصل' 
-                });
-                return;
-            }
-
-            if (!to || !message) {
-                socket.emit('message_error', { 
-                    to: to, 
-                    error: 'رقم الهاتف والرسالة مطلوبان' 
-                });
-                return;
-            }
-
-            const formattedPhone = formatPhoneNumber(to);
-            const phoneNumber = formattedPhone + '@c.us';
-            
-            await userSession.client.sendMessage(phoneNumber, message);
-            
-            // Track individual message for the user in MongoDB
-            await trackEmployeeActivity(socket.userId, 'message_sent', { 
-                clientPhone: formattedPhone,
-                message: message.substring(0, 30) 
-            });
-            
-            await storeClientMessage(to, message, true, socket.userId);
-            await updateClientLastMessage(to, message, socket.userId);
-            
-            socket.emit('message_sent', { 
-                to: to,
-                message: 'تم الإرسال بنجاح'
-            });
-            
-        } catch (error) {
-            console.error(`Failed to send message to ${data.to}:`, error);
-            socket.emit('message_error', { 
-                to: data.to, 
-                error: error.message 
-            });
-        }
-    });
-
-    socket.on('user_reconnect_whatsapp', () => {
-        if (!socket.userId) {
-            socket.emit('error', { error: 'غير مصرح' });
-            return;
-        }
-        
-        manualReconnectUserWhatsApp(socket.userId);
-    });
-
     socket.on('disconnect', () => {
-        console.log('Client disconnected');
+        console.log('🔌 Client disconnected:', socket.id);
     });
 });
 
-// Initialize users and performance data
-initializeUsers();
+// =============================================
+// SERVER INITIALIZATION
+// =============================================
 
-const PORT = process.env.PORT || 10000;
-server.listen(PORT, '0.0.0.0', () => {
+// Initialize the application
+async function initializeApp() {
+    console.log('🚀 Initializing RAGMCloud ERP System...');
+    
+    // Wait for database connection
+    let attempts = 0;
+    while (!db && attempts < 10) {
+        console.log(`🔄 Waiting for database connection... (${attempts + 1}/10)`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        attempts++;
+    }
+    
+    if (!db) {
+        console.error('❌ Failed to connect to database after 10 attempts');
+        process.exit(1);
+    }
+    
+    // Initialize users
+    await initializeUsers();
+    
+    console.log('✅ RAGMCloud ERP System initialized successfully');
+    console.log('📊 Available users:', users.map(u => u.username));
+    
+    // Initialize WhatsApp for all active users
+    users.forEach(user => {
+        console.log(`🔄 Initializing WhatsApp for user ${user.username} (${user._id})`);
+        initializeUserWhatsApp(user._id.toString());
+    });
+}
+
+// Start server
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
-    console.log('🏢 Company:', ragmcloudCompanyInfo.name);
-    console.log('📞 Phone:', ragmcloudCompanyInfo.phone);
-    console.log('🌐 Website:', ragmcloudCompanyInfo.website);
-    console.log('🔑 DeepSeek Available:', deepseekAvailable);
-    console.log('👥 User Management: ENABLED');
-    console.log('🔐 Authentication: JWT + Bcrypt');
-    console.log('🆕 MULTI-USER WHATSAPP: ENABLED');
-    console.log('🤖 BOT STATUS: READY');
-    console.log('⏰ AUTO-REPLY DELAY: 3 SECONDS');
-    console.log('🎯 AI AUTO-STATUS DETECTION: ENABLED');
-    console.log('📊 AUTO-REPORT AFTER 30 MESSAGES: ENABLED');
-    console.log('💰 CORRECT PACKAGES: 1000, 1800, 2700, 3000 ريال');
-    console.log('🎉 MULTI-USER ARCHITECTURE: COMPLETED');
-    console.log('☁️  CLOUD-OPTIMIZED WHATSAPP: ENABLED');
-    console.log('📱 QR CODE FIXED: FRONTEND WILL NOW RECEIVE QR CODES');
-    console.log('🛠️  CONNECTION STATUS FIXED: Now properly checks status instead of isConnected');
-    console.log('🗄️  MONGODB ATLAS: INTEGRATED ✅ - All data stored in cloud database');
+    console.log(`🌐 Access the system at: http://localhost:${PORT}`);
+    
+    // Initialize the application
+    initializeApp().catch(console.error);
 });
 
+// Graceful shutdown
+process.on('SIGINT', async () => {
+    console.log('🛑 Shutting down gracefully...');
+    
+    // Destroy all WhatsApp sessions
+    for (const [userId, session] of userWhatsAppSessions.entries()) {
+        if (session.client) {
+            await session.client.destroy();
+        }
+    }
+    
+    // Close database connection
+    if (client) {
+        await client.close();
+    }
+    
+    process.exit(0);
+});
