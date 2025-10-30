@@ -1,3 +1,7 @@
+// Debug MongoDB URI
+console.log('🔍 DEBUG: Raw MONGODB_URI from environment:', process.env.MONGODB_URI);
+console.log('🔍 DEBUG: URI length:', process.env.MONGODB_URI?.length);
+console.log('🔍 DEBUG: First 10 characters:', process.env.MONGODB_URI?.substring(0, 10));
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
@@ -1972,3 +1976,4 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log('🛠️  CONNECTION STATUS FIXED: Now properly checks status instead of isConnected');
     console.log('🗄️  MONGODB ATLAS: INTEGRATED ✅ - All data stored in cloud database');
 });
+
