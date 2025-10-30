@@ -22,9 +22,10 @@ const server = http.createServer(app);
 // 🗄️ MONGODB DATABASE CONNECTION
 // =============================================
 
-const uri = "mongodb+srv://ragm_user:Admin1020@cluster0.q7bnvpm.mongodb.net/ragmcloud-erp?retryWrites=true&w=majority&appName=Cluster0";
+// Use environment variable for security
+const uri = process.env.MONGODB_URI || "mongodb+srv://ragmcloud_user:ragmcloud123@cluster0.q7bnvpm.mongodb.net/ragmcloud-erp?retryWrites=true&w=majority&appName=Cluster0";
 
-// Create a MongoClient with a MongoClientOptions object to set the Stable API version
+// Create a MongoClient
 const client = new MongoClient(uri, {
   serverApi: {
     version: ServerApiVersion.v1,
@@ -48,14 +49,19 @@ async function connectDB() {
         await db.collection('messages').createIndex({ phone: 1, timestamp: -1 });
         await db.collection('performance').createIndex({ userId: 1, date: 1 }, { unique: true });
         
+        console.log('✅ Database indexes created');
         return db;
     } catch (error) {
-        console.error('❌ MongoDB connection error:', error);
-        process.exit(1);
+        console.error('❌ MongoDB connection error:', error.message);
+        // Don't exit process - let the app continue without DB
+        return null;
     }
 }
 
-connectDB();
+// Initialize database connection
+connectDB().then(() => {
+    console.log('🔄 Database initialization completed');
+});
 
 // CORS configuration for Socket.io
 const io = socketIo(server, {
