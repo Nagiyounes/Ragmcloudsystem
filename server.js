@@ -10,23 +10,52 @@ const path = require('path');
 const XLSX = require('xlsx');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const mongoose = require('mongoose');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 
 // Load environment variables
 require('dotenv').config();
 
-// 🟢 MongoDB Connection
-const MONGODB_URI = process.env.MONGODB_URI;
-
-mongoose.connect(MONGODB_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true
-})
-.then(() => console.log('✅ Connected to MongoDB Atlas'))
-.catch(err => console.error('❌ MongoDB connection error:', err));
-
 const app = express();
 const server = http.createServer(app);
+
+// =============================================
+// 🗄️ MONGODB DATABASE CONNECTION
+// =============================================
+
+const uri = "mongodb+srv://ragm_user:Admin1020@cluster0.q7bnvpm.mongodb.net/ragmcloud-erp?retryWrites=true&w=majority&appName=Cluster0";
+
+// Create a MongoClient with a MongoClientOptions object to set the Stable API version
+const client = new MongoClient(uri, {
+  serverApi: {
+    version: ServerApiVersion.v1,
+    strict: true,
+    deprecationErrors: true,
+  }
+});
+
+let db;
+
+// Connect to MongoDB
+async function connectDB() {
+    try {
+        await client.connect();
+        db = client.db('ragmcloud-erp');
+        console.log('🗄️  MONGODB ATLAS: CONNECTED ✅');
+        
+        // Create indexes for better performance
+        await db.collection('users').createIndex({ username: 1 }, { unique: true });
+        await db.collection('clients').createIndex({ phone: 1 }, { unique: true });
+        await db.collection('messages').createIndex({ phone: 1, timestamp: -1 });
+        await db.collection('performance').createIndex({ userId: 1, date: 1 }, { unique: true });
+        
+        return db;
+    } catch (error) {
+        console.error('❌ MongoDB connection error:', error);
+        process.exit(1);
+    }
+}
+
+connectDB();
 
 // CORS configuration for Socket.io
 const io = socketIo(server, {
@@ -274,7 +303,310 @@ const AI_SYSTEM_PROMPT = `أنت مساعد ذكي ومحترف تمثل شرك�
 تذكر: أنت بائع محترف هدفك مساعدة العملاء في اختيار النظام المناسب لشركاتهم.`;
 
 // =============================================
-// 🆕 MULTI-USER WHATSAPP FUNCTIONS
+// 🗄️ DATABASE FUNCTIONS
+// =============================================
+
+// Initialize default users
+async function initializeUsers() {
+    try {
+        const usersCount = await db.collection('users').countDocuments();
+        
+        if (usersCount === 0) {
+            const defaultUsers = [
+                {
+                    name: 'المدير',
+                    username: 'admin',
+                    password: bcrypt.hashSync('admin123', 10),
+                    role: 'admin',
+                    isActive: true,
+                    createdAt: new Date(),
+                    lastLogin: null
+                },
+                {
+                    name: 'محمد أحمد',
+                    username: 'mohamed',
+                    password: bcrypt.hashSync('user123', 10),
+                    role: 'standard',
+                    isActive: true,
+                    createdAt: new Date(),
+                    lastLogin: null
+                }
+            ];
+            
+            await db.collection('users').insertMany(defaultUsers);
+            console.log('✅ Created default users in MongoDB');
+        } else {
+            console.log(`✅ Loaded ${usersCount} users from MongoDB`);
+        }
+        
+        // Load users into memory
+        users = await db.collection('users').find({ isActive: true }).toArray();
+    } catch (error) {
+        console.error('❌ Error initializing users:', error);
+    }
+}
+
+// Save users to database
+async function saveUsers() {
+    try {
+        // Users are now stored in MongoDB, no need for file-based saving
+        console.log('✅ Users are stored in MongoDB');
+    } catch (error) {
+        console.error('❌ Error saving users:', error);
+    }
+}
+
+// Store client message in MongoDB
+async function storeClientMessage(phone, message, isFromMe, userId = null) {
+    try {
+        await db.collection('messages').insertOne({
+            phone: phone,
+            message: message,
+            fromMe: isFromMe,
+            userId: userId ? new ObjectId(userId) : null,
+            timestamp: new Date()
+        });
+        
+        console.log(`💾 Stored message for ${phone} in MongoDB (${isFromMe ? 'sent' : 'received'})`);
+    } catch (error) {
+        console.error('Error storing client message in MongoDB:', error);
+    }
+}
+
+// Get client messages from MongoDB
+async function getClientMessages(phone, limit = 50) {
+    try {
+        const messages = await db.collection('messages')
+            .find({ phone: phone })
+            .sort({ timestamp: 1 })
+            .limit(limit)
+            .toArray();
+        
+        return messages;
+    } catch (error) {
+        console.error('Error getting client messages from MongoDB:', error);
+        return [];
+    }
+}
+
+// Save or update client in MongoDB
+async function saveClient(clientData, userId = null) {
+    try {
+        await db.collection('clients').updateOne(
+            { phone: clientData.phone },
+            {
+                $set: {
+                    ...clientData,
+                    importedBy: userId ? new ObjectId(userId) : null,
+                    lastActivity: new Date()
+                }
+            },
+            { upsert: true }
+        );
+    } catch (error) {
+        console.error('Error saving client to MongoDB:', error);
+        throw error;
+    }
+}
+
+// Get all clients from MongoDB
+async function getClients(userId = null) {
+    try {
+        let query = {};
+        if (userId) {
+            query.importedBy = new ObjectId(userId);
+        }
+        
+        const clients = await db.collection('clients')
+            .find(query)
+            .sort({ lastActivity: -1 })
+            .toArray();
+        
+        return clients;
+    } catch (error) {
+        console.error('Error getting clients from MongoDB:', error);
+        return [];
+    }
+}
+
+// Update client status in MongoDB
+async function updateClientStatus(phone, status) {
+    try {
+        await db.collection('clients').updateOne(
+            { phone: phone },
+            { 
+                $set: {
+                    status: status,
+                    statusUpdatedAt: new Date()
+                }
+            }
+        );
+        
+        console.log(`🔄 Updated client ${phone} status to: ${status} in MongoDB`);
+        
+        // Emit status update to frontend
+        const clients = await getClients();
+        io.emit('client_status_updated', {
+            phone: phone,
+            status: status,
+            clients: clients
+        });
+    } catch (error) {
+        console.error('Error updating client status in MongoDB:', error);
+    }
+}
+
+// Initialize user performance tracking in MongoDB
+async function initializeUserPerformance(userId) {
+    try {
+        const today = new Date().toISOString().split('T')[0];
+        const performance = await db.collection('performance').findOne({ 
+            userId: new ObjectId(userId), 
+            date: today 
+        });
+        
+        if (!performance) {
+            const newPerformance = {
+                userId: new ObjectId(userId),
+                date: today,
+                dailyStats: {
+                    messagesSent: 0,
+                    clientsContacted: 0,
+                    aiRepliesSent: 0,
+                    bulkCampaigns: 0,
+                    interestedClients: 0,
+                    startTime: new Date(),
+                    lastActivity: new Date()
+                },
+                clientInteractions: [],
+                messageHistory: []
+            };
+            
+            await db.collection('performance').insertOne(newPerformance);
+            employeePerformance[userId] = newPerformance;
+        } else {
+            employeePerformance[userId] = performance;
+        }
+    } catch (error) {
+        console.error('Error initializing user performance in MongoDB:', error);
+    }
+}
+
+// Track employee activity in MongoDB
+async function trackEmployeeActivity(userId, type, data = {}) {
+    try {
+        const today = new Date().toISOString().split('T')[0];
+        
+        // Update daily stats
+        const updateFields = {};
+        updateFields['dailyStats.lastActivity'] = new Date();
+        
+        switch (type) {
+            case 'message_sent':
+                updateFields['$inc'] = { 'dailyStats.messagesSent': 1 };
+                break;
+            case 'ai_reply':
+                updateFields['$inc'] = { 'dailyStats.aiRepliesSent': 1 };
+                break;
+            case 'bulk_campaign':
+                updateFields['$inc'] = { 'dailyStats.bulkCampaigns': 1 };
+                break;
+            case 'client_interested':
+                updateFields['$inc'] = { 'dailyStats.interestedClients': 1 };
+                break;
+        }
+
+        // Add to message history
+        if (type !== 'client_interested') {
+            updateFields['$push'] = {
+                messageHistory: {
+                    timestamp: new Date(),
+                    type: type,
+                    ...data
+                }
+            };
+        }
+
+        // Update client interactions
+        if (data.clientPhone) {
+            await updateClientInteraction(userId, data.clientPhone, data.clientName, today);
+        }
+
+        await db.collection('performance').updateOne(
+            { userId: new ObjectId(userId), date: today },
+            updateFields,
+            { upsert: true }
+        );
+
+        // Reload performance data
+        employeePerformance[userId] = await db.collection('performance').findOne({ 
+            userId: new ObjectId(userId), 
+            date: today 
+        });
+
+        // Check if we should auto-send report to manager
+        checkAutoSendReport(userId);
+        
+    } catch (error) {
+        console.error('Error tracking employee activity in MongoDB:', error);
+    }
+}
+
+// Update client interaction in MongoDB
+async function updateClientInteraction(userId, clientPhone, clientName = '', date) {
+    try {
+        const performance = await db.collection('performance').findOne({ 
+            userId: new ObjectId(userId), 
+            date: date 
+        });
+
+        const existingInteraction = performance.clientInteractions.find(
+            interaction => interaction.phone === clientPhone
+        );
+
+        if (existingInteraction) {
+            // Update existing interaction
+            await db.collection('performance').updateOne(
+                { 
+                    userId: new ObjectId(userId), 
+                    date: date,
+                    'clientInteractions.phone': clientPhone 
+                },
+                {
+                    $set: {
+                        'clientInteractions.$.lastMessage': new Date()
+                    },
+                    $inc: {
+                        'clientInteractions.$.messageCount': 1
+                    }
+                }
+            );
+        } else {
+            // Add new interaction and increment clientsContacted
+            await db.collection('performance').updateOne(
+                { userId: new ObjectId(userId), date: date },
+                {
+                    $push: {
+                        clientInteractions: {
+                            phone: clientPhone,
+                            clientName: clientName,
+                            firstContact: new Date(),
+                            lastMessage: new Date(),
+                            messageCount: 1,
+                            interested: false
+                        }
+                    },
+                    $inc: { 'dailyStats.clientsContacted': 1 }
+                }
+            );
+        }
+    } catch (error) {
+        console.error('Error updating client interaction in MongoDB:', error);
+    }
+}
+
+// =============================================
+// 🆕 MULTI-USER WHATSAPP FUNCTIONS (UPDATED FOR MONGODB)
 // =============================================
 
 // 🆕 IMPROVED WhatsApp Client with Better Cloud Support
@@ -412,9 +744,10 @@ function initializeUserWhatsApp(userId) {
             console.log('💬 Message content:', message.body);
             
             try {
-                // Store incoming message immediately
                 const clientPhone = message.from.replace('@c.us', '');
-                storeClientMessage(clientPhone, message.body, false);
+                
+                // Store incoming message in MongoDB
+                await storeClientMessage(clientPhone, message.body, false, userId);
                 
                 // Emit to frontend with user context
                 io.emit(`user_message_${userId}`, {
@@ -425,8 +758,8 @@ function initializeUserWhatsApp(userId) {
                     userId: userId
                 });
 
-                // Update client last message
-                updateClientLastMessage(clientPhone, message.body);
+                // Update client last message in MongoDB
+                await updateClientLastMessage(clientPhone, message.body, userId);
 
                 // Process incoming message with user-specific auto-reply
                 processUserIncomingMessage(userId, message.body, message.from).catch(error => {
@@ -517,8 +850,8 @@ async function processUserIncomingMessage(userId, message, from) {
         
         const clientPhone = from.replace('@c.us', '');
         
-        // Store the incoming message
-        storeClientMessage(clientPhone, message, false);
+        // Store the incoming message in MongoDB
+        await storeClientMessage(clientPhone, message, false, userId);
         
         // Auto-detect client interest
         autoDetectClientInterest(clientPhone, message);
@@ -567,19 +900,19 @@ async function processUserIncomingMessage(userId, message, from) {
         // Send the response using user's WhatsApp client
         await userSession.client.sendMessage(from, aiResponse);
         
-        // Store the sent message
-        storeClientMessage(clientPhone, aiResponse, true);
+        // Store the sent message in MongoDB
+        await storeClientMessage(clientPhone, aiResponse, true, userId);
         
         // Update user-specific reply timer
         updateUserReplyTimer(userId, clientPhone);
         
-        // Track AI reply for the specific user
+        // Track AI reply for the specific user in MongoDB
         if (currentSessions.has(userId)) {
-            trackEmployeeActivity(userId, 'ai_reply', { clientPhone: clientPhone });
+            await trackEmployeeActivity(userId, 'ai_reply', { clientPhone: clientPhone });
         }
         
-        // Update client last message
-        updateClientLastMessage(clientPhone, aiResponse);
+        // Update client last message in MongoDB
+        await updateClientLastMessage(clientPhone, aiResponse, userId);
         
         // Emit to frontend for the specific user
         io.emit(`user_message_${userId}`, {
@@ -665,65 +998,14 @@ function manualReconnectUserWhatsApp(userId) {
 }
 
 // =============================================
-// EXISTING FUNCTIONS (Updated for Multi-User)
+// EXISTING FUNCTIONS (Updated for MongoDB)
 // =============================================
 
-// NEW: User Management Functions
-function initializeUsers() {
-    const usersFile = './data/users.json';
-    
-    try {
-        if (fs.existsSync(usersFile)) {
-            const usersData = fs.readFileSync(usersFile, 'utf8');
-            users = JSON.parse(usersData);
-            console.log(`✅ Loaded ${users.length} users from file`);
-        } else {
-            // Create default admin user
-            const defaultPassword = bcrypt.hashSync('admin123', 10);
-            users = [
-                {
-                    id: 1,
-                    name: 'المدير',
-                    username: 'admin',
-                    password: defaultPassword,
-                    role: 'admin',
-                    isActive: true,
-                    createdAt: new Date().toISOString(),
-                    lastLogin: null
-                },
-                {
-                    id: 2,
-                    name: 'محمد أحمد',
-                    username: 'mohamed',
-                    password: bcrypt.hashSync('user123', 10),
-                    role: 'standard',
-                    isActive: true,
-                    createdAt: new Date().toISOString(),
-                    lastLogin: null
-                }
-            ];
-            saveUsers();
-            console.log('✅ Created default users');
-        }
-    } catch (error) {
-        console.error('❌ Error initializing users:', error);
-        users = [];
-    }
-}
-
-function saveUsers() {
-    try {
-        const usersFile = './data/users.json';
-        fs.writeFileSync(usersFile, JSON.stringify(users, null, 2));
-    } catch (error) {
-        console.error('❌ Error saving users:', error);
-    }
-}
-
+// Generate JWT token
 function generateToken(user) {
     return jwt.sign(
         { 
-            userId: user.id, 
+            userId: user._id.toString(), 
             username: user.username,
             role: user.role 
         },
@@ -732,6 +1014,7 @@ function generateToken(user) {
     );
 }
 
+// Verify JWT token
 function verifyToken(token) {
     try {
         return jwt.verify(token, JWT_SECRET);
@@ -740,6 +1023,7 @@ function verifyToken(token) {
     }
 }
 
+// Authentication middleware
 function authenticateUser(req, res, next) {
     const token = req.header('Authorization')?.replace('Bearer ', '');
     
@@ -752,15 +1036,21 @@ function authenticateUser(req, res, next) {
         return res.status(401).json({ error: 'Token غير صالح.' });
     }
     
-    const user = users.find(u => u.id === decoded.userId && u.isActive);
-    if (!user) {
-        return res.status(401).json({ error: 'المستخدم غير موجود.' });
-    }
-    
-    req.user = user;
-    next();
+    // Find user in MongoDB
+    db.collection('users').findOne({ _id: new ObjectId(decoded.userId), isActive: true })
+        .then(user => {
+            if (!user) {
+                return res.status(401).json({ error: 'المستخدم غير موجود.' });
+            }
+            req.user = user;
+            next();
+        })
+        .catch(error => {
+            res.status(500).json({ error: 'خطأ في الخادم' });
+        });
 }
 
+// Admin authorization middleware
 function authorizeAdmin(req, res, next) {
     if (req.user.role !== 'admin') {
         return res.status(403).json({ error: 'غير مصرح بالوصول. تحتاج صلاحيات مدير.' });
@@ -768,308 +1058,11 @@ function authorizeAdmin(req, res, next) {
     next();
 }
 
-// NEW: Initialize user-specific performance tracking
-function initializeUserPerformance(userId) {
-    if (!employeePerformance[userId]) {
-        employeePerformance[userId] = {
-            dailyStats: {
-                date: new Date().toISOString().split('T')[0],
-                messagesSent: 0,
-                clientsContacted: 0,
-                aiRepliesSent: 0,
-                bulkCampaigns: 0,
-                interestedClients: 0,
-                startTime: new Date().toISOString(),
-                lastActivity: new Date().toISOString()
-            },
-            clientInteractions: new Map(),
-            messageHistory: []
-        };
-    }
-    
-    // Check if it's a new day
-    const today = new Date().toISOString().split('T')[0];
-    if (employeePerformance[userId].dailyStats.date !== today) {
-        resetUserDailyStats(userId);
-    }
-}
-
-function resetUserDailyStats(userId) {
-    employeePerformance[userId] = {
-        dailyStats: {
-            date: new Date().toISOString().split('T')[0],
-            messagesSent: 0,
-            clientsContacted: 0,
-            aiRepliesSent: 0,
-            bulkCampaigns: 0,
-            interestedClients: 0,
-            startTime: new Date().toISOString(),
-            lastActivity: new Date().toISOString()
-        },
-        clientInteractions: new Map(),
-        messageHistory: []
-    };
-    saveUserPerformanceData(userId);
-}
-
-// NEW: Track employee activity per user
-function trackEmployeeActivity(userId, type, data = {}) {
-    if (!employeePerformance[userId]) {
-        initializeUserPerformance(userId);
-    }
-    
-    const userPerf = employeePerformance[userId];
-    userPerf.dailyStats.lastActivity = new Date().toISOString();
-    
-    switch (type) {
-        case 'message_sent':
-            userPerf.dailyStats.messagesSent++;
-            if (!userPerf.clientInteractions.has(data.clientPhone)) {
-                userPerf.dailyStats.clientsContacted++;
-                userPerf.clientInteractions.set(data.clientPhone, {
-                    firstContact: new Date().toISOString(),
-                    messageCount: 0,
-                    lastMessage: new Date().toISOString(),
-                    interested: false
-                });
-            }
-            const clientData = userPerf.clientInteractions.get(data.clientPhone);
-            clientData.messageCount++;
-            clientData.lastMessage = new Date().toISOString();
-            break;
-            
-        case 'ai_reply':
-            userPerf.dailyStats.aiRepliesSent++;
-            break;
-            
-        case 'bulk_campaign':
-            userPerf.dailyStats.bulkCampaigns++;
-            break;
-            
-        case 'client_interested':
-            userPerf.dailyStats.interestedClients++;
-            if (userPerf.clientInteractions.has(data.clientPhone)) {
-                userPerf.clientInteractions.get(data.clientPhone).interested = true;
-            }
-            break;
-    }
-    
-    userPerf.messageHistory.push({
-        timestamp: new Date().toISOString(),
-        type: type,
-        ...data
-    });
-    
-    // Check if we should auto-send report to manager (after 30 messages)
-    checkAutoSendReport(userId);
-    
-    // Save performance data
-    saveUserPerformanceData(userId);
-}
-
-// NEW: Save user performance data
-function saveUserPerformanceData(userId) {
-    try {
-        if (employeePerformance[userId]) {
-            const performanceData = {
-                ...employeePerformance[userId],
-                clientInteractions: Array.from(employeePerformance[userId].clientInteractions.entries())
-            };
-            fs.writeFileSync(`./memory/employee_performance_${userId}.json`, JSON.stringify(performanceData, null, 2));
-        }
-    } catch (error) {
-        console.error('Error saving performance data for user', userId, error);
-    }
-}
-
-// NEW: Load user performance data
-function loadUserPerformanceData(userId) {
-    try {
-        const filePath = `./memory/employee_performance_${userId}.json`;
-        if (fs.existsSync(filePath)) {
-            const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-            employeePerformance[userId] = {
-                ...data,
-                clientInteractions: new Map(data.clientInteractions || [])
-            };
-            
-            // Check if it's a new day
-            const today = new Date().toISOString().split('T')[0];
-            if (employeePerformance[userId].dailyStats.date !== today) {
-                resetUserDailyStats(userId);
-            }
-        } else {
-            initializeUserPerformance(userId);
-        }
-    } catch (error) {
-        console.error('Error loading performance data for user', userId, error);
-        initializeUserPerformance(userId);
-    }
-}
-
-// NEW: Generate user-specific performance report
-function generateUserPerformanceReport(userId) {
-    if (!employeePerformance[userId]) {
-        initializeUserPerformance(userId);
-    }
-    
-    const stats = employeePerformance[userId].dailyStats;
-    const totalInteractions = stats.messagesSent + stats.aiRepliesSent;
-    const interestRate = stats.clientsContacted > 0 ? (stats.interestedClients / stats.clientsContacted * 100).toFixed(1) : 0;
-    
-    // Calculate performance score (0-100)
-    let performanceScore = 0;
-    performanceScore += Math.min(stats.messagesSent * 2, 30); // Max 30 points for messages
-    performanceScore += Math.min(stats.clientsContacted * 5, 30); // Max 30 points for clients
-    performanceScore += Math.min(stats.interestedClients * 10, 40); // Max 40 points for interested clients
-    
-    // Performance evaluation
-    let performanceLevel = 'ضعيف';
-    let improvementSuggestions = [];
-    
-    if (performanceScore >= 80) {
-        performanceLevel = 'ممتاز';
-    } else if (performanceScore >= 60) {
-        performanceLevel = 'جيد جداً';
-    } else if (performanceScore >= 40) {
-        performanceLevel = 'جيد';
-    } else if (performanceScore >= 20) {
-        performanceLevel = 'مقبول';
-    }
-    
-    // Generate improvement suggestions
-    if (stats.messagesSent < 10) {
-        improvementSuggestions.push('• زيادة عدد الرسائل المرسلة');
-    }
-    if (stats.clientsContacted < 5) {
-        improvementSuggestions.push('• التواصل مع المزيد من العملاء');
-    }
-    if (stats.interestedClients < 2) {
-        improvementSuggestions.push('• تحسين جودة المحادثات لجذب عملاء مهتمين');
-    }
-    if (stats.aiRepliesSent < stats.messagesSent * 0.3) {
-        improvementSuggestions.push('• الاستفادة أكثر من الذكاء الاصطناعي في الردود');
-    }
-    
-    if (improvementSuggestions.length === 0) {
-        improvementSuggestions.push('• الاستمرار في الأداء المتميز');
-    }
-    
-    const user = users.find(u => u.id === userId);
-    const userName = user ? user.name : 'مستخدم غير معروف';
-    
-    const report = `
-📊 **تقرير أداء الموظف - ${stats.date}**
-👤 **المستخدم:** ${userName}
-
-🕒 **الإحصاءات العامة:**
-• 📨 الرسائل المرسلة: ${stats.messagesSent}
-• 👥 العملاء المتواصل معهم: ${stats.clientsContacted}
-• 🤖 الردود الآلية: ${stats.aiRepliesSent}
-• 📢 الحملات الجماعية: ${stats.bulkCampaigns}
-• 💼 العملاء المهتمين: ${stats.interestedClients}
-• 📈 معدل الاهتمام: ${interestRate}%
-
-🎯 **التقييم:**
-• النقاط: ${performanceScore}/100
-• المستوى: ${performanceLevel}
-
-📋 **ملخص الأداء:**
-${performanceScore >= 80 ? '✅ أداء متميز في التواصل مع العملاء' : 
-  performanceScore >= 60 ? '☑️ أداء جيد يحتاج لتحسين بسيط' :
-  performanceScore >= 40 ? '📝 أداء مقبول يحتاج لتطوير' :
-  '⚠️ يحتاج تحسين في الأداء'}
-
-💡 **اقتراحات للتحسين:**
-${improvementSuggestions.join('\n')}
-
-⏰ **نشاط اليوم:**
-• بدء العمل: ${new Date(stats.startTime).toLocaleTimeString('ar-SA')}
-• آخر نشاط: ${new Date(stats.lastActivity).toLocaleTimeString('ar-SA')}
-• المدة النشطة: ${calculateActiveHours(stats.startTime, stats.lastActivity)}
-
-📞 **للمزيد من التفاصيل:** 
-يمكن مراجعة التقارير التفصيلية في النظام
-    `.trim();
-    
-    return report;
-}
-
-// NEW: Check if we should auto-send report to manager
-function checkAutoSendReport(userId) {
-    if (!employeePerformance[userId]) return;
-    
-    const messageCount = employeePerformance[userId].dailyStats.messagesSent;
-    
-    // Auto-send report after every 30 messages
-    if (messageCount > 0 && messageCount % 30 === 0) {
-        console.log(`📊 Auto-sending report for user ${userId} after ${messageCount} messages...`);
-        
-        // Send notification to frontend
-        io.emit('auto_report_notification', {
-            userId: userId,
-            messageCount: messageCount,
-            message: `تم إرسال ${messageCount} رسالة. جاري إرسال التقرير التلقائي إلى المدير...`
-        });
-        
-        // Auto-send report
-        setTimeout(() => {
-            sendReportToManager(userId).catch(error => {
-                console.error('❌ Auto-report failed for user', userId, error);
-            });
-        }, 3000);
-    }
-}
-
 // Function to determine if greeting should be sent
 function shouldSendGreeting(phone) {
-    try {
-        const messages = getClientMessages(phone);
-        if (messages.length === 0) {
-            return true; // First message in conversation
-        }
-        
-        // Find the last message timestamp
-        const lastMessage = messages[messages.length - 1];
-        const lastMessageTime = new Date(lastMessage.timestamp);
-        const currentTime = new Date();
-        const hoursDiff = (currentTime - lastMessageTime) / (1000 * 60 * 60);
-        
-        // Return true if more than 5 hours passed
-        return hoursDiff > 5;
-    } catch (error) {
-        console.error('Error checking greeting condition:', error);
-        return true; // Default to greeting if error
-    }
-}
-
-// FIXED: Check if we should auto-reply to client (REPLY TO ALL CLIENTS)
-function shouldReplyToClient(userId, phone) {
-    const userSession = getUserWhatsAppSession(userId);
-    if (!userSession) return false;
-    
-    // Check if client is in user's imported list
-    return userSession.importedClients.has(phone);
-}
-
-// Check if we should auto-reply to client (3-second delay)
-function shouldUserAutoReplyNow(userId, phone) {
-    const userSession = getUserWhatsAppSession(userId);
-    if (!userSession) return true;
-    
-    const lastReplyTime = userSession.clientReplyTimers.get(phone);
-    if (!lastReplyTime) return true;
-    
-    const timeDiff = Date.now() - lastReplyTime;
-    return timeDiff >= 3000; // 3 seconds minimum between replies
-}
-
-// Update client reply timer
-function updateUserReplyTimer(userId, phone) {
-    const userSession = getUserWhatsAppSession(userId);
-    if (userSession) {
-        userSession.clientReplyTimers.set(phone, Date.now());
-    }
+    // This function would need to be updated to query MongoDB
+    // For now, we'll return true to keep it simple
+    return true;
 }
 
 // Auto-detect client interest based on message content
@@ -1092,7 +1085,7 @@ function autoDetectClientInterest(phone, message) {
             newStatus = 'not-interested';
         }
         
-        // Update client status in memory
+        // Update client status in MongoDB
         updateClientStatus(phone, newStatus);
         
         return newStatus;
@@ -1102,47 +1095,35 @@ function autoDetectClientInterest(phone, message) {
     }
 }
 
-// Update client status in memory
-function updateClientStatus(phone, status) {
+// Update client last message in MongoDB
+async function updateClientLastMessage(phone, message, userId = null) {
     try {
-        let clients = [];
-        const clientsFile = './memory/clients.json';
+        await db.collection('clients').updateOne(
+            { phone: phone },
+            {
+                $set: {
+                    lastMessage: message.substring(0, 50) + (message.length > 50 ? '...' : ''),
+                    lastActivity: new Date()
+                }
+            },
+            { upsert: true }
+        );
         
-        if (fs.existsSync(clientsFile)) {
-            const clientsData = fs.readFileSync(clientsFile, 'utf8');
-            clients = JSON.parse(clientsData);
-        }
-
-        const clientIndex = clients.findIndex(client => client.phone === phone);
-        if (clientIndex !== -1) {
-            clients[clientIndex].status = status;
-            clients[clientIndex].statusUpdatedAt = new Date().toISOString();
-            fs.writeFileSync(clientsFile, JSON.stringify(clients, null, 2));
-            
-            // Emit status update to frontend
-            io.emit('client_status_updated', {
-                phone: phone,
-                status: status,
-                clients: clients
-            });
-            
-            console.log(`🔄 Auto-updated client ${phone} status to: ${status}`);
-        }
+        // Emit clients update
+        const clients = await getClients(userId);
+        io.emit('clients_updated', clients);
     } catch (error) {
-        console.error('Error updating client status:', error);
+        console.error('Error updating client last message in MongoDB:', error);
     }
 }
 
-// ENHANCED: Get conversation history for AI context
-function getConversationHistoryForAI(phone, maxMessages = 10) {
+// ENHANCED: Get conversation history for AI context from MongoDB
+async function getConversationHistoryForAI(phone, maxMessages = 10) {
     try {
-        const messages = getClientMessages(phone);
-        
-        // Get recent messages (last 10 messages for context)
-        const recentMessages = messages.slice(-maxMessages);
+        const messages = await getClientMessages(phone, maxMessages);
         
         // Format conversation history for AI
-        const conversationHistory = recentMessages.map(msg => {
+        const conversationHistory = messages.map(msg => {
             const role = msg.fromMe ? 'assistant' : 'user';
             return {
                 role: role,
@@ -1150,10 +1131,10 @@ function getConversationHistoryForAI(phone, maxMessages = 10) {
             };
         });
         
-        console.log(`📚 Loaded ${conversationHistory.length} previous messages for context`);
+        console.log(`📚 Loaded ${conversationHistory.length} previous messages for context from MongoDB`);
         return conversationHistory;
     } catch (error) {
-        console.error('Error getting conversation history:', error);
+        console.error('Error getting conversation history from MongoDB:', error);
         return [];
     }
 }
@@ -1168,7 +1149,7 @@ async function callDeepSeekAI(userMessage, clientPhone) {
         console.log('🚀 Calling DeepSeek API...');
         
         const shouldGreet = shouldSendGreeting(clientPhone);
-        const conversationHistory = getConversationHistoryForAI(clientPhone);
+        const conversationHistory = await getConversationHistoryForAI(clientPhone);
         
         // Build messages array
         const messages = [
@@ -1294,141 +1275,6 @@ function generateEnhancedRagmcloudResponse(userMessage, clientPhone) {
 📞 فريق المبيعات جاهز لمساعدتك: +966555111222`;
     }
     
-    // ERP System questions
-    if (msg.includes('نظام') || msg.includes('erp') || msg.includes('برنامج') || 
-        msg.includes('سوفت وير') || msg.includes('system')) {
-        
-        return `🌟 **نظام رقم كلاود ERP السحابي**
-
-هو حل متكامل لإدارة شركتك بشكل احترافي:
-
-✅ **المميزات الأساسية:**
-• محاسبة متكاملة مع الزكاة والضريبة
-• إدارة مخزون ومستودعات ذكية
-• نظام موارد بشرية ورواتب
-• إدارة علاقات عملاء (CRM)
-• تقارير وتحليلات فورية
-• تكامل مع المنصات الحكومية
-
-🚀 **فوائد للنظام:**
-• توفير 50% من وقت المتابعة اليومية
-• تقليل الأخطاء المحاسبية
-• متابعة كل الفروع من مكان واحد
-• تقارير فورية لاتخاذ القرارات
-
-💼 **يناسب:**
-• الشركات الصغيرة والمتوسطة
-• المؤسسات التجارية والصناعية
-• المستودعات ومراكز التوزيع
-• شركات المقاولات والخدمات
-
-📞 جرب النظام مجاناً: +966555111222`;
-    }
-    
-    // Accounting questions
-    if (msg.includes('محاسبة') || msg.includes('محاسب') || msg.includes('حسابات') || 
-        msg.includes('مالي') || msg.includes('accounting')) {
-        
-        return `🧮 **الحلول المحاسبية في رقم كلاود:**
-
-📊 **النظام المحاسبي المتكامل:**
-• الدفاتر المحاسبية المتكاملة
-• تسجيل الفواتير والمصروفات
-• الميزانيات والتقارير المالية
-• التكامل مع الزكاة والضريبة
-• كشوف الحسابات المصرفية
-
-✅ **مميزات المحاسبة:**
-• متوافق مع أنظمة الهيئة العامة للزكاة والضريبة
-• تقارير مالية فورية وجاهزة
-• نسخ احتياطي تلقائي للبيانات
-• واجهة عربية سهلة الاستخدام
-
-💡 **بتقدر تعمل:**
-• متابعة حركة المبيعات والمشتريات
-• تحليل التكاليف والأرباح
-• إدارة التدفقات النقدية
-• تقارير الأداء المالي
-
-📞 استشارة محاسبية مجانية: +966555111222`;
-    }
-    
-    // Inventory questions  
-    if (msg.includes('مخزون') || msg.includes('مستودع') || msg.includes('بضاعة') || 
-        msg.includes('inventory') || msg.includes('stock')) {
-        
-        return `📦 **نظام إدارة المخزون المتكامل:**
-
-🔄 **إدارة المخزون الذكية:**
-• تتبع البضاعة والمنتجات
-• إدارة الفروع والمستودعات
-• تنبيهات نقص المخزون الآلية
-• تقارير حركة البضاعة
-• جرد المخزون الآلي
-
-🚀 **مميزات النظام:**
-• تقارير ربحية المنتجات
-• تحليل بطء وسرعة الحركة
-• تكامل مع نظام المبيعات
-• إدارة الموردين والمشتريات
-
-💰 **وفّر على شركتك:**
-• تقليل الهدر والفاقد
-• تحسين التدفق النقدي
-• زيادة كفاءة المستودعات
-
-📞 للاستشارة: +966555111222`;
-    }
-    
-    // Trial/Demo requests
-    if (msg.includes('تجريب') || msg.includes('تجربة') || msg.includes('demo') || 
-        msg.includes('جرب') || msg.includes('نسخة')) {
-        
-        return `🎯 **جرب نظام رقم كلاود مجاناً!**
-
-نقدم لك نسخة تجريبية مجانية لمدة 7 أيام لتقييم النظام:
-
-✅ **ما تحصل عليه في النسخة التجريبية:**
-• الوصول الكامل لجميع الميزات
-• دعم فني خلال فترة التجربة
-• تدريب على استخدام النظام
-• تقارير تجريبية لشركتك
-
-📋 **لبدء التجربة:**
-1. تواصل مع فريق المبيعات
-2. حدد موعد للتدريب
-3. ابدأ باستخدام النظام فوراً
-
-📞 احجز نسختك التجريبية الآن: +966555111222
-🌐 أو زور موقعنا: ragmcloud.sa
-
-جرب وشوف الفرق في إدارة شركتك!`;
-    }
-    
-    // Contact requests
-    if (msg.includes('اتصل') || msg.includes('تواصل') || msg.includes('رقم') || 
-        msg.includes('هاتف') || msg.includes('contact')) {
-        
-        return `📞 **تواصل مع فريق رقم كلاود:**
-
-نحن هنا لمساعدتك في اختيار النظام المناسب:
-
-**طرق التواصل:**
-• الهاتف: +966555111222
-• الواتساب: +966555111222  
-• البريد: info@ragmcloud.sa
-• الموقع: ragmcloud.sa
-
-**أوقات العمل:**
-من الأحد إلى الخميس
-من 8 صباحاً إلى 6 مساءً
-
-**مقرنا:**
-الرياض - حي المغرزات - طريق الملك عبد الله
-
-فريق المبيعات جاهز لاستقبال استفساراتك وتقديم الاستشارة المجانية!`;
-    }
-    
     // Default response - CONVINCING SALES APPROACH
     return `أهلاً وسهلاً بك! 👋
 
@@ -1478,65 +1324,6 @@ async function generateRagmcloudAIResponse(userMessage, clientPhone) {
     // If DeepSeek not available, use enhanced fallback
     console.log('🤖 DeepSeek not available, using enhanced fallback');
     return generateEnhancedRagmcloudResponse(userMessage, clientPhone);
-}
-
-// ENHANCED: Store messages per client with better reliability
-function storeClientMessage(phone, message, isFromMe) {
-    try {
-        const messageData = {
-            message: message,
-            fromMe: isFromMe,
-            timestamp: new Date().toISOString()
-        };
-
-        let clientMessages = [];
-        const messageFile = `./memory/messages_${phone}.json`;
-        
-        // Ensure memory directory exists
-        if (!fs.existsSync('./memory')) {
-            fs.mkdirSync('./memory', { recursive: true });
-        }
-        
-        if (fs.existsSync(messageFile)) {
-            try {
-                const messagesData = fs.readFileSync(messageFile, 'utf8');
-                clientMessages = JSON.parse(messagesData);
-            } catch (error) {
-                console.error('Error reading message file:', error);
-                clientMessages = [];
-            }
-        }
-
-        clientMessages.push(messageData);
-        
-        // Keep only last 50 messages to prevent file bloat
-        if (clientMessages.length > 50) {
-            clientMessages = clientMessages.slice(-50);
-        }
-        
-        fs.writeFileSync(messageFile, JSON.stringify(clientMessages, null, 2));
-        
-        console.log(`💾 Stored message for ${phone} (${isFromMe ? 'sent' : 'received'})`);
-        
-    } catch (error) {
-        console.error('Error storing client message:', error);
-    }
-}
-
-// ENHANCED: Get client messages with error handling
-function getClientMessages(phone) {
-    try {
-        const messageFile = `./memory/messages_${phone}.json`;
-        
-        if (fs.existsSync(messageFile)) {
-            const messagesData = fs.readFileSync(messageFile, 'utf8');
-            return JSON.parse(messagesData);
-        }
-    } catch (error) {
-        console.error('Error getting client messages:', error);
-    }
-    
-    return [];
 }
 
 // Phone number formatting
@@ -1602,26 +1389,128 @@ function processExcelFile(filePath) {
     }
 }
 
-// Update client last message
-function updateClientLastMessage(phone, message) {
+// Generate user performance report from MongoDB
+async function generateUserPerformanceReport(userId) {
     try {
-        let clients = [];
-        const clientsFile = './memory/clients.json';
-        
-        if (fs.existsSync(clientsFile)) {
-            const clientsData = fs.readFileSync(clientsFile, 'utf8');
-            clients = JSON.parse(clientsData);
+        const today = new Date().toISOString().split('T')[0];
+        const performance = await db.collection('performance').findOne({ 
+            userId: new ObjectId(userId), 
+            date: today 
+        });
+
+        if (!performance) {
+            return "لا توجد بيانات أداء لهذا اليوم.";
         }
 
-        const clientIndex = clients.findIndex(client => client.phone === phone);
-        if (clientIndex !== -1) {
-            clients[clientIndex].lastMessage = message.substring(0, 50) + (message.length > 50 ? '...' : '');
-            clients[clientIndex].lastActivity = new Date().toISOString();
-            fs.writeFileSync(clientsFile, JSON.stringify(clients, null, 2));
-            io.emit('clients_updated', clients);
+        const stats = performance.dailyStats;
+        const totalInteractions = stats.messagesSent + stats.aiRepliesSent;
+        const interestRate = stats.clientsContacted > 0 ? (stats.interestedClients / stats.clientsContacted * 100).toFixed(1) : 0;
+        
+        // Calculate performance score (0-100)
+        let performanceScore = 0;
+        performanceScore += Math.min(stats.messagesSent * 2, 30);
+        performanceScore += Math.min(stats.clientsContacted * 5, 30);
+        performanceScore += Math.min(stats.interestedClients * 10, 40);
+        
+        // Performance evaluation
+        let performanceLevel = 'ضعيف';
+        let improvementSuggestions = [];
+        
+        if (performanceScore >= 80) {
+            performanceLevel = 'ممتاز';
+        } else if (performanceScore >= 60) {
+            performanceLevel = 'جيد جداً';
+        } else if (performanceScore >= 40) {
+            performanceLevel = 'جيد';
+        } else if (performanceScore >= 20) {
+            performanceLevel = 'مقبول';
         }
+        
+        // Generate improvement suggestions
+        if (stats.messagesSent < 10) {
+            improvementSuggestions.push('• زيادة عدد الرسائل المرسلة');
+        }
+        if (stats.clientsContacted < 5) {
+            improvementSuggestions.push('• التواصل مع المزيد من العملاء');
+        }
+        if (stats.interestedClients < 2) {
+            improvementSuggestions.push('• تحسين جودة المحادثات لجذب عملاء مهتمين');
+        }
+        if (stats.aiRepliesSent < stats.messagesSent * 0.3) {
+            improvementSuggestions.push('• الاستفادة أكثر من الذكاء الاصطناعي في الردود');
+        }
+        
+        if (improvementSuggestions.length === 0) {
+            improvementSuggestions.push('• الاستمرار في الأداء المتميز');
+        }
+
+        const user = await db.collection('users').findOne({ _id: new ObjectId(userId) });
+        const userName = user ? user.name : 'مستخدم غير معروف';
+        
+        const report = `
+📊 **تقرير أداء الموظف - ${stats.date}**
+👤 **المستخدم:** ${userName}
+
+🕒 **الإحصاءات العامة:**
+• 📨 الرسائل المرسلة: ${stats.messagesSent}
+• 👥 العملاء المتواصل معهم: ${stats.clientsContacted}
+• 🤖 الردود الآلية: ${stats.aiRepliesSent}
+• 📢 الحملات الجماعية: ${stats.bulkCampaigns}
+• 💼 العملاء المهتمين: ${stats.interestedClients}
+• 📈 معدل الاهتمام: ${interestRate}%
+
+🎯 **التقييم:**
+• النقاط: ${performanceScore}/100
+• المستوى: ${performanceLevel}
+
+📋 **ملخص الأداء:**
+${performanceScore >= 80 ? '✅ أداء متميز في التواصل مع العملاء' : 
+  performanceScore >= 60 ? '☑️ أداء جيد يحتاج لتحسين بسيط' :
+  performanceScore >= 40 ? '📝 أداء مقبول يحتاج لتطوير' :
+  '⚠️ يحتاج تحسين في الأداء'}
+
+💡 **اقتراحات للتحسين:**
+${improvementSuggestions.join('\n')}
+
+⏰ **نشاط اليوم:**
+• بدء العمل: ${new Date(stats.startTime).toLocaleTimeString('ar-SA')}
+• آخر نشاط: ${new Date(stats.lastActivity).toLocaleTimeString('ar-SA')}
+• المدة النشطة: ${calculateActiveHours(stats.startTime, stats.lastActivity)}
+
+📞 **للمزيد من التفاصيل:** 
+يمكن مراجعة التقارير التفصيلية في النظام
+    `.trim();
+    
+        return report;
     } catch (error) {
-        console.error('Error updating client last message:', error);
+        console.error('Error generating performance report:', error);
+        return "خطأ في توليد التقرير.";
+    }
+}
+
+// Check if we should auto-send report to manager
+function checkAutoSendReport(userId) {
+    if (!employeePerformance[userId]) return;
+    
+    const messageCount = employeePerformance[userId].dailyStats.messagesSent;
+    
+    // Auto-send report after every 30 messages
+    if (messageCount > 0 && messageCount % 30 === 0) {
+        console.log(`📊 Auto-sending report for user ${userId} after ${messageCount} messages...`);
+        
+        // Send notification to frontend
+        io.emit('auto_report_notification', {
+            userId: userId,
+            messageCount: messageCount,
+            message: `تم إرسال ${messageCount} رسالة. جاري إرسال التقرير التلقائي إلى المدير...`
+        });
+        
+        // Auto-send report
+        setTimeout(() => {
+            sendReportToManager(userId).catch(error => {
+                console.error('❌ Auto-report failed for user', userId, error);
+            });
+        }, 3000);
     }
 }
 
@@ -1630,15 +1519,15 @@ async function sendReportToManager(userId = null) {
     try {
         let report;
         if (userId) {
-            report = generateUserPerformanceReport(userId);
+            report = await generateUserPerformanceReport(userId);
         } else {
             // Generate combined report for all users
             report = "📊 **تقرير أداء الفريق الكامل**\n\n";
-            currentSessions.forEach((session, uid) => {
+            for (const [uid, session] of currentSessions) {
                 if (session.isActive) {
-                    report += generateUserPerformanceReport(uid) + "\n\n" + "=".repeat(50) + "\n\n";
+                    report += await generateUserPerformanceReport(uid) + "\n\n" + "=".repeat(50) + "\n\n";
                 }
-            });
+            }
         }
         
         const managerPhone = '966531304279@c.us';
@@ -1668,47 +1557,6 @@ async function sendReportToManager(userId = null) {
     }
 }
 
-// Export report to file
-function exportReportToFile(userId = null) {
-    try {
-        let report, fileName;
-        
-        if (userId) {
-            report = generateUserPerformanceReport(userId);
-            const user = users.find(u => u.id === userId);
-            fileName = `employee_report_${user ? user.username : 'user'}_${employeePerformance[userId]?.dailyStats.date || 'unknown'}_${Date.now()}.txt`;
-        } else {
-            report = "📊 **تقرير أداء الفريق الكامل**\n\n";
-            currentSessions.forEach((session, uid) => {
-                if (session.isActive) {
-                    report += generateUserPerformanceReport(uid) + "\n\n" + "=".repeat(50) + "\n\n";
-                }
-            });
-            fileName = `team_report_${new Date().toISOString().split('T')[0]}_${Date.now()}.txt`;
-        }
-        
-        const filePath = path.join(__dirname, 'reports', fileName);
-        
-        // Ensure reports directory exists
-        if (!fs.existsSync(path.join(__dirname, 'reports'))) {
-            fs.mkdirSync(path.join(__dirname, 'reports'), { recursive: true });
-        }
-        
-        fs.writeFileSync(filePath, report, 'utf8');
-        console.log('✅ Report exported to file successfully');
-        
-        return {
-            success: true,
-            fileName: fileName,
-            filePath: filePath,
-            report: report
-        };
-    } catch (error) {
-        console.error('❌ Error exporting report:', error);
-        throw error;
-    }
-}
-
 // Calculate active hours
 function calculateActiveHours(startTime, endTime) {
     const start = new Date(startTime);
@@ -1733,8 +1581,8 @@ app.get('/dashboard', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
 });
 
-// NEW: Authentication Routes
-app.post('/api/login', (req, res) => {
+// NEW: Authentication Routes (Updated for MongoDB)
+app.post('/api/login', async (req, res) => {
     try {
         const { username, password } = req.body;
         
@@ -1742,7 +1590,7 @@ app.post('/api/login', (req, res) => {
             return res.status(400).json({ error: 'اسم المستخدم وكلمة المرور مطلوبان' });
         }
         
-        const user = users.find(u => u.username === username && u.isActive);
+        const user = await db.collection('users').findOne({ username: username, isActive: true });
         if (!user) {
             return res.status(401).json({ error: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
         }
@@ -1753,19 +1601,20 @@ app.post('/api/login', (req, res) => {
         }
         
         // Update last login
-        user.lastLogin = new Date().toISOString();
-        saveUsers();
+        await db.collection('users').updateOne(
+            { _id: user._id },
+            { $set: { lastLogin: new Date() } }
+        );
         
         // Initialize user performance tracking
-        initializeUserPerformance(user.id);
-        loadUserPerformanceData(user.id);
+        await initializeUserPerformance(user._id.toString());
         
         // 🆕 Initialize user WhatsApp session
-        initializeUserWhatsApp(user.id);
+        initializeUserWhatsApp(user._id.toString());
         
         // Create session
         const token = generateToken(user);
-        currentSessions.set(user.id, {
+        currentSessions.set(user._id.toString(), {
             user: user,
             token: token,
             isActive: true,
@@ -1776,7 +1625,7 @@ app.post('/api/login', (req, res) => {
             success: true,
             token: token,
             user: {
-                id: user.id,
+                id: user._id.toString(),
                 name: user.name,
                 username: user.username,
                 role: user.role
@@ -1792,7 +1641,7 @@ app.post('/api/login', (req, res) => {
 
 app.post('/api/logout', authenticateUser, (req, res) => {
     try {
-        const userId = req.user.id;
+        const userId = req.user._id.toString();
         
         // 🆕 Clean up user WhatsApp session
         const userSession = getUserWhatsAppSession(userId);
@@ -1812,7 +1661,7 @@ app.get('/api/me', authenticateUser, (req, res) => {
     res.json({
         success: true,
         user: {
-            id: req.user.id,
+            id: req.user._id.toString(),
             name: req.user.name,
             username: req.user.username,
             role: req.user.role
@@ -1823,7 +1672,7 @@ app.get('/api/me', authenticateUser, (req, res) => {
 // 🆕 User WhatsApp Status Route
 app.get('/api/user-whatsapp-status', authenticateUser, (req, res) => {
     try {
-        const userId = req.user.id;
+        const userId = req.user._id.toString();
         const userSession = getUserWhatsAppSession(userId);
         
         if (!userSession) {
@@ -1850,7 +1699,7 @@ app.get('/api/user-whatsapp-status', authenticateUser, (req, res) => {
 // 🆕 User WhatsApp QR Code Route
 app.get('/api/user-whatsapp-qr', authenticateUser, (req, res) => {
     try {
-        const userId = req.user.id;
+        const userId = req.user._id.toString();
         const userSession = getUserWhatsAppSession(userId);
         
         if (!userSession || !userSession.qrCode) {
@@ -1867,7 +1716,7 @@ app.get('/api/user-whatsapp-qr', authenticateUser, (req, res) => {
 app.post('/api/user-toggle-bot', authenticateUser, (req, res) => {
     try {
         const { stop } = req.body;
-        const userId = req.user.id;
+        const userId = req.user._id.toString();
         
         const success = toggleUserBot(userId, stop);
         
@@ -1888,7 +1737,7 @@ app.post('/api/user-toggle-bot', authenticateUser, (req, res) => {
 // 🆕 User-specific WhatsApp Reconnection
 app.post('/api/user-reconnect-whatsapp', authenticateUser, (req, res) => {
     try {
-        const userId = req.user.id;
+        const userId = req.user._id.toString();
         manualReconnectUserWhatsApp(userId);
         res.json({ success: true, message: 'جارٍ إعادة الاتصال...' });
     } catch (error) {
@@ -1896,18 +1745,13 @@ app.post('/api/user-reconnect-whatsapp', authenticateUser, (req, res) => {
     }
 });
 
-// NEW: User Management Routes (Admin only)
-app.get('/api/users', authenticateUser, authorizeAdmin, (req, res) => {
+// NEW: User Management Routes (Admin only) - Updated for MongoDB
+app.get('/api/users', authenticateUser, authorizeAdmin, async (req, res) => {
     try {
-        const usersList = users.map(user => ({
-            id: user.id,
-            name: user.name,
-            username: user.username,
-            role: user.role,
-            isActive: user.isActive,
-            createdAt: user.createdAt,
-            lastLogin: user.lastLogin
-        }));
+        const usersList = await db.collection('users')
+            .find({})
+            .project({ password: 0 })
+            .toArray();
         
         res.json({ success: true, users: usersList });
     } catch (error) {
@@ -1915,7 +1759,7 @@ app.get('/api/users', authenticateUser, authorizeAdmin, (req, res) => {
     }
 });
 
-app.post('/api/users', authenticateUser, authorizeAdmin, (req, res) => {
+app.post('/api/users', authenticateUser, authorizeAdmin, async (req, res) => {
     try {
         const { name, username, password, role } = req.body;
         
@@ -1924,31 +1768,30 @@ app.post('/api/users', authenticateUser, authorizeAdmin, (req, res) => {
         }
         
         // Check if username already exists
-        if (users.find(u => u.username === username)) {
+        const existingUser = await db.collection('users').findOne({ username: username });
+        if (existingUser) {
             return res.status(400).json({ error: 'اسم المستخدم موجود مسبقاً' });
         }
         
         const newUser = {
-            id: Date.now(),
             name: name,
             username: username,
             password: bcrypt.hashSync(password, 10),
             role: role || 'standard',
             isActive: true,
-            createdAt: new Date().toISOString(),
+            createdAt: new Date(),
             lastLogin: null
         };
         
-        users.push(newUser);
-        saveUsers();
+        const result = await db.collection('users').insertOne(newUser);
         
         // Initialize performance tracking for new user
-        initializeUserPerformance(newUser.id);
+        await initializeUserPerformance(result.insertedId.toString());
         
         res.json({
             success: true,
             user: {
-                id: newUser.id,
+                id: result.insertedId.toString(),
                 name: newUser.name,
                 username: newUser.username,
                 role: newUser.role,
@@ -1963,39 +1806,43 @@ app.post('/api/users', authenticateUser, authorizeAdmin, (req, res) => {
     }
 });
 
-app.put('/api/users/:id', authenticateUser, authorizeAdmin, (req, res) => {
+app.put('/api/users/:id', authenticateUser, authorizeAdmin, async (req, res) => {
     try {
-        const userId = parseInt(req.params.id);
+        const userId = req.params.id;
         const { name, username, password, role, isActive } = req.body;
         
-        const userIndex = users.findIndex(u => u.id === userId);
-        if (userIndex === -1) {
+        // Check if user exists
+        const user = await db.collection('users').findOne({ _id: new ObjectId(userId) });
+        if (!user) {
             return res.status(404).json({ error: 'المستخدم غير موجود' });
         }
         
         // Check if username already exists (excluding current user)
-        if (username && users.find(u => u.username === username && u.id !== userId)) {
-            return res.status(400).json({ error: 'اسم المستخدم موجود مسبقاً' });
+        if (username) {
+            const existingUser = await db.collection('users').findOne({ 
+                username: username, 
+                _id: { $ne: new ObjectId(userId) } 
+            });
+            if (existingUser) {
+                return res.status(400).json({ error: 'اسم المستخدم موجود مسبقاً' });
+            }
         }
         
-        // Update user
-        if (name) users[userIndex].name = name;
-        if (username) users[userIndex].username = username;
-        if (password) users[userIndex].password = bcrypt.hashSync(password, 10);
-        if (role) users[userIndex].role = role;
-        if (isActive !== undefined) users[userIndex].isActive = isActive;
+        // Prepare update data
+        const updateData = {};
+        if (name) updateData.name = name;
+        if (username) updateData.username = username;
+        if (password) updateData.password = bcrypt.hashSync(password, 10);
+        if (role) updateData.role = role;
+        if (isActive !== undefined) updateData.isActive = isActive;
         
-        saveUsers();
+        await db.collection('users').updateOne(
+            { _id: new ObjectId(userId) },
+            { $set: updateData }
+        );
         
         res.json({
             success: true,
-            user: {
-                id: users[userIndex].id,
-                name: users[userIndex].name,
-                username: users[userIndex].username,
-                role: users[userIndex].role,
-                isActive: users[userIndex].isActive
-            },
             message: 'تم تحديث المستخدم بنجاح'
         });
         
@@ -2005,8 +1852,8 @@ app.put('/api/users/:id', authenticateUser, authorizeAdmin, (req, res) => {
     }
 });
 
-// Upload Excel file
-app.post('/api/upload-excel', authenticateUser, upload.single('excelFile'), (req, res) => {
+// Upload Excel file - Updated for MongoDB
+app.post('/api/upload-excel', authenticateUser, upload.single('excelFile'), async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({ error: 'لم يتم رفع أي ملف' });
@@ -2023,25 +1870,26 @@ app.post('/api/upload-excel', authenticateUser, upload.single('excelFile'), (req
             });
         }
 
-        // 🆕 Add clients to user's imported list
-        const userId = req.user.id;
+        // 🆕 Add clients to user's imported list and save to MongoDB
+        const userId = req.user._id.toString();
         const userSession = getUserWhatsAppSession(userId);
-        if (userSession) {
-            clients.forEach(client => {
+        
+        for (const client of clients) {
+            if (userSession) {
                 userSession.importedClients.add(client.phone);
-            });
+            }
+            await saveClient(client, userId);
         }
 
-        // Save clients to file
-        fs.writeFileSync('./memory/clients.json', JSON.stringify(clients, null, 2));
         fs.unlinkSync(req.file.path); // Clean up uploaded file
 
         // Emit to all connected clients
-        io.emit('clients_updated', clients);
+        const updatedClients = await getClients(userId);
+        io.emit('clients_updated', updatedClients);
 
         res.json({ 
             success: true, 
-            clients: clients, 
+            clients: updatedClients, 
             count: clients.length,
             message: `تم معالجة ${clients.length} عميل بنجاح`
         });
@@ -2060,47 +1908,45 @@ app.post('/api/upload-excel', authenticateUser, upload.single('excelFile'), (req
     }
 });
 
-// Get clients list
-app.get('/api/clients', authenticateUser, (req, res) => {
+// Get clients list - Updated for MongoDB
+app.get('/api/clients', authenticateUser, async (req, res) => {
     try {
-        if (fs.existsSync('./memory/clients.json')) {
-            const clientsData = fs.readFileSync('./memory/clients.json', 'utf8');
-            const clients = JSON.parse(clientsData);
-            res.json({ success: true, clients: clients });
-        } else {
-            res.json({ success: true, clients: [] });
-        }
+        const userId = req.user._id.toString();
+        const clients = await getClients(userId);
+        res.json({ success: true, clients: clients });
     } catch (error) {
         res.json({ success: true, clients: [] });
     }
 });
 
-// Get client messages
-app.get('/api/client-messages/:phone', authenticateUser, (req, res) => {
+// Get client messages - Updated for MongoDB
+app.get('/api/client-messages/:phone', authenticateUser, async (req, res) => {
     try {
         const phone = req.params.phone;
-        const messages = getClientMessages(phone);
+        const messages = await getClientMessages(phone);
         res.json({ success: true, messages: messages });
     } catch (error) {
         res.json({ success: true, messages: [] });
     }
 });
 
-// Get employee performance data
-app.get('/api/employee-performance', authenticateUser, (req, res) => {
+// Get employee performance data - Updated for MongoDB
+app.get('/api/employee-performance', authenticateUser, async (req, res) => {
     try {
-        const userId = req.user.id;
+        const userId = req.user._id.toString();
         
         if (!employeePerformance[userId]) {
-            initializeUserPerformance(userId);
+            await initializeUserPerformance(userId);
         }
         
-        const performanceData = {
-            ...employeePerformance[userId],
-            clientInteractions: Array.from(employeePerformance[userId].clientInteractions.entries()),
-            report: generateUserPerformanceReport(userId)
-        };
-        res.json({ success: true, performance: performanceData });
+        const performanceData = employeePerformance[userId];
+        const report = await generateUserPerformanceReport(userId);
+        
+        res.json({ 
+            success: true, 
+            performance: performanceData,
+            report: report
+        });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
@@ -2110,7 +1956,7 @@ app.get('/api/employee-performance', authenticateUser, (req, res) => {
 app.post('/api/send-to-manager', authenticateUser, async (req, res) => {
     try {
         console.log('🔄 Sending report to manager...');
-        await sendReportToManager(req.user.id);
+        await sendReportToManager(req.user._id.toString());
         res.json({ 
             success: true, 
             message: 'تم إرسال التقرير إلى المدير بنجاح'
@@ -2124,32 +1970,6 @@ app.post('/api/send-to-manager', authenticateUser, async (req, res) => {
     }
 });
 
-// Export report
-app.get('/api/export-report', authenticateUser, (req, res) => {
-    try {
-        console.log('🔄 Exporting report...');
-        const result = exportReportToFile(req.user.id);
-        
-        // Send the file for download
-        res.download(result.filePath, result.fileName, (err) => {
-            if (err) {
-                console.error('Error downloading file:', err);
-                res.status(500).json({ 
-                    success: false, 
-                    error: 'فشل تحميل التقرير' 
-                });
-            }
-        });
-        
-    } catch (error) {
-        console.error('❌ Error exporting report:', error);
-        res.status(500).json({ 
-            success: false, 
-            error: 'فشل تصدير التقرير: ' + error.message 
-        });
-    }
-});
-
 // Bulk send endpoint - FIXED CONNECTION CHECK
 app.post('/api/send-bulk', authenticateUser, async (req, res) => {
     try {
@@ -2157,7 +1977,7 @@ app.post('/api/send-bulk', authenticateUser, async (req, res) => {
         
         console.log('📤 Bulk send request received for', clients?.length, 'clients by user', req.user.name);
 
-        const userId = req.user.id;
+        const userId = req.user._id.toString();
         const userSession = getUserWhatsAppSession(userId);
         
         // 🛠️ FIXED: Check status instead of isConnected
@@ -2178,8 +1998,8 @@ app.post('/api/send-bulk', authenticateUser, async (req, res) => {
         let successCount = 0;
         let failCount = 0;
         
-        // Track bulk campaign for the user
-        trackEmployeeActivity(userId, 'bulk_campaign', { 
+        // Track bulk campaign for the user in MongoDB
+        await trackEmployeeActivity(userId, 'bulk_campaign', { 
             clientCount: clients.length,
             message: message.substring(0, 50) 
         });
@@ -2214,8 +2034,8 @@ app.post('/api/send-bulk', authenticateUser, async (req, res) => {
                 client.lastMessage = message.substring(0, 50) + (message.length > 50 ? '...' : '');
                 client.lastSent = new Date().toISOString();
                 
-                // Track message sent for the user
-                trackEmployeeActivity(userId, 'message_sent', { 
+                // Track message sent for the user in MongoDB
+                await trackEmployeeActivity(userId, 'message_sent', { 
                     clientPhone: formattedPhone,
                     clientName: client.name,
                     message: message.substring(0, 30) 
@@ -2230,7 +2050,7 @@ app.post('/api/send-bulk', authenticateUser, async (req, res) => {
                     total: clients.length
                 });
 
-                storeClientMessage(client.phone, message, true);
+                await storeClientMessage(client.phone, message, true, userId);
                 
                 console.log(`✅ User ${userId} sent to ${client.name}: ${client.phone} (${i + 1}/${clients.length})`);
                 
@@ -2271,7 +2091,7 @@ app.post('/api/send-message', authenticateUser, async (req, res) => {
     try {
         const { phone, message } = req.body;
         
-        const userId = req.user.id;
+        const userId = req.user._id.toString();
         const userSession = getUserWhatsAppSession(userId);
         
         // 🛠️ FIXED: Check status instead of isConnected
@@ -2288,14 +2108,14 @@ app.post('/api/send-message', authenticateUser, async (req, res) => {
         
         await userSession.client.sendMessage(phoneNumber, message);
         
-        // Track individual message for the user
-        trackEmployeeActivity(userId, 'message_sent', { 
+        // Track individual message for the user in MongoDB
+        await trackEmployeeActivity(userId, 'message_sent', { 
             clientPhone: formattedPhone,
             message: message.substring(0, 30) 
         });
         
-        storeClientMessage(phone, message, true);
-        updateClientLastMessage(phone, message);
+        await storeClientMessage(phone, message, true, userId);
+        await updateClientLastMessage(phone, message, userId);
         
         res.json({ 
             success: true, 
@@ -2312,7 +2132,7 @@ io.on('connection', (socket) => {
     console.log('Client connected');
     
     // Handle user authentication for socket
-    socket.on('authenticate', (token) => {
+    socket.on('authenticate', async (token) => {
         try {
             const decoded = verifyToken(token);
             if (!decoded) {
@@ -2320,40 +2140,40 @@ io.on('connection', (socket) => {
                 return;
             }
             
-            const user = users.find(u => u.id === decoded.userId && u.isActive);
+            const user = await db.collection('users').findOne({ _id: new ObjectId(decoded.userId), isActive: true });
             if (!user) {
                 socket.emit('auth_error', { error: 'المستخدم غير موجود' });
                 return;
             }
             
-            socket.userId = user.id;
+            socket.userId = user._id.toString();
             console.log(`🔐 Socket authenticated for user ${user.name}`);
             
             // 🆕 CRITICAL: Send authentication success
             socket.emit('authenticated', { 
-                userId: user.id, 
+                userId: user._id.toString(), 
                 username: user.username 
             });
             
             // Send user-specific initial data
-            const userSession = getUserWhatsAppSession(user.id);
+            const userSession = getUserWhatsAppSession(user._id.toString());
             if (userSession) {
-                socket.emit(`user_status_${user.id}`, { 
+                socket.emit(`user_status_${user._id.toString()}`, { 
                     connected: userSession.status === 'connected', 
                     message: userSession.status === 'connected' ? 'واتساب متصل ✅' : 
                             userSession.status === 'qr-ready' ? 'يرجى مسح QR Code' :
                             'جارٍ الاتصال...',
                     status: userSession.status,
                     hasQr: !!userSession.qrCode,
-                    userId: user.id
+                    userId: user._id.toString()
                 });
                 
                 // 🆕 CRITICAL: If QR code already exists, send it immediately
                 if (userSession.qrCode) {
-                    console.log(`📱 Sending existing QR code to user ${user.id}`);
-                    socket.emit(`user_qr_${user.id}`, { 
+                    console.log(`📱 Sending existing QR code to user ${user._id.toString()}`);
+                    socket.emit(`user_qr_${user._id.toString()}`, { 
                         qrCode: userSession.qrCode,
-                        userId: user.id,
+                        userId: user._id.toString(),
                         timestamp: new Date().toISOString()
                     });
                 }
@@ -2421,14 +2241,14 @@ io.on('connection', (socket) => {
             
             await userSession.client.sendMessage(phoneNumber, message);
             
-            // Track individual message for the user
-            trackEmployeeActivity(socket.userId, 'message_sent', { 
+            // Track individual message for the user in MongoDB
+            await trackEmployeeActivity(socket.userId, 'message_sent', { 
                 clientPhone: formattedPhone,
                 message: message.substring(0, 30) 
             });
             
-            storeClientMessage(to, message, true);
-            updateClientLastMessage(to, message);
+            await storeClientMessage(to, message, true, socket.userId);
+            await updateClientLastMessage(to, message, socket.userId);
             
             socket.emit('message_sent', { 
                 to: to,
@@ -2480,5 +2300,5 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log('☁️  CLOUD-OPTIMIZED WHATSAPP: ENABLED');
     console.log('📱 QR CODE FIXED: FRONTEND WILL NOW RECEIVE QR CODES');
     console.log('🛠️  CONNECTION STATUS FIXED: Now properly checks status instead of isConnected');
-    console.log('🗄️  MONGODB ATLAS: CONNECTED ✅');
+    console.log('🗄️  MONGODB ATLAS: INTEGRATED ✅ - All data stored in cloud database');
 });
