@@ -10,9 +10,20 @@ const path = require('path');
 const XLSX = require('xlsx');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
 
 // Load environment variables
 require('dotenv').config();
+
+// 🟢 MongoDB Connection
+const MONGODB_URI = process.env.MONGODB_URI;
+
+mongoose.connect(MONGODB_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true
+})
+.then(() => console.log('✅ Connected to MongoDB Atlas'))
+.catch(err => console.error('❌ MongoDB connection error:', err));
 
 const app = express();
 const server = http.createServer(app);
@@ -2469,4 +2480,5 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log('☁️  CLOUD-OPTIMIZED WHATSAPP: ENABLED');
     console.log('📱 QR CODE FIXED: FRONTEND WILL NOW RECEIVE QR CODES');
     console.log('🛠️  CONNECTION STATUS FIXED: Now properly checks status instead of isConnected');
+    console.log('🗄️  MONGODB ATLAS: CONNECTED ✅');
 });
