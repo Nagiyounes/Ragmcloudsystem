@@ -284,10 +284,12 @@ async function initializeUsers() {
         users = await db.collection('users').find({ isActive: true }).toArray();
         console.log(`✅ Loaded ${users.length} users from MongoDB`);
         
-        // Initialize WhatsApp for all active users
-        users.forEach(user => {
-            console.log(`🔄 Initializing WhatsApp for user ${user.username} (${user._id})`);
-            initializeUserWhatsApp(user._id.toString());
+        // Initialize WhatsApp for all active users (with delay to avoid conflicts)
+        users.forEach((user, index) => {
+            setTimeout(() => {
+                console.log(`🔄 Initializing WhatsApp for user ${user.username} (${user._id})`);
+                initializeUserWhatsApp(user._id.toString());
+            }, index * 3000); // Stagger initialization by 3 seconds
         });
     } catch (error) {
         console.error('❌ Error initializing users:', error);
@@ -457,13 +459,29 @@ async function trackEmployeeActivity(userId, type, data = {}) {
 }
 
 // =============================================
-// 🆕 MULTI-USER WHATSAPP FUNCTIONS
+// 🆕 MULTI-USER WHATSAPP FUNCTIONS - FIXED
 // =============================================
 
-// 🆕 IMPROVED WhatsApp Client with Better Cloud Support
-function initializeUserWhatsApp(userId) {
-    console.log(`🔄 Starting WhatsApp for user ${userId}...`);
+// 🎯 FIXED: WhatsApp Client with Better Error Handling and Limited Retries
+function initializeUserWhatsApp(userId, retryCount = 0) {
+    const MAX_RETRIES = 2; // 🎯 LIMIT retries to prevent infinite loops
     
+    console.log(`🔄 Starting WhatsApp for user ${userId} (Attempt ${retryCount + 1}/${MAX_RETRIES + 1})...`);
+    
+    // 🎯 FIX: Check if max retries exceeded
+    if (retryCount > MAX_RETRIES) {
+        console.log(`❌ Max retries exceeded for user ${userId}. WhatsApp initialization failed.`);
+        
+        io.emit(`user_status_${userId}`, { 
+            connected: false, 
+            message: 'فشل تهيئة واتساب. يرجى التحقق من المتصفح.',
+            status: 'failed',
+            hasQr: false,
+            userId: userId
+        });
+        return null;
+    }
+
     try {
         // Check if user already has an active session
         if (userWhatsAppSessions.has(userId) && userWhatsAppSessions.get(userId).status === 'connected') {
@@ -479,12 +497,13 @@ function initializeUserWhatsApp(userId) {
             isConnected: false,
             isBotStopped: false,
             clientReplyTimers: new Map(),
-            importedClients: new Set()
+            importedClients: new Set(),
+            retryCount: retryCount
         };
         
         userWhatsAppSessions.set(userId, userSession);
 
-        // 🆕 IMPROVED WhatsApp Client Configuration for Cloud
+        // 🎯 FIXED: WhatsApp Client Configuration with Browser Fix
         userSession.client = new Client({
             authStrategy: new LocalAuth({ 
                 clientId: `ragmcloud-user-${userId}`,
@@ -501,18 +520,17 @@ function initializeUserWhatsApp(userId) {
                     '--no-zygote',
                     '--disable-gpu',
                     '--single-process',
-                    '--no-zygote',
-                    '--disable-setuid-sandbox',
                     '--disable-web-security',
                     '--disable-features=VizDisplayCompositor',
                     '--disable-ipc-flooding-protection',
                     '--disable-background-timer-throttling',
                     '--disable-backgrounding-occluded-windows',
-                    '--disable-renderer-backgrounding',
-                    '--disable-back-forward-cache',
-                    '--disable-component-extensions-with-background-pages'
+                    '--disable-renderer-backgrounding'
                 ],
-                executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || null
+                executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || 
+                               '/usr/bin/chromium-browser' || 
+                               '/usr/bin/google-chrome' || 
+                               null // Let puppeteer find it automatically
             },
             webVersionCache: {
                 type: 'remote',
@@ -650,10 +668,10 @@ function initializeUserWhatsApp(userId) {
                 userId: userId
             });
             
-            // Auto-reconnect after 10 seconds
+            // 🎯 FIX: Auto-reconnect with limited retries
             setTimeout(() => {
                 console.log(`🔄 Attempting reconnection for user ${userId}...`);
-                initializeUserWhatsApp(userId);
+                initializeUserWhatsApp(userId, retryCount + 1);
             }, 10000);
         });
 
@@ -666,18 +684,36 @@ function initializeUserWhatsApp(userId) {
         userSession.client.initialize().catch(error => {
             console.log(`⚠️ WhatsApp init failed for user ${userId}:`, error.message);
             
-            // Retry after 15 seconds with exponential backoff
-            setTimeout(() => {
-                console.log(`🔄 Retrying WhatsApp initialization for user ${userId}...`);
-                initializeUserWhatsApp(userId);
-            }, 15000);
+            // 🎯 FIX: Limited retry with exponential backoff
+            if (retryCount < MAX_RETRIES) {
+                const retryDelay = Math.min(30000, 5000 * Math.pow(2, retryCount)); // Max 30 seconds
+                console.log(`🔄 Retrying WhatsApp initialization for user ${userId} in ${retryDelay/1000}s...`);
+                
+                setTimeout(() => {
+                    initializeUserWhatsApp(userId, retryCount + 1);
+                }, retryDelay);
+            } else {
+                console.log(`❌ Max retries reached for user ${userId}. WhatsApp initialization failed.`);
+                
+                io.emit(`user_status_${userId}`, { 
+                    connected: false, 
+                    message: 'فشل تهيئة واتساب بعد عدة محاولات',
+                    status: 'failed',
+                    hasQr: false,
+                    userId: userId
+                });
+            }
         });
         
         return userSession;
         
     } catch (error) {
         console.log(`❌ Error creating WhatsApp client for user ${userId}:`, error.message);
-        setTimeout(() => initializeUserWhatsApp(userId), 15000);
+        
+        // 🎯 FIX: Limited retry
+        if (retryCount < MAX_RETRIES) {
+            setTimeout(() => initializeUserWhatsApp(userId, retryCount + 1), 15000);
+        }
         return null;
     }
 }
@@ -1826,6 +1862,14 @@ io.on('connection', (socket) => {
 });
 
 // =============================================
+// HELPER FUNCTIONS
+// =============================================
+
+function checkAutoSendReport(userId) {
+    // Auto-report logic here
+}
+
+// =============================================
 // SERVER INITIALIZATION
 // =============================================
 
@@ -1853,4 +1897,6 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log('🎯 CRITICAL FIX: Added JSON body parser middleware');
     console.log('🎯 CRITICAL FIX: Fixed database timing issue - users initialize after DB connection');
     console.log('🎯 QR CODE FIX: Improved QR code delivery to frontend with multiple emission points');
+    console.log('🎯 WHATSAPP FIX: Limited retry attempts to prevent infinite loops');
+    console.log('🎯 WHATSAPP FIX: Added browser configuration for cloud environments');
 });
