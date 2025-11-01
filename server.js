@@ -73,6 +73,13 @@ async function connectDB() {
 // Initialize database connection
 connectDB().then(() => {
     console.log('🔄 Database initialization completed');
+    
+    // 🎯 CRITICAL FIX: Initialize users AFTER database is connected
+    initializeUsers().then(() => {
+        console.log('✅ Users initialization completed');
+    }).catch(error => {
+        console.error('❌ Users initialization failed:', error);
+    });
 });
 
 // Safe database operations with error handling
@@ -117,15 +124,15 @@ directories.forEach(dir => {
     }
 });
 
-// Serve static files from public directory
+// 🎯 CRITICAL FIX: Serve static files from public directory
 app.use(express.static('public'));
 
-// Root route - serve login page
+// 🎯 CRITICAL FIX: Root route - serve login page
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
 
-// Dashboard route
+// 🎯 CRITICAL FIX: Dashboard route
 app.get('/dashboard', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
 });
@@ -140,22 +147,6 @@ const storage = multer.diskStorage({
     }
 });
 const upload = multer({ storage: storage });
-// =============================================
-// 🎯 CRITICAL FIX: ADD STATIC FILE SERVING
-// =============================================
-
-// Serve static files from public directory
-app.use(express.static('public'));
-
-// Root route - serve login page
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'login.html'));
-});
-
-// Dashboard route
-app.get('/dashboard', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
-});
 
 // =============================================
 // 🆕 MULTI-USER WHATSAPP ARCHITECTURE
@@ -280,12 +271,24 @@ async function createDefaultUsers() {
 // Initialize users and load into memory
 async function initializeUsers() {
     try {
+        // Wait for database to be ready
+        if (!db) {
+            console.log('⏳ Waiting for database connection...');
+            await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+        
         // Create default users if they don't exist
         await createDefaultUsers();
         
         // Load users into memory
         users = await db.collection('users').find({ isActive: true }).toArray();
         console.log(`✅ Loaded ${users.length} users from MongoDB`);
+        
+        // Initialize WhatsApp for all active users
+        users.forEach(user => {
+            console.log(`🔄 Initializing WhatsApp for user ${user.username} (${user._id})`);
+            initializeUserWhatsApp(user._id.toString());
+        });
     } catch (error) {
         console.error('❌ Error initializing users:', error);
     }
@@ -517,7 +520,7 @@ function initializeUserWhatsApp(userId) {
             }
         });
 
-        // 🆕 FIXED QR Code Generation (User-specific)
+        // 🎯 QR CODE FIX: Improved QR Code Generation with Auto-Display
         userSession.client.on('qr', (qr) => {
             console.log(`📱 QR CODE RECEIVED for user ${userId}`);
             qrcode.generate(qr, { small: true });
@@ -530,26 +533,27 @@ function initializeUserWhatsApp(userId) {
                     
                     console.log(`✅ QR code generated for user ${userId}`);
                     
-                    // 🆕 FIXED: Emit to ALL connected clients for this user
+                    // 🎯 FIX: Emit to ALL connected clients for this user
                     io.emit(`user_qr_${userId}`, { 
                         qrCode: url,
                         userId: userId,
                         timestamp: new Date().toISOString()
                     });
                     
-                    // 🆕 FIXED: Also emit status update
+                    // 🎯 FIX: Also emit status update
                     io.emit(`user_status_${userId}`, { 
                         connected: false, 
                         message: 'يرجى مسح QR Code للاتصال',
                         status: 'qr-ready',
                         hasQr: true,
-                        userId: userId
+                        userId: userId,
+                        qrCode: url // 🎯 ADDED: Send QR code in status update too
                     });
                     
                 } else {
                     console.error(`❌ QR code generation failed for user ${userId}:`, err);
                     
-                    // 🆕 FIXED: Emit error to frontend
+                    // 🎯 FIX: Emit error to frontend
                     io.emit(`user_status_${userId}`, { 
                         connected: false, 
                         message: 'فشل توليد QR Code',
@@ -1142,7 +1146,7 @@ function generateEnhancedRagmcloudResponse(userMessage, clientPhone) {
 📧 **البريد:** info@ragmcloud.sa
 📍 **المقر:** الرياض - حي المغرزات
 
-سيسعد فريقنا بمساعدتك في اختيار البackage المناسبة وتقديم عرض مفصل.
+سيسعد فريقنا بمساعدتك في اختيار الباقة المناسبة وتقديم عرض مفصل.
 
 هل تفضل التواصل الآن أم في وقت لاحق؟`;
     }
@@ -1289,7 +1293,8 @@ app.get('/api/user-whatsapp-status', authenticateUser, (req, res) => {
             message: userSession.status === 'connected' ? 'واتساب متصل ✅' : 
                     userSession.status === 'qr-ready' ? 'يرجى مسح QR Code' :
                     'جارٍ الاتصال...',
-            hasQr: !!userSession.qrCode
+            hasQr: !!userSession.qrCode,
+            qrCode: userSession.qrCode // 🎯 ADDED: Return QR code in status response
         });
     } catch (error) {
         res.status(500).json({ error: 'خطأ في الخادم' });
@@ -1708,7 +1713,8 @@ io.on('connection', (socket) => {
                             'جارٍ الاتصال...',
                     status: userSession.status,
                     hasQr: !!userSession.qrCode,
-                    userId: user._id.toString()
+                    userId: user._id.toString(),
+                    qrCode: userSession.qrCode // 🎯 ADDED: Send QR code in status update
                 });
                 
                 // If QR code already exists, send it immediately
@@ -1823,9 +1829,6 @@ io.on('connection', (socket) => {
 // SERVER INITIALIZATION
 // =============================================
 
-// Initialize users and performance data
-initializeUsers();
-
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Server running on port ${PORT}`);
@@ -1847,4 +1850,7 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log('🛠️  CONNECTION STATUS FIXED: Now properly checks status instead of isConnected');
     console.log('🗄️  MONGODB ATLAS: INTEGRATED ✅ - All data stored in cloud database');
     console.log('🎯 CRITICAL FIX: Added static file serving and routes for / and /dashboard');
+    console.log('🎯 CRITICAL FIX: Added JSON body parser middleware');
+    console.log('🎯 CRITICAL FIX: Fixed database timing issue - users initialize after DB connection');
+    console.log('🎯 QR CODE FIX: Improved QR code delivery to frontend with multiple emission points');
 });
