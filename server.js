@@ -17,19 +17,36 @@ require('dotenv').config();
 const app = express();
 const server = http.createServer(app);
 
-// CORS configuration for Socket.io
+// FIXED: Improved CORS configuration for Socket.io
 const io = socketIo(server, {
     cors: {
-        origin: "*",
-        methods: ["GET", "POST"]
-    }
+        origin: ["https://botsupport.ragmcloud.com", "http://localhost:3000", "*"],
+        methods: ["GET", "POST", "PUT", "DELETE"],
+        credentials: true,
+        transports: ['websocket', 'polling']
+    },
+    pingTimeout: 60000,
+    pingInterval: 25000
 });
 
-// CORS middleware
+// FIXED: Enhanced CORS middleware
 app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    const allowedOrigins = ["https://botsupport.ragmcloud.com", "http://localhost:3000"];
+    const origin = req.headers.origin;
+    
+    if (allowedOrigins.includes(origin)) {
+        res.header('Access-Control-Allow-Origin', origin);
+    } else {
+        res.header('Access-Control-Allow-Origin', '*');
+    }
+    
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-auth-token');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(200);
+    }
     next();
 });
 
@@ -307,8 +324,6 @@ function initializeUserWhatsApp(userId) {
                     '--no-zygote',
                     '--disable-gpu',
                     '--single-process', // 🆕 Important for cloud
-                    '--no-zygote',
-                    '--disable-setuid-sandbox',
                     '--disable-web-security',
                     '--disable-features=VizDisplayCompositor',
                     '--disable-ipc-flooding-protection',
@@ -322,54 +337,53 @@ function initializeUserWhatsApp(userId) {
             },
             webVersionCache: {
                 type: 'remote',
-                remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html' // 🆕 Fixed version
+                remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
             }
         });
 
         // 🆕 FIXED QR Code Generation (User-specific)
-        userSession.client.on('qr', (qr) => {
+        userSession.client.on('qr', async (qr) => {
             console.log(`📱 QR CODE RECEIVED for user ${userId}`);
             qrcode.generate(qr, { small: true });
             
-            // Generate QR code for web interface
-            QRCode.toDataURL(qr, (err, url) => {
-                if (!err) {
-                    userSession.qrCode = url;
-                    userSession.status = 'qr-ready';
-                    
-                    console.log(`✅ QR code generated for user ${userId}`);
-                    console.log(`📡 Emitting QR to user_qr_${userId}`);
-                    
-                    // 🆕 FIXED: Emit to ALL connected clients for this user
-                    io.emit(`user_qr_${userId}`, { 
-                        qrCode: url,
-                        userId: userId,
-                        timestamp: new Date().toISOString()
-                    });
-                    
-                    // 🆕 FIXED: Also emit status update
-                    io.emit(`user_status_${userId}`, { 
-                        connected: false, 
-                        message: 'يرجى مسح QR Code للاتصال',
-                        status: 'qr-ready',
-                        hasQr: true,
-                        userId: userId
-                    });
-                    
-                } else {
-                    console.error(`❌ QR code generation failed for user ${userId}:`, err);
-                    
-                    // 🆕 FIXED: Emit error to frontend
-                    io.emit(`user_status_${userId}`, { 
-                        connected: false, 
-                        message: 'فشل توليد QR Code',
-                        status: 'error',
-                        hasQr: false,
-                        userId: userId,
-                        error: err.message
-                    });
-                }
-            });
+            try {
+                // Generate QR code for web interface
+                const url = await QRCode.toDataURL(qr);
+                userSession.qrCode = url;
+                userSession.status = 'qr-ready';
+                
+                console.log(`✅ QR code generated for user ${userId}`);
+                console.log(`📡 Emitting QR to user_qr_${userId}`);
+                
+                // 🆕 FIXED: Emit to ALL connected clients for this user
+                io.emit(`user_qr_${userId}`, { 
+                    qrCode: url,
+                    userId: userId,
+                    timestamp: new Date().toISOString()
+                });
+                
+                // 🆕 FIXED: Also emit status update
+                io.emit(`user_status_${userId}`, { 
+                    connected: false, 
+                    message: 'يرجى مسح QR Code للاتصال',
+                    status: 'qr-ready',
+                    hasQr: true,
+                    userId: userId
+                });
+                
+            } catch (err) {
+                console.error(`❌ QR code generation failed for user ${userId}:`, err);
+                
+                // 🆕 FIXED: Emit error to frontend
+                io.emit(`user_status_${userId}`, { 
+                    connected: false, 
+                    message: 'فشل توليد QR Code',
+                    status: 'error',
+                    hasQr: false,
+                    userId: userId,
+                    error: err.message
+                });
+            }
         });
 
         // 🆕 Ready Event (User-specific)
@@ -2296,9 +2310,9 @@ app.post('/api/send-message', authenticateUser, async (req, res) => {
     }
 });
 
-// Socket.io
+// FIXED: Improved Socket.io connection handling
 io.on('connection', (socket) => {
-    console.log('Client connected');
+    console.log('✅ Client connected:', socket.id);
     
     // Handle user authentication for socket
     socket.on('authenticate', (token) => {
@@ -2316,7 +2330,7 @@ io.on('connection', (socket) => {
             }
             
             socket.userId = user.id;
-            console.log(`🔐 Socket authenticated for user ${user.name}`);
+            console.log(`🔐 Socket authenticated for user ${user.name} (${user.id})`);
             
             // 🆕 CRITICAL: Send authentication success
             socket.emit('authenticated', { 
@@ -2349,6 +2363,7 @@ io.on('connection', (socket) => {
             }
             
         } catch (error) {
+            console.error('Socket authentication error:', error);
             socket.emit('auth_error', { error: 'خطأ في المصادقة' });
         }
     });
@@ -2442,8 +2457,13 @@ io.on('connection', (socket) => {
         manualReconnectUserWhatsApp(socket.userId);
     });
 
-    socket.on('disconnect', () => {
-        console.log('Client disconnected');
+    socket.on('disconnect', (reason) => {
+        console.log('❌ Client disconnected:', socket.id, 'Reason:', reason);
+    });
+
+    // Handle connection errors
+    socket.on('connect_error', (error) => {
+        console.error('❌ Socket connection error:', error);
     });
 });
 
@@ -2469,5 +2489,5 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log('☁️  CLOUD-OPTIMIZED WHATSAPP: ENABLED');
     console.log('📱 QR CODE FIXED: FRONTEND WILL NOW RECEIVE QR CODES');
     console.log('🛠️  CONNECTION STATUS FIXED: Now properly checks status instead of isConnected');
+    console.log('🔧 SOCKET.IO FIXED: Improved connection handling and CORS');
 });
-
