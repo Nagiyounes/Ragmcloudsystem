@@ -496,7 +496,7 @@ function getUserWhatsAppSession(userId) {
 // 🆕 Check if User WhatsApp is Connected
 function isUserWhatsAppConnected(userId) {
     const session = getUserWhatsAppSession(userId);
-    return session && session.isConnected;
+    return session && session.status === 'connected';
 }
 
 // 🆕 User-specific Message Processing
@@ -650,33 +650,6 @@ function manualReconnectUserWhatsApp(userId) {
         });
     } else {
         initializeUserWhatsApp(userId);
-    }
-}
-
-// 🆕 FIXED: WhatsApp Disconnect Function
-function disconnectUserWhatsApp(userId) {
-    console.log(`🔌 Disconnecting WhatsApp for user ${userId}...`);
-    const userSession = getUserWhatsAppSession(userId);
-    
-    if (userSession && userSession.client) {
-        userSession.client.destroy().then(() => {
-            userSession.isConnected = false;
-            userSession.status = 'disconnected';
-            userSession.qrCode = null;
-            
-            // Emit disconnect status
-            io.emit(`user_status_${userId}`, { 
-                connected: false, 
-                message: 'واتساب غير متصل',
-                status: 'disconnected',
-                hasQr: false,
-                userId: userId
-            });
-            
-            console.log(`✅ WhatsApp disconnected for user ${userId}`);
-        }).catch(error => {
-            console.error(`❌ Error disconnecting WhatsApp for user ${userId}:`, error);
-        });
     }
 }
 
@@ -1664,7 +1637,7 @@ async function sendReportToManager(userId = null) {
         // Find any connected user to send the report
         let senderSession = null;
         for (const [uid, session] of userWhatsAppSessions) {
-            if (session.isConnected) {
+            if (session.status === 'connected') {
                 senderSession = session;
                 break;
             }
@@ -1851,9 +1824,9 @@ app.get('/api/user-whatsapp-status', authenticateUser, (req, res) => {
         }
         
         res.json({
-            connected: userSession.isConnected,
+            connected: userSession.status === 'connected',
             status: userSession.status,
-            message: userSession.isConnected ? 'واتساب متصل ✅' : 
+            message: userSession.status === 'connected' ? 'واتساب متصل ✅' : 
                     userSession.status === 'qr-ready' ? 'يرجى مسح QR Code' :
                     'جارٍ الاتصال...',
             hasQr: !!userSession.qrCode
@@ -1898,17 +1871,6 @@ app.post('/api/user-toggle-bot', authenticateUser, (req, res) => {
         });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// 🆕 FIXED: User-specific WhatsApp Disconnect Route
-app.post('/api/user-disconnect-whatsapp', authenticateUser, (req, res) => {
-    try {
-        const userId = req.user.id;
-        disconnectUserWhatsApp(userId);
-        res.json({ success: true, message: 'جارٍ قطع اتصال الواتساب...' });
-    } catch (error) {
-        res.status(500).json({ error: 'فشل قطع الاتصال' });
     }
 });
 
@@ -2032,41 +1994,6 @@ app.put('/api/users/:id', authenticateUser, authorizeAdmin, (req, res) => {
     }
 });
 
-// 🆕 FIXED: Switch to User Dashboard Route
-app.post('/api/switch-to-user', authenticateUser, authorizeAdmin, (req, res) => {
-    try {
-        const { userId } = req.body;
-        
-        if (!userId) {
-            return res.status(400).json({ error: 'معرف المستخدم مطلوب' });
-        }
-        
-        const targetUser = users.find(u => u.id === parseInt(userId) && u.isActive);
-        if (!targetUser) {
-            return res.status(404).json({ error: 'المستخدم غير موجود' });
-        }
-        
-        // Generate temporary token for the target user
-        const tempToken = generateToken(targetUser);
-        
-        res.json({
-            success: true,
-            token: tempToken,
-            user: {
-                id: targetUser.id,
-                name: targetUser.name,
-                username: targetUser.username,
-                role: targetUser.role
-            },
-            message: `تم التبديل إلى حساب ${targetUser.name} بنجاح`
-        });
-        
-    } catch (error) {
-        console.error('Switch user error:', error);
-        res.status(500).json({ error: 'خطأ في الخادم' });
-    }
-});
-
 // Upload Excel file
 app.post('/api/upload-excel', authenticateUser, upload.single('excelFile'), (req, res) => {
     try {
@@ -2186,7 +2113,7 @@ app.post('/api/send-to-manager', authenticateUser, async (req, res) => {
     }
 });
 
-// Export report - FIXED: Now supports PDF/DOCX
+// Export report
 app.get('/api/export-report', authenticateUser, (req, res) => {
     try {
         console.log('🔄 Exporting report...');
@@ -2212,7 +2139,7 @@ app.get('/api/export-report', authenticateUser, (req, res) => {
     }
 });
 
-// Bulk send endpoint
+// Bulk send endpoint - FIXED CONNECTION CHECK
 app.post('/api/send-bulk', authenticateUser, async (req, res) => {
     try {
         const { message, delay = 40, clients } = req.body;
@@ -2222,7 +2149,8 @@ app.post('/api/send-bulk', authenticateUser, async (req, res) => {
         const userId = req.user.id;
         const userSession = getUserWhatsAppSession(userId);
         
-        if (!userSession || !userSession.isConnected) {
+        // 🛠️ FIXED: Check status instead of isConnected
+        if (!userSession || userSession.status !== 'connected') {
             return res.status(400).json({ 
                 success: false, 
                 error: 'واتساب غير متصل' 
@@ -2327,7 +2255,7 @@ app.post('/api/send-bulk', authenticateUser, async (req, res) => {
     }
 });
 
-// Send individual message
+// Send individual message - FIXED CONNECTION CHECK
 app.post('/api/send-message', authenticateUser, async (req, res) => {
     try {
         const { phone, message } = req.body;
@@ -2335,7 +2263,8 @@ app.post('/api/send-message', authenticateUser, async (req, res) => {
         const userId = req.user.id;
         const userSession = getUserWhatsAppSession(userId);
         
-        if (!userSession || !userSession.isConnected) {
+        // 🛠️ FIXED: Check status instead of isConnected
+        if (!userSession || userSession.status !== 'connected') {
             return res.status(400).json({ error: 'واتساب غير متصل' });
         }
 
@@ -2399,8 +2328,8 @@ io.on('connection', (socket) => {
             const userSession = getUserWhatsAppSession(user.id);
             if (userSession) {
                 socket.emit(`user_status_${user.id}`, { 
-                    connected: userSession.isConnected, 
-                    message: userSession.isConnected ? 'واتساب متصل ✅' : 
+                    connected: userSession.status === 'connected', 
+                    message: userSession.status === 'connected' ? 'واتساب متصل ✅' : 
                             userSession.status === 'qr-ready' ? 'يرجى مسح QR Code' :
                             'جارٍ الاتصال...',
                     status: userSession.status,
@@ -2423,7 +2352,7 @@ io.on('connection', (socket) => {
             socket.emit('auth_error', { error: 'خطأ في المصادقة' });
         }
     });
-
+    
     // Handle user-specific bot toggle
     socket.on('user_toggle_bot', (data) => {
         if (!socket.userId) {
@@ -2459,7 +2388,8 @@ io.on('connection', (socket) => {
             const { to, message } = data;
             
             const userSession = getUserWhatsAppSession(socket.userId);
-            if (!userSession || !userSession.isConnected) {
+            // 🛠️ FIXED: Check status instead of isConnected
+            if (!userSession || userSession.status !== 'connected') {
                 socket.emit('message_error', { 
                     to: to, 
                     error: 'واتساب غير متصل' 
@@ -2512,15 +2442,6 @@ io.on('connection', (socket) => {
         manualReconnectUserWhatsApp(socket.userId);
     });
 
-    socket.on('user_disconnect_whatsapp', () => {
-        if (!socket.userId) {
-            socket.emit('error', { error: 'غير مصرح' });
-            return;
-        }
-        
-        disconnectUserWhatsApp(socket.userId);
-    });
-
     socket.on('disconnect', () => {
         console.log('Client disconnected');
     });
@@ -2547,6 +2468,6 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log('🎉 MULTI-USER ARCHITECTURE: COMPLETED');
     console.log('☁️  CLOUD-OPTIMIZED WHATSAPP: ENABLED');
     console.log('📱 QR CODE FIXED: FRONTEND WILL NOW RECEIVE QR CODES');
-    console.log('🔌 WHATSAPP DISCONNECT: ENABLED');
-    console.log('🔄 USER SWITCHING: ENABLED');
+    console.log('🛠️  CONNECTION STATUS FIXED: Now properly checks status instead of isConnected');
 });
+
