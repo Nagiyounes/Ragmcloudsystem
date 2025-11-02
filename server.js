@@ -576,7 +576,7 @@ function shouldSendGreeting(clientPhone) {
     return (new Date().getTime() - lastMessageTime) > ONE_HOUR;
 }
 
-// 🎯 FIXED: WhatsApp Client Configuration for Cloud Deployment
+// 🎯 FIXED: WhatsApp Client Configuration for Render Deployment
 userSession.client = new Client({
     authStrategy: new LocalAuth({ 
         clientId: `ragmcloud-user-${userId}`,
@@ -598,14 +598,9 @@ userSession.client = new Client({
             '--disable-ipc-flooding-protection',
             '--disable-background-timer-throttling',
             '--disable-backgrounding-occluded-windows',
-            '--disable-renderer-backgrounding',
-            '--max-old-space-size=512'
+            '--disable-renderer-backgrounding'
         ],
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || 
-                       '/usr/bin/chromium-browser' || 
-                       '/usr/bin/google-chrome-stable' ||
-                       '/usr/bin/google-chrome' ||
-                       null
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser'
     },
     webVersionCache: {
         type: 'remote',
@@ -1552,4 +1547,5 @@ server.listen(PORT, () => {
     console.log('🔧 BUILD FIXED: Removed Puppeteer dependencies for fast deployment');
     console.log(`==============================================\n`);
 });
+
 
