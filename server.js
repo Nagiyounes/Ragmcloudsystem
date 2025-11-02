@@ -576,44 +576,42 @@ function shouldSendGreeting(clientPhone) {
     return (new Date().getTime() - lastMessageTime) > ONE_HOUR;
 }
 
-// 🎯 FIXED: WhatsApp Client with Render-Compatible Configuration
-function initializeUserWhatsApp(userId, retryCount = 0) {
-    const MAX_RETRIES = 2;
-    
-    console.log(`🔄 Starting WhatsApp for user ${userId} (Attempt ${retryCount + 1}/${MAX_RETRIES + 1})...`);
-    
-    if (retryCount > MAX_RETRIES) {
-        console.log(`❌ Max retries exceeded for user ${userId}. WhatsApp initialization failed.`);
-        
-        io.emit(`user_status_${userId}`, { 
-            connected: false, 
-            message: 'فشل تهيئة واتساب.',
-            status: 'failed',
-            hasQr: false,
-            userId: userId
-        });
-        return null;
+// 🎯 FIXED: WhatsApp Client Configuration for Cloud Deployment
+userSession.client = new Client({
+    authStrategy: new LocalAuth({ 
+        clientId: `ragmcloud-user-${userId}`,
+        dataPath: `./sessions/user-${userId}`
+    }),
+    puppeteer: {
+        headless: true,
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--disable-gpu',
+            '--single-process',
+            '--disable-web-security',
+            '--disable-features=VizDisplayCompositor',
+            '--disable-ipc-flooding-protection',
+            '--disable-background-timer-throttling',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-renderer-backgrounding',
+            '--max-old-space-size=512'
+        ],
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || 
+                       '/usr/bin/chromium-browser' || 
+                       '/usr/bin/google-chrome-stable' ||
+                       '/usr/bin/google-chrome' ||
+                       null
+    },
+    webVersionCache: {
+        type: 'remote',
+        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
     }
-
-    try {
-        const existingSession = userWhatsAppSessions.get(userId);
-        if (existingSession && existingSession.status !== 'disconnected') {
-            console.log(`✅ User ${userId} already has an active WhatsApp session with status: ${existingSession.status}`);
-            return existingSession;
-        }
-
-        const userSession = {
-            userId: userId,
-            client: null,
-            isConnected: false,
-            status: 'initializing',
-            qrCode: null,
-            aiBotRunning: true,
-            lastMessages: new Map(),
-            importedClients: new Set(),
-            bulkCampaignRunning: false
-        };
-
+});
         // 🎯 SIMPLIFIED CONFIG - No Puppeteer dependencies
         const client = new Client({
             authStrategy: new LocalAuth({ clientId: userId }),
@@ -1554,3 +1552,4 @@ server.listen(PORT, () => {
     console.log('🔧 BUILD FIXED: Removed Puppeteer dependencies for fast deployment');
     console.log(`==============================================\n`);
 });
+
