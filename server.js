@@ -617,15 +617,36 @@ function initializeUserWhatsApp(userId, retryCount = 0) {
             bulkCampaignRunning: false
         };
 
-        // Create client instance with LocalAuth for session persistence
-        const client = new Client({
-            authStrategy: new LocalAuth({ clientId: userId }), // Separate session folder per user
+        // 🎯 FIXED: Enhanced Puppeteer configuration with better browser handling
+        const puppeteerOptions = {
+            authStrategy: new LocalAuth({ clientId: userId }),
             puppeteer: {
-                // cloud-friendly settings
-                args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage'],
-                headless: true // Important for server deployment
+                // Cloud-friendly settings with better Chromium handling
+                args: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-gpu',
+                    '--disable-dev-shm-usage',
+                    '--disable-accelerated-2d-canvas',
+                    '--no-first-run',
+                    '--no-zygote',
+                    '--single-process',
+                    '--disable-web-security',
+                    '--disable-features=VizDisplayCompositor'
+                ],
+                headless: true,
+                // 🎯 CRITICAL FIX: Let puppeteer handle Chromium download automatically
+                executablePath: process.env.CHROME_PATH || null // Use system Chrome if available
+            },
+            // 🎯 ADDED: WhatsApp web.js specific options
+            webVersionCache: {
+                type: "remote",
+                remotePath: "https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html"
             }
-        });
+        };
+
+        // Create client instance with LocalAuth for session persistence
+        const client = new Client(puppeteerOptions);
 
         userSession.client = client;
         userWhatsAppSessions.set(userId, userSession); // Store the session
@@ -765,25 +786,73 @@ function initializeUserWhatsApp(userId, retryCount = 0) {
             console.error(`❌ WhatsApp error for user ${userId}:`, error);
         });
 
+        // 🆕 Authentication Failure Handling
+        client.on('auth_failure', (message) => {
+            console.error(`❌ WhatsApp authentication failed for user ${userId}:`, message);
+            io.emit(`user_status_${userId}`, { 
+                connected: false, 
+                message: 'فشل المصادقة. يرجى إعادة مسح QR Code.', 
+                status: 'auth_failed', 
+                hasQr: false, 
+                userId: userId 
+            });
+        });
+
         // Start initialization with better error handling
         client.initialize().catch(error => {
             console.log(`⚠️ WhatsApp init failed for user ${userId}:`, error.message);
-            // 🎯 FIX: Limited retry with exponential backoff
-            if (retryCount < MAX_RETRIES) {
-                const retryDelay = Math.min(30000, 5000 * Math.pow(2, retryCount)); // Max 30 seconds
-                console.log(`🔄 Retrying WhatsApp initialization for user ${userId} in ${retryDelay/1000}s...`);
-                setTimeout(() => {
-                    initializeUserWhatsApp(userId, retryCount + 1);
-                }, retryDelay);
-            } else {
-                console.log(`❌ Max retries reached for user ${userId}. WhatsApp initialization failed.`);
+            
+            // 🎯 ENHANCED: Handle Chromium download issue specifically
+            if (error.message.includes('Could not find expected browser') || error.message.includes('chromium')) {
+                console.log(`🔧 Chromium missing for user ${userId}. Attempting to download...`);
+                
+                // Emit specific message about Chromium download
                 io.emit(`user_status_${userId}`, { 
                     connected: false, 
-                    message: 'فشل تهيئة واتساب بعد عدة محاولات', 
-                    status: 'failed', 
+                    message: 'جارٍ تحميل المتصفح. يرجى الانتظار...', 
+                    status: 'downloading_browser', 
                     hasQr: false, 
                     userId: userId 
                 });
+
+                // 🎯 FIX: Try to download Chromium and retry
+                const { exec } = require('child_process');
+                console.log('🔧 Attempting to download Chromium...');
+                exec('npx puppeteer browsers install chrome', (error, stdout, stderr) => {
+                    if (error) {
+                        console.error('❌ Failed to download Chromium:', error);
+                        // Continue with retry logic
+                    } else {
+                        console.log('✅ Chromium download completed');
+                    }
+                    
+                    // Retry after download attempt
+                    if (retryCount < MAX_RETRIES) {
+                        const retryDelay = Math.min(30000, 5000 * Math.pow(2, retryCount));
+                        console.log(`🔄 Retrying WhatsApp initialization for user ${userId} in ${retryDelay/1000}s...`);
+                        setTimeout(() => {
+                            initializeUserWhatsApp(userId, retryCount + 1);
+                        }, retryDelay);
+                    }
+                });
+            } else {
+                // 🎯 FIX: Limited retry with exponential backoff for other errors
+                if (retryCount < MAX_RETRIES) {
+                    const retryDelay = Math.min(30000, 5000 * Math.pow(2, retryCount)); // Max 30 seconds
+                    console.log(`🔄 Retrying WhatsApp initialization for user ${userId} in ${retryDelay/1000}s...`);
+                    setTimeout(() => {
+                        initializeUserWhatsApp(userId, retryCount + 1);
+                    }, retryDelay);
+                } else {
+                    console.log(`❌ Max retries reached for user ${userId}. WhatsApp initialization failed.`);
+                    io.emit(`user_status_${userId}`, { 
+                        connected: false, 
+                        message: 'فشل تهيئة واتساب بعد عدة محاولات', 
+                        status: 'failed', 
+                        hasQr: false, 
+                        userId: userId 
+                    });
+                }
             }
         });
         
@@ -1633,5 +1702,6 @@ server.listen(PORT, () => {
     console.log('🎯 CRITICAL FIX: Added static file serving and routes for / and /dashboard');
     console.log('🎯 CRITICAL FIX: Added JSON body parser middleware');
     console.log('🎯 CRITICAL FIX: Fixed database timing issue - users initialize after DB connection');
+    console.log('🔧 CHROMIUM FIX: Added automatic browser download and better error handling');
     console.log(`==============================================\n`);
 });
