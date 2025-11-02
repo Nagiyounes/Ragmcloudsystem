@@ -15,6 +15,7 @@ const XLSX = require('xlsx');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+const puppeteer = require('puppeteer'); // ✅ Added for Render environment fix
 
 // Load environment variables
 require('dotenv').config();
@@ -527,10 +528,7 @@ function initializeUserWhatsApp(userId, retryCount = 0) {
                     '--disable-backgrounding-occluded-windows',
                     '--disable-renderer-backgrounding'
                 ],
-                executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || 
-                               '/usr/bin/chromium-browser' || 
-                               '/usr/bin/google-chrome' || 
-                               null // Let puppeteer find it automatically
+                executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || puppeteer.executablePath() // Let puppeteer find it automatically
             },
             webVersionCache: {
                 type: 'remote',
