@@ -1,14 +1,16 @@
 #!/bin/bash
-# Render Build Script for WhatsApp Web.js
+echo "🔧 Starting Render build process..."
 
-echo "🚀 Starting Render build process..."
+# Install Chromium for WhatsApp Web
+echo "📥 Installing Chromium..."
+apt-get update
+apt-get install -y chromium-browser
 
-# Install dependencies
-npm install
+# Verify Chromium installation
+if [ -f "/usr/bin/chromium-browser" ]; then
+    echo "✅ Chromium installed successfully at /usr/bin/chromium-browser"
+else
+    echo "⚠️ Chromium installation may have issues, but continuing..."
+fi
 
-# Create necessary directories
-mkdir -p uploads memory tmp reports sessions data public
-
-# Exit successfully
-echo "✅ Build completed successfully"
-exit 0
+echo "🎉 Build process completed!"
