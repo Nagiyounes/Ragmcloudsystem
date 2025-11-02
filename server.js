@@ -1899,3 +1899,4 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log('🎯 WHATSAPP FIX: Limited retry attempts to prevent infinite loops');
     console.log('🎯 WHATSAPP FIX: Added browser configuration for cloud environments');
 });
+
