@@ -488,7 +488,7 @@
                 <!-- WhatsApp Status -->
                 <div class="flex items-center justify-between mb-4">
                     <span class="text-sm text-gray-300">حالة الواتساب:</span>
-                    <span id="whatsappStatus" class="status-disconnected px-3 py-1 rounded-full text-sm font-bold">غير متصل</span>
+                    <span id="whatsappStatus" class="status-disconnected px-3 py-1 rounded-full text-sm font-bold">جارٍ التحميل...</span>
                 </div>
 
                 <!-- NEW: Bot Status -->
@@ -836,7 +836,7 @@
                 setupEventListeners();
                 loadCurrentUser(); // This will trigger authentication
                 
-                // 🆕 Auto-check WhatsApp status on load
+                // Auto-check WhatsApp status on load
                 setTimeout(() => {
                     checkWhatsAppStatus();
                 }, 2000);
@@ -866,13 +866,13 @@
                 console.log('✅ Socket authenticated for user:', userData);
                 const userId = currentUser.id;
                 
-                // 🆕 FIXED: User-specific WhatsApp status
+                // 🛠️ FIXED: User-specific WhatsApp status
                 socket.on(`user_status_${userId}`, (data) => {
                     console.log('📡 Received user status:', data);
                     updateWhatsAppStatus(data);
                 });
 
-                // 🆕 FIXED: User-specific QR code with auto-display
+                // 🛠️ FIXED: User-specific QR code with auto-display
                 socket.on(`user_qr_${userId}`, (data) => {
                     console.log('📡 Received QR code for user:', userId);
                     if (data.qrCode) {
@@ -880,14 +880,14 @@
                     }
                 });
 
-                // 🆕 FIXED: User-specific bot status
+                // 🛠️ FIXED: User-specific bot status
                 socket.on(`user_bot_status_${userId}`, (data) => {
                     console.log('📡 Received bot status:', data);
                     isBotStopped = data.stopped;
                     updateBotStatusUI();
                 });
 
-                // 🆕 FIXED: User-specific messages
+                // 🛠️ FIXED: User-specific messages
                 socket.on(`user_message_${userId}`, (data) => {
                     console.log('📡 Received user message:', data);
                     handleUserMessage(data);
@@ -915,11 +915,6 @@
             });
 
             // Global events (not user-specific)
-            socket.on('bot_status', (data) => {
-                isBotStopped = data.stopped;
-                updateBotStatusUI();
-            });
-
             socket.on('auto_report_notification', (data) => {
                 showAutoReportNotification(data);
             });
@@ -1074,7 +1069,7 @@
             addUserBtn.addEventListener('click', addNewUser);
         }
 
-        // 🆕 IMPROVED QR Code Functions
+        // 🛠️ FIXED: Improved QR Code Functions
         function showQRCode(qrCodeUrl) {
             console.log('🖼️ Showing QR code:', qrCodeUrl);
             if (!qrCodeUrl) {
@@ -1108,7 +1103,7 @@
             console.log('✅ QR code overlay shown');
         }
 
-        // 🆕 Auto-fetch QR code on page load
+        // 🛠️ FIXED: Auto-fetch QR code on page load
         function fetchUserQRCode() {
             console.log('🔄 Fetching user QR code...');
             fetch('/api/user-whatsapp-qr', {
@@ -1139,12 +1134,16 @@
             });
         }
 
-        // 🆕 Improved WhatsApp status update with auto-QR display
+        // 🛠️ FIXED: Improved WhatsApp status update with auto-QR display
         function updateWhatsAppStatus(data) {
             console.log('🔄 Updating WhatsApp status:', data);
+            
+            // 🛠️ FIXED: Check status instead of connected
+            const isConnected = data.status === 'connected';
+            
             whatsappStatus.textContent = data.message;
             
-            if (data.connected) {
+            if (isConnected) {
                 whatsappStatus.className = 'status-connected px-3 py-1 rounded-full text-sm font-bold';
                 whatsappQrStatus.classList.add('hidden');
                 qrOverlay.classList.add('hidden'); // Hide QR when connected
@@ -1153,7 +1152,7 @@
                 
                 if (data.status === 'qr-ready') {
                     whatsappQrStatus.classList.remove('hidden');
-                    // 🆕 AUTO-SHOW QR CODE when status is qr-ready
+                    // 🛠️ FIXED: AUTO-SHOW QR CODE when status is qr-ready
                     if (!qrOverlay.classList.contains('hidden')) {
                         // QR overlay is already visible, no need to show again
                         console.log('📱 QR overlay already visible');
@@ -1169,7 +1168,7 @@
             }
         }
 
-        // 🆕 Function to check WhatsApp status
+        // 🛠️ FIXED: Function to check WhatsApp status
         function checkWhatsAppStatus() {
             fetch('/api/user-whatsapp-status', {
                 method: 'GET',
@@ -1181,14 +1180,48 @@
             .then(response => response.json())
             .then(data => {
                 console.log('📡 WhatsApp status check:', data);
-                if (data.hasQr && data.qrCode) {
-                    showQRCode(data.qrCode);
-                }
                 updateWhatsAppStatus(data);
             })
             .catch(error => {
                 console.error('Error checking WhatsApp status:', error);
             });
+        }
+
+        // 🛠️ FIXED: Handle user messages properly
+        function handleUserMessage(data) {
+            console.log('💬 Handling user message:', data);
+            
+            // Store message in messages object
+            const clientPhone = data.from;
+            if (!messages[clientPhone]) {
+                messages[clientPhone] = [];
+            }
+            
+            messages[clientPhone].push({
+                message: data.message,
+                fromMe: data.fromMe,
+                timestamp: data.timestamp
+            });
+            
+            // If this client is currently selected, update the chat
+            if (currentClient && currentClient.phone === clientPhone) {
+                renderMessages(messages[clientPhone]);
+            }
+            
+            // Update client last message
+            const client = clients.find(c => c.phone === clientPhone);
+            if (client) {
+                client.lastMessage = data.message.substring(0, 50) + (data.message.length > 50 ? '...' : '');
+                client.lastActivity = new Date().toISOString();
+                renderClientList();
+            }
+            
+            // Update performance stats for AI replies
+            if (data.fromMe) {
+                updatePerformanceStats({
+                    aiReplies: parseInt(statAIReplies.textContent) + 1
+                });
+            }
         }
 
         // Logout Function
@@ -1221,7 +1254,7 @@
                 currentUser = JSON.parse(savedUser);
                 updateUserInterface();
                 
-                // 🆕 CRITICAL: Authenticate socket AFTER user is loaded
+                // 🛠️ FIXED: Authenticate socket AFTER user is loaded
                 if (socket && socket.connected) {
                     console.log('🔐 Authenticating socket for user:', currentUser.id);
                     socket.emit('authenticate', authToken);
@@ -1241,7 +1274,7 @@
                         localStorage.setItem('currentUser', JSON.stringify(currentUser));
                         updateUserInterface();
                         
-                        // 🆕 CRITICAL: Authenticate socket AFTER user is loaded
+                        // 🛠️ FIXED: Authenticate socket AFTER user is loaded
                         if (socket && socket.connected) {
                             console.log('🔐 Authenticating socket for user:', currentUser.id);
                             socket.emit('authenticate', authToken);
@@ -1288,6 +1321,7 @@
             if (currentUser.role === 'admin' && !isAdminViewingAs) {
                 userManagementSection.classList.remove('hidden');
                 userSwitchBtn.classList.remove('hidden');
+                loadUsers(); // Load users list for admin
             } else {
                 userManagementSection.classList.add('hidden');
                 userSwitchBtn.classList.add('hidden');
@@ -1610,12 +1644,12 @@
             .then(data => {
                 if (data.success) {
                     showToast(`🚀 ${data.message}`, 'success');
-                isBulkSending = true;
+                    isBulkSending = true;
                     sendBulkBtn.disabled = true;
                     sendBulkBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> جاري الإرسال...';
                 } else {
                     showToast('❌ ' + data.error, 'error');
-                    }
+                }
             })
             .catch(error => {
                 console.error('Error sending bulk messages:', error);
@@ -1831,6 +1865,10 @@
                 scrollToBottom.classList.add('visible');
             }
         });
+
+        // Load initial data
+        loadClients();
+        loadPerformanceStats();
     </script>
 </body>
 </html>
