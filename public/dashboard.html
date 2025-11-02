@@ -328,60 +328,6 @@
             background: linear-gradient(135deg, #00B98B, #007C5C) !important;
         }
 
-        /* NEW: User Management Styles */
-        .user-management-section {
-            transition: all 0.3s ease;
-        }
-
-        .user-item {
-            transition: all 0.3s ease;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .user-item:hover {
-            background: rgba(255, 255, 255, 0.05);
-        }
-
-        .role-admin {
-            border-left: 4px solid #D4AF37 !important;
-        }
-
-        .role-standard {
-            border-left: 4px solid #007C5C !important;
-        }
-
-        .user-active {
-            color: #10B981;
-        }
-
-        .user-inactive {
-            color: #EF4444;
-        }
-
-        /* NEW: User Switch Overlay */
-        .user-switch-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.8);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 1000;
-        }
-
-        .user-switch-container {
-            background: rgba(45, 55, 72, 0.95);
-            padding: 30px;
-            border-radius: 20px;
-            text-align: center;
-            border: 2px solid #D4AF37;
-            max-width: 500px;
-            width: 90%;
-        }
-
         /* NEW: WhatsApp QR Code Status */
         .whatsapp-qr-status {
             background: linear-gradient(135deg, #ed8936, #dd6b20);
@@ -415,31 +361,6 @@
 <body class="text-white">
     <!-- Toast Notifications -->
     <div id="toastContainer" class="fixed top-4 right-4 z-50"></div>
-    
-    <!-- NEW: Auto Report Notification -->
-    <div id="autoReportNotification" class="auto-report-notification">
-        <i class="fas fa-bell mr-2"></i>
-        <span id="autoReportMessage"></span>
-    </div>
-    
-    <!-- NEW: User Switch Overlay -->
-    <div id="userSwitchOverlay" class="user-switch-overlay hidden">
-        <div class="user-switch-container">
-            <div class="flex items-center justify-center mb-4">
-                <i class="fas fa-user-shield text-3xl text-primary-light mr-3"></i>
-                <h3 class="text-xl font-bold gradient-text">تبديل المستخدم</h3>
-            </div>
-            <p class="text-gray-300 mb-4">أنت الآن تشاهد لوحة التحكم كـ: <span id="currentViewingUser" class="text-primary-light"></span></p>
-            <div class="flex space-x-3 justify-center">
-                <button id="returnToAdmin" class="btn-gold px-6 py-2 rounded-lg font-bold">
-                    <i class="fas fa-arrow-left mr-2"></i>العودة إلى حسابي
-                </button>
-                <button id="closeUserSwitch" class="bg-gray-600 hover:bg-gray-700 px-6 py-2 rounded-lg font-bold transition-colors">
-                    <i class="fas fa-times mr-2"></i>إغلاق
-                </button>
-            </div>
-        </div>
-    </div>
     
     <!-- QR Overlay -->
     <div id="qrOverlay" class="qr-overlay hidden">
@@ -491,34 +412,29 @@
                     <span id="whatsappStatus" class="status-disconnected px-3 py-1 rounded-full text-sm font-bold">جارٍ التحميل...</span>
                 </div>
 
-                <!-- NEW: Bot Status -->
+                <!-- Bot Status -->
                 <div class="flex items-center justify-between mb-4">
                     <span class="text-sm text-gray-300">حالة البوت:</span>
                     <span id="botStatus" class="bot-status-running px-3 py-1 rounded-full text-sm font-bold">نشط</span>
                 </div>
 
-                <!-- NEW: WhatsApp QR Code Button -->
+                <!-- WhatsApp QR Code Button -->
                 <div id="whatsappQrStatus" class="whatsapp-qr-status hidden">
                     <i class="fas fa-qrcode mr-2"></i>
                     <span>QR Code جاهز للمسح</span>
                 </div>
-                
-                <!-- NEW: Admin User Switch Button -->
-                <button id="userSwitchBtn" class="w-full bg-purple-600 hover:bg-purple-700 py-2 rounded-lg font-bold mb-2 transition-colors hidden">
-                    <i class="fas fa-user-shield mr-2"></i>تبديل المستخدم
-                </button>
                 
                 <!-- Reconnect Button -->
                 <button id="reconnectBtn" class="w-full btn-gold py-2 rounded-lg font-bold mb-2">
                     <i class="fas fa-sync-alt mr-2"></i>إعادة الاتصال
                 </button>
 
-                <!-- NEW: Stop Bot Button -->
+                <!-- Stop Bot Button -->
                 <button id="stopBotBtn" class="w-full bg-red-600 hover:bg-red-700 py-2 rounded-lg font-bold mb-2 transition-colors">
                     <i class="fas fa-stop mr-2"></i>إيقاف البوت
                 </button>
 
-                <!-- NEW: Logout Button -->
+                <!-- Logout Button -->
                 <button id="logoutBtn" class="w-full logout-btn py-2 rounded-lg font-bold mb-2">
                     <i class="fas fa-sign-out-alt mr-2"></i>تسجيل الخروج
                 </button>
@@ -535,33 +451,6 @@
                 <!-- AI Status -->
                 <div id="aiStatus" class="mt-2 p-2 bg-green-900 bg-opacity-20 rounded-lg text-center">
                     <span class="text-green-400 text-sm">🤖 الذكاء الاصطناعي مفعل</span>
-                </div>
-            </div>
-            
-            <!-- NEW: User Management Section (Visible only to Admin) -->
-            <div id="userManagementSection" class="user-management-section p-6 border-b border-gray-600 hidden">
-                <h3 class="font-bold text-lg mb-3 gradient-text">إدارة المستخدمين</h3>
-                
-                <!-- Add User Form -->
-                <div class="mb-4 p-3 bg-gray-800 rounded-lg">
-                    <h4 class="font-bold text-primary-light mb-2">إضافة مستخدم جديد</h4>
-                    <input type="text" id="newUserName" placeholder="اسم المستخدم" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-sm mb-2 focus:outline-none focus:border-primary">
-                    <input type="password" id="newUserPassword" placeholder="كلمة المرور" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-sm mb-2 focus:outline-none focus:border-primary">
-                    <select id="newUserRole" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-sm mb-2 focus:outline-none focus:border-primary">
-                        <option value="standard">مستخدم عادي</option>
-                        <option value="admin">مدير</option>
-                    </select>
-                    <button id="addUserBtn" class="w-full bg-primary hover:bg-primary-dark py-2 rounded-lg font-bold transition-colors">
-                        <i class="fas fa-user-plus mr-2"></i>إضافة مستخدم
-                    </button>
-                </div>
-                
-                <!-- Users List -->
-                <div class="max-h-40 overflow-y-auto">
-                    <h4 class="font-bold text-primary-light mb-2">المستخدمين</h4>
-                    <div id="usersList">
-                        <!-- Users will be populated here -->
-                    </div>
                 </div>
             </div>
             
@@ -595,10 +484,6 @@
                     <i class="fas fa-paper-plane mr-2"></i> 🚀 إرسال عروض ترويجية
                 </button>
                 
-                <button id="retryBulkBtn" class="w-full bg-yellow-600 hover:bg-yellow-700 py-2 rounded-lg font-bold mb-2 hidden transition-colors">
-                    <i class="fas fa-redo mr-2"></i> إعادة المحاولة (طريقة بديلة)
-                </button>
-                
                 <div class="text-xs text-gray-400 text-center">
                     سيتم الإرسال إلى <span id="clientsCount">0</span> عميل
                 </div>
@@ -614,7 +499,7 @@
                     <i class="fas fa-envelope mr-2"></i>إرسال للمدير
                 </button>
 
-                <!-- NEW: Performance Stats -->
+                <!-- Performance Stats -->
                 <div class="mt-4 p-3 bg-gray-800 rounded-lg">
                     <h4 class="font-bold text-primary-light mb-2">إحصائيات اليوم</h4>
                     <div class="grid grid-cols-2 gap-2 text-xs">
@@ -747,12 +632,7 @@
         let isBulkSending = false;
         let currentStatusFilter = 'all';
         let isBotStopped = false;
-        
-        // User management variables
         let currentUser = null;
-        let users = [];
-        let isAdminViewingAs = false;
-        let viewingAsUser = null;
         let authToken = null;
         
         // DOM Elements
@@ -771,7 +651,6 @@
         const bulkMessage = document.getElementById('bulkMessage');
         const sendDelay = document.getElementById('sendDelay');
         const sendBulkBtn = document.getElementById('sendBulkBtn');
-        const retryBulkBtn = document.getElementById('retryBulkBtn');
         const clientList = document.getElementById('clientList');
         const exportReportBtn = document.getElementById('exportReportBtn');
         const sendReportBtn = document.getElementById('sendReportBtn');
@@ -787,30 +666,15 @@
         const scrollToBottom = document.getElementById('scrollToBottom');
         const statusSelect = document.getElementById('statusSelect');
         const clientStatusSelector = document.getElementById('clientStatusSelector');
-        const autoReportNotification = document.getElementById('autoReportNotification');
-        const autoReportMessage = document.getElementById('autoReportMessage');
         const whatsappQrStatus = document.getElementById('whatsappQrStatus');
-        
+        const currentUserName = document.getElementById('currentUserName');
+        const currentUserRole = document.getElementById('currentUserRole');
+
         // Performance stats elements
         const statMessages = document.getElementById('statMessages');
         const statAIReplies = document.getElementById('statAIReplies');
         const statClients = document.getElementById('statClients');
         const statInterested = document.getElementById('statInterested');
-
-        // User Management Elements
-        const currentUserName = document.getElementById('currentUserName');
-        const currentUserRole = document.getElementById('currentUserRole');
-        const userManagementSection = document.getElementById('userManagementSection');
-        const userSwitchBtn = document.getElementById('userSwitchBtn');
-        const userSwitchOverlay = document.getElementById('userSwitchOverlay');
-        const returnToAdmin = document.getElementById('returnToAdmin');
-        const closeUserSwitch = document.getElementById('closeUserSwitch');
-        const currentViewingUser = document.getElementById('currentViewingUser');
-        const newUserName = document.getElementById('newUserName');
-        const newUserPassword = document.getElementById('newUserPassword');
-        const newUserRole = document.getElementById('newUserRole');
-        const addUserBtn = document.getElementById('addUserBtn');
-        const usersList = document.getElementById('usersList');
 
         // Initialize
         document.addEventListener('DOMContentLoaded', function() {
@@ -819,14 +683,12 @@
 
         function initializeApp() {
             try {
-                // Get auth token from localStorage
                 authToken = localStorage.getItem('authToken');
                 if (!authToken) {
                     window.location.href = '/';
                     return;
                 }
 
-                // Connect to Socket.io with authentication
                 socket = io({
                     timeout: 10000,
                     reconnectionAttempts: 5
@@ -834,14 +696,12 @@
                 
                 setupSocketEvents();
                 setupEventListeners();
-                loadCurrentUser(); // This will trigger authentication
+                loadCurrentUser();
                 
-                // Auto-check WhatsApp status on load
                 setTimeout(() => {
                     checkWhatsAppStatus();
                 }, 2000);
                 
-                // Auto-fill promotional message
                 bulkMessage.value = "🚀 نظام رقم كلاود ERP السحابي! حلول متكاملة للمحاسبة، المخزون، الموارد البشرية، والمزيد. جلسة استشارية مجانية! 📞 +966555111222 🌐 ragmcloud.sa";
                 
             } catch (error) {
@@ -855,7 +715,6 @@
                 console.log('✅ Connected to server');
                 showToast('✅ تم الاتصال بالخادم بنجاح', 'success');
                 
-                // Authenticate socket connection
                 if (currentUser) {
                     console.log('🔐 Authenticating socket for user:', currentUser.id);
                     socket.emit('authenticate', authToken);
@@ -866,13 +725,11 @@
                 console.log('✅ Socket authenticated for user:', userData);
                 const userId = currentUser.id;
                 
-                // 🛠️ FIXED: User-specific WhatsApp status
                 socket.on(`user_status_${userId}`, (data) => {
                     console.log('📡 Received user status:', data);
                     updateWhatsAppStatus(data);
                 });
 
-                // 🛠️ FIXED: User-specific QR code with auto-display
                 socket.on(`user_qr_${userId}`, (data) => {
                     console.log('📡 Received QR code for user:', userId);
                     if (data.qrCode) {
@@ -880,14 +737,12 @@
                     }
                 });
 
-                // 🛠️ FIXED: User-specific bot status
                 socket.on(`user_bot_status_${userId}`, (data) => {
                     console.log('📡 Received bot status:', data);
                     isBotStopped = data.stopped;
                     updateBotStatusUI();
                 });
 
-                // 🛠️ FIXED: User-specific messages
                 socket.on(`user_message_${userId}`, (data) => {
                     console.log('📡 Received user message:', data);
                     handleUserMessage(data);
@@ -914,19 +769,6 @@
                 }, 2000);
             });
 
-            // Global events (not user-specific)
-            socket.on('auto_report_notification', (data) => {
-                showAutoReportNotification(data);
-            });
-
-            socket.on('client_status_updated', (data) => {
-                updateClientStatus(data.clientId, data.status);
-            });
-
-            socket.on('performance_stats', (data) => {
-                updatePerformanceStats(data);
-            });
-
             socket.on('bulk_progress', (data) => {
                 handleBulkProgress(data);
             });
@@ -939,35 +781,29 @@
         }
         
         function setupEventListeners() {
-            // QR Code
             closeQR.addEventListener('click', () => {
                 qrOverlay.classList.add('hidden');
             });
 
-            // WhatsApp QR Status Button
             whatsappQrStatus.addEventListener('click', () => {
                 fetchUserQRCode();
             });
             
-            // Reconnect
             reconnectBtn.addEventListener('click', () => {
                 socket.emit('user_reconnect_whatsapp');
                 showToast('🔄 جاري إعادة الاتصال...', 'warning');
             });
             
-            // Stop Bot Button
             stopBotBtn.addEventListener('click', () => {
                 const newState = !isBotStopped;
                 socket.emit('user_toggle_bot', { stop: newState });
                 showToast(newState ? '🛑 جاري إيقاف البوت...' : '🚀 جاري تشغيل البوت...', newState ? 'warning' : 'success');
             });
 
-            // Logout Button
             logoutBtn.addEventListener('click', () => {
                 logoutUser();
             });
             
-            // AI Mode Toggle
             aiToggle.addEventListener('change', (e) => {
                 isAIMode = e.target.checked;
                 aiStatus.innerHTML = isAIMode ? 
@@ -977,7 +813,6 @@
                 showToast(isAIMode ? '🤖 تم تفعيل الذكاء الاصطناعي' : '⚠️ تم تعطيل الذكاء الاصطناعي', 'success');
             });
             
-            // File Upload
             uploadBtn.addEventListener('click', () => {
                 excelFile.click();
             });
@@ -989,7 +824,6 @@
                 }
             });
             
-            // Bulk Message
             sendBulkBtn.addEventListener('click', () => {
                 if (!bulkMessage.value.trim()) {
                     showToast('❌ يرجى كتابة رسالة ترويجية', 'error');
@@ -1004,11 +838,6 @@
                 startBulkSending();
             });
             
-            retryBulkBtn.addEventListener('click', () => {
-                startBulkSending(true);
-            });
-            
-            // Message Sending
             messageInput.addEventListener('keypress', (e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
@@ -1018,7 +847,6 @@
             
             sendMessageBtn.addEventListener('click', sendMessage);
             
-            // Status Filter
             document.querySelectorAll('.status-filter-btn').forEach(btn => {
                 btn.addEventListener('click', (e) => {
                     const status = e.target.dataset.status;
@@ -1026,50 +854,25 @@
                 });
             });
             
-            // Client Status Selector
             statusSelect.addEventListener('change', (e) => {
                 if (currentClient) {
                     updateClientStatus(currentClient.id, e.target.value);
                 }
             });
             
-            // Export Report
             exportReportBtn.addEventListener('click', () => {
                 exportReport();
             });
             
-            // Send Report
             sendReportBtn.addEventListener('click', () => {
                 sendReport();
             });
             
-            // Scroll to Bottom
             scrollToBottom.addEventListener('click', () => {
                 scrollChatToBottom();
             });
-            
-            // User Management Event Listeners
-            userSwitchBtn.addEventListener('click', () => {
-                userSwitchOverlay.classList.remove('hidden');
-                currentViewingUser.textContent = isAdminViewingAs ? viewingAsUser.name : currentUser.name;
-            });
-            
-            returnToAdmin.addEventListener('click', () => {
-                isAdminViewingAs = false;
-                viewingAsUser = null;
-                userSwitchOverlay.classList.add('hidden');
-                updateUserInterface();
-                showToast('✅ العودة إلى حساب المدير', 'success');
-            });
-            
-            closeUserSwitch.addEventListener('click', () => {
-                userSwitchOverlay.classList.add('hidden');
-            });
-            
-            addUserBtn.addEventListener('click', addNewUser);
         }
 
-        // 🛠️ FIXED: Improved QR Code Functions
         function showQRCode(qrCodeUrl) {
             console.log('🖼️ Showing QR code:', qrCodeUrl);
             if (!qrCodeUrl) {
@@ -1078,10 +881,8 @@
                 return;
             }
             
-            // Clear previous QR code
             qrCode.innerHTML = '';
             
-            // Create new QR code image
             const qrImage = document.createElement('img');
             qrImage.src = qrCodeUrl;
             qrImage.alt = "WhatsApp QR Code";
@@ -1097,13 +898,11 @@
             qrCode.appendChild(qrImage);
             qrOverlay.classList.remove('hidden');
             
-            // Show notification
             showToast('📱 يرجى مسح QR Code للاتصال', 'success');
             
             console.log('✅ QR code overlay shown');
         }
 
-        // 🛠️ FIXED: Auto-fetch QR code on page load
         function fetchUserQRCode() {
             console.log('🔄 Fetching user QR code...');
             fetch('/api/user-whatsapp-qr', {
@@ -1134,11 +933,9 @@
             });
         }
 
-        // 🛠️ FIXED: Improved WhatsApp status update with auto-QR display
         function updateWhatsAppStatus(data) {
             console.log('🔄 Updating WhatsApp status:', data);
             
-            // 🛠️ FIXED: Check status instead of connected
             const isConnected = data.status === 'connected';
             
             whatsappStatus.textContent = data.message;
@@ -1146,18 +943,15 @@
             if (isConnected) {
                 whatsappStatus.className = 'status-connected px-3 py-1 rounded-full text-sm font-bold';
                 whatsappQrStatus.classList.add('hidden');
-                qrOverlay.classList.add('hidden'); // Hide QR when connected
+                qrOverlay.classList.add('hidden');
             } else {
                 whatsappStatus.className = 'status-disconnected px-3 py-1 rounded-full text-sm font-bold';
                 
                 if (data.status === 'qr-ready') {
                     whatsappQrStatus.classList.remove('hidden');
-                    // 🛠️ FIXED: AUTO-SHOW QR CODE when status is qr-ready
                     if (!qrOverlay.classList.contains('hidden')) {
-                        // QR overlay is already visible, no need to show again
                         console.log('📱 QR overlay already visible');
                     } else {
-                        // Fetch and show QR code automatically
                         console.log('🔄 Auto-fetching QR code for qr-ready status');
                         setTimeout(() => fetchUserQRCode(), 1000);
                     }
@@ -1168,7 +962,6 @@
             }
         }
 
-        // 🛠️ FIXED: Function to check WhatsApp status
         function checkWhatsAppStatus() {
             fetch('/api/user-whatsapp-status', {
                 method: 'GET',
@@ -1187,11 +980,9 @@
             });
         }
 
-        // 🛠️ FIXED: Handle user messages properly
         function handleUserMessage(data) {
             console.log('💬 Handling user message:', data);
             
-            // Store message in messages object
             const clientPhone = data.from;
             if (!messages[clientPhone]) {
                 messages[clientPhone] = [];
@@ -1203,12 +994,10 @@
                 timestamp: data.timestamp
             });
             
-            // If this client is currently selected, update the chat
             if (currentClient && currentClient.phone === clientPhone) {
                 renderMessages(messages[clientPhone]);
             }
             
-            // Update client last message
             const client = clients.find(c => c.phone === clientPhone);
             if (client) {
                 client.lastMessage = data.message.substring(0, 50) + (data.message.length > 50 ? '...' : '');
@@ -1216,7 +1005,6 @@
                 renderClientList();
             }
             
-            // Update performance stats for AI replies
             if (data.fromMe) {
                 updatePerformanceStats({
                     aiReplies: parseInt(statAIReplies.textContent) + 1
@@ -1224,37 +1012,30 @@
             }
         }
 
-        // Logout Function
         function logoutUser() {
             if (confirm('هل أنت متأكد من تسجيل الخروج؟')) {
-                // Clear localStorage
                 localStorage.removeItem('authToken');
                 localStorage.removeItem('currentUser');
                 localStorage.removeItem('performanceStats');
                 
-                // Disconnect socket
                 if (socket) {
                     socket.disconnect();
                 }
                 
-                // Show logout message
                 showToast('👋 تم تسجيل الخروج بنجاح', 'success');
                 
-                // Redirect to login page
                 setTimeout(() => {
                     window.location.href = '/';
                 }, 1500);
             }
         }
 
-        // User Management Functions
         function loadCurrentUser() {
             const savedUser = localStorage.getItem('currentUser');
             if (savedUser) {
                 currentUser = JSON.parse(savedUser);
                 updateUserInterface();
                 
-                // 🛠️ FIXED: Authenticate socket AFTER user is loaded
                 if (socket && socket.connected) {
                     console.log('🔐 Authenticating socket for user:', currentUser.id);
                     socket.emit('authenticate', authToken);
@@ -1274,7 +1055,6 @@
                         localStorage.setItem('currentUser', JSON.stringify(currentUser));
                         updateUserInterface();
                         
-                        // 🛠️ FIXED: Authenticate socket AFTER user is loaded
                         if (socket && socket.connected) {
                             console.log('🔐 Authenticating socket for user:', currentUser.id);
                             socket.emit('authenticate', authToken);
@@ -1290,139 +1070,15 @@
             }
         }
         
-        function loadUsers() {
-            if (currentUser && currentUser.role === 'admin') {
-                fetch('/api/users', {
-                    method: 'GET',
-                    headers: {
-                        'Authorization': `Bearer ${authToken}`,
-                        'Content-Type': 'application/json'
-                    }
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        users = data.users;
-                        renderUsersList();
-                    }
-                })
-                .catch(error => {
-                    console.error('Error loading users:', error);
-                });
-            }
-        }
-        
         function updateUserInterface() {
             if (!currentUser) return;
             
             currentUserName.textContent = currentUser.name;
             currentUserRole.textContent = currentUser.role === 'admin' ? 'مدير' : 'مستخدم عادي';
             
-            if (currentUser.role === 'admin' && !isAdminViewingAs) {
-                userManagementSection.classList.remove('hidden');
-                userSwitchBtn.classList.remove('hidden');
-                loadUsers(); // Load users list for admin
-            } else {
-                userManagementSection.classList.add('hidden');
-                userSwitchBtn.classList.add('hidden');
-            }
-            
             currentUserRole.className = currentUser.role === 'admin' 
                 ? 'px-3 py-1 bg-purple-600 rounded-full text-sm font-bold'
                 : 'px-3 py-1 bg-primary rounded-full text-sm font-bold';
-        }
-        
-        function addNewUser() {
-            const name = newUserName.value.trim();
-            const password = newUserPassword.value.trim();
-            const role = newUserRole.value;
-            
-            if (!name || !password) {
-                showToast('❌ يرجى ملء جميع الحقول', 'error');
-                return;
-            }
-            
-            fetch('/api/users', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${authToken}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    name: name,
-                    username: name.toLowerCase().replace(/\s/g, ''),
-                    password: password,
-                    role: role
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showToast('✅ تم إضافة المستخدم بنجاح', 'success');
-                    clearUserForm();
-                    loadUsers();
-                } else {
-                    showToast('❌ ' + data.error, 'error');
-                }
-            })
-            .catch(error => {
-                console.error('Error adding user:', error);
-                showToast('❌ فشل إضافة المستخدم', 'error');
-            });
-        }
-        
-        function renderUsersList() {
-            usersList.innerHTML = '';
-            
-            users.forEach(user => {
-                const userElement = document.createElement('div');
-                userElement.className = `user-item p-3 rounded-lg mb-2 ${user.role === 'admin' ? 'role-admin' : 'role-standard'} bg-gray-800`;
-                
-                userElement.innerHTML = `
-                    <div class="flex justify-between items-center">
-                        <div>
-                            <div class="font-bold">${user.name}</div>
-                            <div class="text-xs text-gray-400">${user.role === 'admin' ? 'مدير' : 'مستخدم عادي'}</div>
-                        </div>
-                        <div class="flex items-center space-x-2">
-                            <span class="text-xs ${user.isActive ? 'user-active' : 'user-inactive'}">
-                                <i class="fas fa-circle text-xs mr-1"></i>${user.isActive ? 'نشط' : 'غير نشط'}
-                            </span>
-                            ${currentUser.role === 'admin' && currentUser.id !== user.id ? `
-                                <button class="switch-to-user-btn text-xs bg-blue-600 hover:bg-blue-700 px-2 py-1 rounded transition-colors" data-user-id="${user.id}">
-                                    <i class="fas fa-eye mr-1"></i>عرض
-                                </button>
-                            ` : ''}
-                        </div>
-                    </div>
-                `;
-                
-                usersList.appendChild(userElement);
-            });
-            
-            document.querySelectorAll('.switch-to-user-btn').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    const userId = parseInt(e.target.closest('button').dataset.userId);
-                    switchToUser(userId);
-                });
-            });
-        }
-        
-        function switchToUser(userId) {
-            const targetUser = users.find(u => u.id === userId);
-            if (targetUser) {
-                isAdminViewingAs = true;
-                viewingAsUser = targetUser;
-                userSwitchOverlay.classList.add('hidden');
-                updateUserInterface();
-                showToast(`👁️ تشاهد الآن كـ: ${targetUser.name}`, 'success');
-            }
-        }
-        
-        function clearUserForm() {
-            newUserName.value = '';
-            newUserPassword.value = '';
-            newUserRole.value = 'standard';
         }
 
         function uploadExcelFile(file) {
@@ -1609,7 +1265,7 @@
             });
         }
         
-        function startBulkSending(isRetry = false) {
+        function startBulkSending() {
             if (isBulkSending) {
                 showToast('⚠️ جاري الإرسال بالفعل', 'warning');
                 return;
@@ -1833,15 +1489,6 @@
             }, 4000);
         }
         
-        function showAutoReportNotification(data) {
-            autoReportMessage.textContent = data.message;
-            autoReportNotification.style.display = 'block';
-            
-            setTimeout(() => {
-                autoReportNotification.style.display = 'none';
-            }, 5000);
-        }
-        
         function updateBotStatusUI() {
             if (isBotStopped) {
                 botStatus.textContent = 'متوقف';
@@ -1854,7 +1501,6 @@
             }
         }
         
-        // Chat scroll detection
         chatContainer.addEventListener('scroll', () => {
             const scrollThreshold = 100;
             const isNearBottom = chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight < scrollThreshold;
@@ -1866,7 +1512,6 @@
             }
         });
 
-        // Load initial data
         loadClients();
         loadPerformanceStats();
     </script>
