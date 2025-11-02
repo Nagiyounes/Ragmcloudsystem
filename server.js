@@ -34,7 +34,7 @@ app.use((req, res, next) => {
 });
 
 // Create required directories
-const directories = ['uploads', 'memory', 'tmp', 'reports', 'sessions', 'data', 'memory/training'];
+const directories = ['uploads', 'memory', 'tmp', 'reports', 'sessions', 'data'];
 directories.forEach(dir => {
     if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
@@ -221,8 +221,8 @@ const ragmcloudCompanyInfo = {
     ]
 };
 
-// DEFAULT AI System Prompt (will be overridden by saved prompt)
-const DEFAULT_AI_SYSTEM_PROMPT = `أنت مساعد ذكي ومحترف تمثل شركة "رقم كلاود" المتخصصة في أنظمة ERP السحابية. أنت بائع مقنع ومحاسب خبير.
+// AI System Prompt
+const AI_SYSTEM_PROMPT = `أنت مساعد ذكي ومحترف تمثل شركة "رقم كلاود" المتخصصة في أنظمة ERP السحابية. أنت بائع مقنع ومحاسب خبير.
 
 🔹 **هويتك:**
 - أنت بائع محترف ومحاسب متمرس
@@ -236,10 +236,10 @@ const DEFAULT_AI_SYSTEM_PROMPT = `أنت مساعد ذكي ومحترف تمثل
 المقر: الرياض - حي المغرزات
 
 🔹 **باقات الأسعار (سنوية):**
-• الباقة الأساسية: 1000 ريال (مستخدم واحد)
-• الباقة المتقدمة: 1800 ريال (مستخدمين) 
-• الباقة الاحترافية: 2700 ريال (3 مستخدمين)
-• الباقة المميزة: 3000 ريال (3 مستخدمين)
+• الباقة الأساسية: 1000 ريال/سنوياً
+• الباقة المتقدمة: 1800 ريال/سنوياً 
+• الباقة الاحترافية: 2700 ريال/سنوياً
+• الباقة المميزة: 3000 ريال/سنوياً
 
 🔹 **قواعد الرد الإلزامية:**
 1. **لا تجيب أبداً على:** أسئلة شخصية، سياسة، أديان، برامج أخرى، منافسين
@@ -261,277 +261,6 @@ const DEFAULT_AI_SYSTEM_PROMPT = `أنت مساعد ذكي ومحترف تمثل
 - وجهه للاتصال بفريق المبيعات للتسجيل
 
 تذكر: أنت بائع محترف هدفك مساعدة العملاء في اختيار النظام المناسب لشركاتهم.`;
-
-// 🆕 GLOBAL AI SYSTEM PROMPT (Load from file on startup)
-let AI_SYSTEM_PROMPT = loadAIPromptFromFile();
-
-// 🆕 Function to load AI prompt from file
-function loadAIPromptFromFile() {
-    try {
-        if (fs.existsSync('./memory/ai_prompt.txt')) {
-            const savedPrompt = fs.readFileSync('./memory/ai_prompt.txt', 'utf8');
-            console.log('✅ Loaded AI prompt from file');
-            return savedPrompt;
-        } else {
-            console.log('ℹ️ Using default AI prompt');
-            return DEFAULT_AI_SYSTEM_PROMPT;
-        }
-    } catch (error) {
-        console.error('❌ Error loading AI prompt:', error);
-        return DEFAULT_AI_SYSTEM_PROMPT;
-    }
-}
-
-// =============================================
-// 🆕 ENHANCEMENT 1: MANUAL CLIENT STATUS ASSIGNMENT
-// =============================================
-
-// 🆕 Manual Client Status Update API
-app.post('/api/update-client-status', authenticateUser, async (req, res) => {
-    try {
-        const { phone, status } = req.body;
-        const userId = req.user.id;
-        
-        console.log('🔄 Updating client status:', { phone, status, userId });
-        
-        if (!phone || !status) {
-            return res.status(400).json({ error: 'رقم الهاتف والحالة مطلوبان' });
-        }
-        
-        // Update client status in memory
-        let clients = [];
-        if (fs.existsSync('./memory/clients.json')) {
-            clients = JSON.parse(fs.readFileSync('./memory/clients.json', 'utf8'));
-        }
-        
-        const clientIndex = clients.findIndex(client => client.phone === phone);
-        if (clientIndex !== -1) {
-            clients[clientIndex].status = status;
-            clients[clientIndex].statusUpdatedAt = new Date().toISOString();
-            clients[clientIndex].updatedBy = userId;
-            
-            fs.writeFileSync('./memory/clients.json', JSON.stringify(clients, null, 2));
-            
-            // Emit to frontend
-            io.emit('client_status_updated', {
-                phone: phone,
-                status: status,
-                clients: clients
-            });
-            
-            res.json({ success: true, message: `تم تحديث الحالة إلى: ${getStatusText(status)}` });
-        } else {
-            res.status(404).json({ error: 'العميل غير موجود' });
-        }
-    } catch (error) {
-        console.error('❌ Error updating client status:', error);
-        res.status(500).json({ error: 'فشل تحديث الحالة' });
-    }
-});
-
-// 🆕 Helper function for status text
-function getStatusText(status) {
-    const statusMap = {
-        'interested': 'مهتم',
-        'not-interested': 'غير مهتم', 
-        'busy': 'مشغول',
-        'no-reply': 'لم يرد'
-    };
-    return statusMap[status] || status;
-}
-
-// =============================================
-// 🆕 ENHANCEMENT 2: USER MANAGEMENT APIs
-// =============================================
-
-// 🆕 Edit user
-app.put('/api/users/:id', authenticateUser, authorizeAdmin, (req, res) => {
-    try {
-        const userId = parseInt(req.params.id);
-        const { name, username, password, role, isActive } = req.body;
-        
-        const userIndex = users.findIndex(u => u.id === userId);
-        if (userIndex === -1) {
-            return res.status(404).json({ error: 'المستخدم غير موجود' });
-        }
-        
-        // Check if username already exists (excluding current user)
-        if (username && users.find(u => u.username === username && u.id !== userId)) {
-            return res.status(400).json({ error: 'اسم المستخدم موجود مسبقاً' });
-        }
-        
-        // Update user
-        if (name) users[userIndex].name = name;
-        if (username) users[userIndex].username = username;
-        if (password) users[userIndex].password = bcrypt.hashSync(password, 10);
-        if (role) users[userIndex].role = role;
-        if (isActive !== undefined) users[userIndex].isActive = isActive;
-        
-        saveUsers();
-        
-        res.json({
-            success: true,
-            user: {
-                id: users[userIndex].id,
-                name: users[userIndex].name,
-                username: users[userIndex].username,
-                role: users[userIndex].role,
-                isActive: users[userIndex].isActive
-            },
-            message: 'تم تحديث المستخدم بنجاح'
-        });
-        
-    } catch (error) {
-        console.error('Update user error:', error);
-        res.status(500).json({ error: 'خطأ في الخادم' });
-    }
-});
-
-// 🆕 Delete user  
-app.delete('/api/users/:id', authenticateUser, authorizeAdmin, (req, res) => {
-    try {
-        const userId = parseInt(req.params.id);
-        
-        // Prevent deleting own account
-        if (userId === req.user.id) {
-            return res.status(400).json({ error: 'لا يمكن حذف حسابك الخاص' });
-        }
-        
-        const userIndex = users.findIndex(u => u.id === userId);
-        if (userIndex === -1) {
-            return res.status(404).json({ error: 'المستخدم غير موجود' });
-        }
-        
-        // Remove user WhatsApp session
-        const userSession = getUserWhatsAppSession(userId);
-        if (userSession && userSession.client) {
-            userSession.client.destroy();
-        }
-        userWhatsAppSessions.delete(userId);
-        
-        // Remove from current sessions
-        currentSessions.delete(userId);
-        
-        // Remove user
-        users.splice(userIndex, 1);
-        saveUsers();
-        
-        res.json({ 
-            success: true, 
-            message: 'تم حذف المستخدم بنجاح' 
-        });
-        
-    } catch (error) {
-        console.error('Delete user error:', error);
-        res.status(500).json({ error: 'خطأ في الخادم' });
-    }
-});
-
-// =============================================
-// 🆕 ENHANCEMENT 3: AI TRAINING PORTAL APIs
-// =============================================
-
-// 🆕 Update AI system prompt
-app.put('/api/ai-prompt', authenticateUser, authorizeAdmin, (req, res) => {
-    try {
-        const { prompt } = req.body;
-        
-        console.log('🔄 Updating AI prompt:', prompt ? 'Content received' : 'No content');
-        
-        if (!prompt) {
-            return res.status(400).json({ error: 'النص المطلوب مطلوب' });
-        }
-        
-        // Save AI prompt to file
-        fs.writeFileSync('./memory/ai_prompt.txt', prompt);
-        
-        // Update global AI prompt for ALL users
-        AI_SYSTEM_PROMPT = prompt;
-        
-        console.log('✅ AI prompt updated globally for all users');
-        
-        res.json({ 
-            success: true, 
-            message: 'تم تحديث نص الذكاء الاصطناعي بنجاح لجميع المستخدمين' 
-        });
-        
-    } catch (error) {
-        console.error('Update AI prompt error:', error);
-        res.status(500).json({ error: 'خطأ في تحديث النص: ' + error.message });
-    }
-});
-
-// 🆕 Upload training documents
-app.post('/api/ai-training', authenticateUser, authorizeAdmin, upload.single('trainingFile'), (req, res) => {
-    try {
-        if (!req.file) {
-            return res.status(400).json({ error: 'لم يتم رفع أي ملف' });
-        }
-        
-        const filePath = req.file.path;
-        const fileName = req.file.originalname;
-        
-        // Process training documents based on file type
-        const fileExtension = path.extname(fileName).toLowerCase();
-        
-        let trainingData = '';
-        
-        if (fileExtension === '.txt') {
-            trainingData = fs.readFileSync(filePath, 'utf8');
-        } else if (fileExtension === '.pdf') {
-            // For PDF files, you would need a PDF parser library
-            trainingData = `PDF file uploaded: ${fileName}. يحتاج معالجة إضافية.`;
-        } else if (fileExtension === '.docx' || fileExtension === '.doc') {
-            // For Word documents, you would need a DOCX parser library
-            trainingData = `Word document uploaded: ${fileName}. يحتاج معالجة إضافية.`;
-        } else {
-            fs.unlinkSync(filePath);
-            return res.status(400).json({ error: 'نوع الملف غير مدعوم' });
-        }
-        
-        // Save training data to memory with timestamp
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const trainingFile = `./memory/training/training_${timestamp}_${fileName}.txt`;
-        fs.writeFileSync(trainingFile, trainingData);
-        
-        // Clean up uploaded file
-        fs.unlinkSync(filePath);
-        
-        console.log(`✅ Training file saved: ${trainingFile}`);
-        
-        res.json({ 
-            success: true, 
-            message: `تم رفع ملف التدريب بنجاح: ${fileName}`,
-            fileName: fileName,
-            dataLength: trainingData.length,
-            savedPath: trainingFile
-        });
-        
-    } catch (error) {
-        console.error('AI training upload error:', error);
-        
-        // Clean up uploaded file
-        if (req.file && fs.existsSync(req.file.path)) {
-            fs.unlinkSync(req.file.path);
-        }
-        
-        res.status(500).json({ error: 'فشل رفع ملف التدريب: ' + error.message });
-    }
-});
-
-// 🆕 Get current AI prompt
-app.get('/api/ai-prompt', authenticateUser, authorizeAdmin, (req, res) => {
-    try {
-        res.json({ 
-            success: true, 
-            prompt: AI_SYSTEM_PROMPT 
-        });
-        
-    } catch (error) {
-        console.error('Error getting AI prompt:', error);
-        res.status(500).json({ error: 'خطأ في جلب النص' });
-    }
-});
 
 // =============================================
 // 🆕 MULTI-USER WHATSAPP FUNCTIONS
@@ -770,200 +499,6 @@ function isUserWhatsAppConnected(userId) {
     return session && session.isConnected;
 }
 
-// 🆕 ENHANCEMENT: AI Response with Real User Identity
-async function generateRagmcloudAIResponse(userMessage, clientPhone, userId) {
-    console.log('🔄 Processing message for Ragmcloud with memory:', userMessage);
-    
-    // Get current user info for personalized response
-    const currentUser = users.find(u => u.id === userId);
-    const userName = currentUser ? currentUser.name : 'مساعد رقم كلاود';
-    
-    // ALWAYS try DeepSeek first if available
-    if (deepseekAvailable) {
-        try {
-            console.log('🎯 Using DeepSeek with conversation memory...');
-            
-            const aiResponse = await callDeepSeekAI(userMessage, clientPhone, userName);
-            
-            console.log('✅ DeepSeek Response successful');
-            console.log('💬 AI Reply:', aiResponse);
-            return aiResponse;
-            
-        } catch (error) {
-            console.error('❌ DeepSeek API Error:', error.message);
-            console.log('🔄 Falling back to enhanced responses...');
-            return generateEnhancedRagmcloudResponse(userMessage, clientPhone, userName);
-        }
-    }
-    
-    // If DeepSeek not available, use enhanced fallback
-    console.log('🤖 DeepSeek not available, using enhanced fallback');
-    return generateEnhancedRagmcloudResponse(userMessage, clientPhone, userName);
-}
-
-// 🆕 ENHANCEMENT: Update DeepSeek AI call with user identity
-async function callDeepSeekAI(userMessage, clientPhone, userName) {
-    if (!deepseekAvailable || !process.env.DEEPSEEK_API_KEY) {
-        throw new Error('DeepSeek not available');
-    }
-
-    try {
-        console.log('🚀 Calling DeepSeek API...');
-        
-        const shouldGreet = shouldSendGreeting(clientPhone);
-        const conversationHistory = getConversationHistoryForAI(clientPhone);
-        
-        // Build messages array with user identity
-        const messages = [
-            {
-                role: "system",
-                content: AI_SYSTEM_PROMPT.replace(
-                    "أنا مساعد ذكي ومحترف تمثل شركة", 
-                    `أنا ${userName} تطوير أعمال من رقم كلاود`
-                )
-            }
-        ];
-
-        // Add conversation history
-        if (conversationHistory.length > 0) {
-            messages.push(...conversationHistory);
-        }
-
-        // Add current user message with context
-        messages.push({
-            role: "user", 
-            content: `العميل يقول: "${userMessage}"
-            
-${shouldGreet ? 'ملاحظة: هذه بداية المحادثة - ابدأ بالتحية المناسبة' : 'المحادثة مستمرة'}
-
-الرد المطلوب (بلهجة البائع المحترف والمقنع):`
-        });
-
-        const response = await fetch('https://api.deepseek.com/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}`
-            },
-            body: JSON.stringify({
-                model: "deepseek-chat",
-                messages: messages,
-                max_tokens: 500,
-                temperature: 0.7,
-                stream: false
-            })
-        });
-
-        if (!response.ok) {
-            throw new Error(`DeepSeek API error: ${response.status}`);
-        }
-
-        const data = await response.json();
-        
-        if (data.choices && data.choices[0] && data.choices[0].message) {
-            return data.choices[0].message.content;
-        } else {
-            throw new Error('Invalid response from DeepSeek');
-        }
-
-    } catch (error) {
-        console.error('❌ DeepSeek API Error:', error.message);
-        throw error;
-    }
-}
-
-// 🆕 ENHANCEMENT: Update enhanced response with user identity
-function generateEnhancedRagmcloudResponse(userMessage, clientPhone, userName) {
-    const msg = userMessage.toLowerCase().trim();
-    const shouldGreet = shouldSendGreeting(clientPhone);
-    
-    console.log('🤖 Using enhanced Ragmcloud response for:', msg);
-    
-    // Check for personal/irrelevant questions - REJECT THEM
-    const irrelevantQuestions = [
-        'من أنت', 'ما اسمك', 'who are you', 'what is your name',
-        'مدير', 'المدير', 'manager', 'owner', 'صاحب',
-        'عمرك', 'كم عمرك', 'how old', 'اين تسكن', 'اين تعيش',
-        ' politics', 'سياسة', 'دين', 'religion', 'برامج أخرى',
-        'منافس', 'منافسين', 'competitor'
-    ];
-    
-    if (irrelevantQuestions.some(q => msg.includes(q))) {
-        return `أعتذر، هذا السؤال خارج نطاق تخصصي في أنظمة ERP. يمكنني مساعدتك في اختيار النظام المناسب لشركتك أو الإجابة على استفساراتك حول باقاتنا وخدماتنا.`;
-    }
-    
-    // Greeting only at start or after 5 hours
-    if (shouldGreet && (msg.includes('السلام') || msg.includes('سلام') || msg.includes('اهلا') || 
-        msg.includes('مرحبا') || msg.includes('اهلين') || msg.includes('مساء') || 
-        msg.includes('صباح') || msg.includes('hello') || msg.includes('hi'))) {
-        return `السلام عليكم ورحمة الله وبركاته 🌟
-
-أهلاً وسهلاً بك! أنا ${userName} من فريق رقم كلاود ERP.
-
-أنا هنا لمساعدتك في:
-• اختيار الباقة المناسبة لشركتك
-• شرح ميزات نظام ERP السحابي
-• الإجابة على استفساراتك التقنية والمحاسبية
-
-📞 للاستشارة المجانية: +966555111222
-🌐 الموقع: ragmcloud.sa
-
-كيف يمكنني مساعدتك اليوم؟`;
-    }
-    
-    // Price/Packages questions
-    if (msg.includes('سعر') || msg.includes('تكلفة') || msg.includes('باقة') || 
-        msg.includes('package') || msg.includes('price') || msg.includes('كم') || 
-        msg.includes('كام') || msg.includes('تعرفة')) {
-        
-        return `🔄 جاري تحميل معلومات الباقات...
-
-✅ **باقات رقم كلاود السنوية:**
-
-🏷️ **الباقة الأساسية** - 1000 ريال/سنوياً
-• مستخدم واحد • فرع واحد • 500 فاتورة/شهر
-
-🏷️ **الباقة المتقدمة** - 1800 ريال/سنوياً  
-• مستخدمين • فرعين • 1000 فاتورة/شهر
-
-🏷️ **الباقة الاحترافية** - 2700 ريال/سنوياً
-• 3 مستخدمين • 3 فروع • 2000 فاتورة/شهر
-
-🏷️ **الباقة المميزة** - 3000 ريال/سنوياً
-• 3 مستخدمين • 3 فروع • فواتير غير محدودة
-
-💡 **لأي باقة تناسبك، أحتاج أعرف:**
-• عدد المستخدمين اللي تحتاجهم؟
-• كم فرع عندك؟
-• طبيعة نشاط شركتك؟
-
-📞 فريق المبيعات جاهز لمساعدتك: +966555111222`;
-    }
-    
-    // Default response - CONVINCING SALES APPROACH
-    return `أهلاً وسهلاً بك! 👋
-
-أنت تتحدث مع ${userName} من فريق رقم كلاود المتخصص في أنظمة ERP السحابية.
-
-🎯 **كيف يمكنني مساعدتك؟**
-
-1. **اختيار الباقة المناسبة** لشركتك من بين 4 باقات
-2. **شرح الميزات** المحاسبية والإدارية  
-3. **ترتيب نسخة تجريبية** مجانية
-4. **توصيلك بفريق المبيعات** للاستشارة
-
-💡 **لماذا تختار رقم كلاود؟**
-• نظام سحابي 100% - لا تحتاج خوادم
-• واجهة عربية سهلة الاستخدام
-• دعم فني على مدار الساعة
-• توفير وقت وجهد إدارة الشركة
-
-📞 **اتصل الآن للاستشارة المجانية: +966555111222**
-🌐 **أو زور موقعنا: ragmcloud.sa**
-
-أخبرني عن طبيعة نشاط شركتك علشان أقدر أساعدك في اختيار النظام المناسب!`;
-}
-
 // 🆕 User-specific Message Processing
 async function processUserIncomingMessage(userId, message, from) {
     try {
@@ -1005,9 +540,9 @@ async function processUserIncomingMessage(userId, message, from) {
         
         let aiResponse;
         try {
-            // Generate AI response with timeout and user identity
+            // Generate AI response with timeout
             aiResponse = await Promise.race([
-                generateRagmcloudAIResponse(message, clientPhone, userId),
+                generateRagmcloudAIResponse(message, clientPhone),
                 new Promise((_, reject) => 
                     setTimeout(() => reject(new Error('AI response timeout')), 15000)
                 )
@@ -1015,9 +550,7 @@ async function processUserIncomingMessage(userId, message, from) {
         } catch (aiError) {
             console.error(`❌ AI response error for user ${userId}:`, aiError.message);
             // Use enhanced fallback response instead of error message
-            const currentUser = users.find(u => u.id === userId);
-            const userName = currentUser ? currentUser.name : 'مساعد رقم كلاود';
-            aiResponse = generateEnhancedRagmcloudResponse(message, clientPhone, userName);
+            aiResponse = generateEnhancedRagmcloudResponse(message, clientPhone);
         }
         
         // Send the response using user's WhatsApp client
@@ -1117,6 +650,33 @@ function manualReconnectUserWhatsApp(userId) {
         });
     } else {
         initializeUserWhatsApp(userId);
+    }
+}
+
+// 🆕 FIXED: WhatsApp Disconnect Function
+function disconnectUserWhatsApp(userId) {
+    console.log(`🔌 Disconnecting WhatsApp for user ${userId}...`);
+    const userSession = getUserWhatsAppSession(userId);
+    
+    if (userSession && userSession.client) {
+        userSession.client.destroy().then(() => {
+            userSession.isConnected = false;
+            userSession.status = 'disconnected';
+            userSession.qrCode = null;
+            
+            // Emit disconnect status
+            io.emit(`user_status_${userId}`, { 
+                connected: false, 
+                message: 'واتساب غير متصل',
+                status: 'disconnected',
+                hasQr: false,
+                userId: userId
+            });
+            
+            console.log(`✅ WhatsApp disconnected for user ${userId}`);
+        }).catch(error => {
+            console.error(`❌ Error disconnecting WhatsApp for user ${userId}:`, error);
+        });
     }
 }
 
@@ -1614,6 +1174,328 @@ function getConversationHistoryForAI(phone, maxMessages = 10) {
     }
 }
 
+// ENHANCED: DeepSeek AI API Call with Conversation Memory
+async function callDeepSeekAI(userMessage, clientPhone) {
+    if (!deepseekAvailable || !process.env.DEEPSEEK_API_KEY) {
+        throw new Error('DeepSeek not available');
+    }
+
+    try {
+        console.log('🚀 Calling DeepSeek API...');
+        
+        const shouldGreet = shouldSendGreeting(clientPhone);
+        const conversationHistory = getConversationHistoryForAI(clientPhone);
+        
+        // Build messages array
+        const messages = [
+            {
+                role: "system",
+                content: AI_SYSTEM_PROMPT
+            }
+        ];
+
+        // Add conversation history
+        if (conversationHistory.length > 0) {
+            messages.push(...conversationHistory);
+        }
+
+        // Add current user message with context
+        messages.push({
+            role: "user", 
+            content: `العميل يقول: "${userMessage}"
+            
+${shouldGreet ? 'ملاحظة: هذه بداية المحادثة - ابدأ بالتحية المناسبة' : 'المحادثة مستمرة'}
+
+الرد المطلوب (بلهجة البائع المحترف والمقنع):`
+        });
+
+        const response = await fetch('https://api.deepseek.com/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}`
+            },
+            body: JSON.stringify({
+                model: "deepseek-chat",
+                messages: messages,
+                max_tokens: 500,
+                temperature: 0.7,
+                stream: false
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`DeepSeek API error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        
+        if (data.choices && data.choices[0] && data.choices[0].message) {
+            return data.choices[0].message.content;
+        } else {
+            throw new Error('Invalid response from DeepSeek');
+        }
+
+    } catch (error) {
+        console.error('❌ DeepSeek API Error:', error.message);
+        throw error;
+    }
+}
+
+// Enhanced Ragmcloud responses for when AI fails
+function generateEnhancedRagmcloudResponse(userMessage, clientPhone) {
+    const msg = userMessage.toLowerCase().trim();
+    const shouldGreet = shouldSendGreeting(clientPhone);
+    
+    console.log('🤖 Using enhanced Ragmcloud response for:', msg);
+    
+    // Check for personal/irrelevant questions - REJECT THEM
+    const irrelevantQuestions = [
+        'من أنت', 'ما اسمك', 'who are you', 'what is your name',
+        'مدير', 'المدير', 'manager', 'owner', 'صاحب',
+        'عمرك', 'كم عمرك', 'how old', 'اين تسكن', 'اين تعيش',
+        ' politics', 'سياسة', 'دين', 'religion', 'برامج أخرى',
+        'منافس', 'منافسين', 'competitor'
+    ];
+    
+    if (irrelevantQuestions.some(q => msg.includes(q))) {
+        return "أعتذر، هذا السؤال خارج نطاق تخصصي في أنظمة ERP. يمكنني مساعدتك في اختيار النظام المناسب لشركتك أو الإجابة على استفساراتك حول باقاتنا وخدماتنا.";
+    }
+    
+    // Greeting only at start or after 5 hours
+    if (shouldGreet && (msg.includes('السلام') || msg.includes('سلام') || msg.includes('اهلا') || 
+        msg.includes('مرحبا') || msg.includes('اهلين') || msg.includes('مساء') || 
+        msg.includes('صباح') || msg.includes('hello') || msg.includes('hi'))) {
+        return `السلام عليكم ورحمة الله وبركاته 🌟
+
+أهلاً وسهلاً بك! أنا مساعدك في نظام رقم كلاود ERP.
+
+أنا هنا لمساعدتك في:
+• اختيار الباقة المناسبة لشركتك
+• شرح ميزات نظام ERP السحابي
+• الإجابة على استفساراتك التقنية والمحاسبية
+
+📞 للاستشارة المجانية: +966555111222
+🌐 الموقع: ragmcloud.sa
+
+كيف يمكنني مساعدتك اليوم؟`;
+    }
+    
+    // Price/Packages questions
+    if (msg.includes('سعر') || msg.includes('تكلفة') || msg.includes('باقة') || 
+        msg.includes('package') || msg.includes('price') || msg.includes('كم') || 
+        msg.includes('كام') || msg.includes('تعرفة')) {
+        
+        return `🔄 جاري تحميل معلومات الباقات...
+
+✅ **باقات رقم كلاود السنوية:**
+
+🏷️ **الباقة الأساسية** - 1000 ريال/سنوياً
+• مستخدم واحد • فرع واحد • 500 فاتورة/شهر
+
+🏷️ **الباقة المتقدمة** - 1800 ريال/سنوياً  
+• مستخدمين • فرعين • 1000 فاتورة/شهر
+
+🏷️ **الباقة الاحترافية** - 2700 ريال/سنوياً
+• 3 مستخدمين • 3 فروع • 2000 فاتورة/شهر
+
+🏷️ **الباقة المميزة** - 3000 ريال/سنوياً
+• 3 مستخدمين • 3 فروع • فواتير غير محدودة
+
+💡 **لأي باقة تناسبك، أحتاج أعرف:**
+• عدد المستخدمين اللي تحتاجهم؟
+• كم فرع عندك؟
+• طبيعة نشاط شركتك؟
+
+📞 فريق المبيعات جاهز لمساعدتك: +966555111222`;
+    }
+    
+    // ERP System questions
+    if (msg.includes('نظام') || msg.includes('erp') || msg.includes('برنامج') || 
+        msg.includes('سوفت وير') || msg.includes('system')) {
+        
+        return `🌟 **نظام رقم كلاود ERP السحابي**
+
+هو حل متكامل لإدارة شركتك بشكل احترافي:
+
+✅ **المميزات الأساسية:**
+• محاسبة متكاملة مع الزكاة والضريبة
+• إدارة مخزون ومستودعات ذكية
+• نظام موارد بشرية ورواتب
+• إدارة علاقات عملاء (CRM)
+• تقارير وتحليلات فورية
+• تكامل مع المنصات الحكومية
+
+🚀 **فوائد للنظام:**
+• توفير 50% من وقت المتابعة اليومية
+• تقليل الأخطاء المحاسبية
+• متابعة كل الفروع من مكان واحد
+• تقارير فورية لاتخاذ القرارات
+
+💼 **يناسب:**
+• الشركات الصغيرة والمتوسطة
+• المؤسسات التجارية والصناعية
+• المستودعات ومراكز التوزيع
+• شركات المقاولات والخدمات
+
+📞 جرب النظام مجاناً: +966555111222`;
+    }
+    
+    // Accounting questions
+    if (msg.includes('محاسبة') || msg.includes('محاسب') || msg.includes('حسابات') || 
+        msg.includes('مالي') || msg.includes('accounting')) {
+        
+        return `🧮 **الحلول المحاسبية في رقم كلاود:**
+
+📊 **النظام المحاسبي المتكامل:**
+• الدفاتر المحاسبية المتكاملة
+• تسجيل الفواتير والمصروفات
+• الميزانيات والتقارير المالية
+• التكامل مع الزكاة والضريبة
+• كشوف الحسابات المصرفية
+
+✅ **مميزات المحاسبة:**
+• متوافق مع أنظمة الهيئة العامة للزكاة والضريبة
+• تقارير مالية فورية وجاهزة
+• نسخ احتياطي تلقائي للبيانات
+• واجهة عربية سهلة الاستخدام
+
+💡 **بتقدر تعمل:**
+• متابعة حركة المبيعات والمشتريات
+• تحليل التكاليف والأرباح
+• إدارة التدفقات النقدية
+• تقارير الأداء المالي
+
+📞 استشارة محاسبية مجانية: +966555111222`;
+    }
+    
+    // Inventory questions  
+    if (msg.includes('مخزون') || msg.includes('مستودع') || msg.includes('بضاعة') || 
+        msg.includes('inventory') || msg.includes('stock')) {
+        
+        return `📦 **نظام إدارة المخزون المتكامل:**
+
+🔄 **إدارة المخزون الذكية:**
+• تتبع البضاعة والمنتجات
+• إدارة الفروع والمستودعات
+• تنبيهات نقص المخزون الآلية
+• تقارير حركة البضاعة
+• جرد المخزون الآلي
+
+🚀 **مميزات النظام:**
+• تقارير ربحية المنتجات
+• تحليل بطء وسرعة الحركة
+• تكامل مع نظام المبيعات
+• إدارة الموردين والمشتريات
+
+💰 **وفّر على شركتك:**
+• تقليل الهدر والفاقد
+• تحسين التدفق النقدي
+• زيادة كفاءة المستودعات
+
+📞 للاستشارة: +966555111222`;
+    }
+    
+    // Trial/Demo requests
+    if (msg.includes('تجريب') || msg.includes('تجربة') || msg.includes('demo') || 
+        msg.includes('جرب') || msg.includes('نسخة')) {
+        
+        return `🎯 **جرب نظام رقم كلاود مجاناً!**
+
+نقدم لك نسخة تجريبية مجانية لمدة 7 أيام لتقييم النظام:
+
+✅ **ما تحصل عليه في النسخة التجريبية:**
+• الوصول الكامل لجميع الميزات
+• دعم فني خلال فترة التجربة
+• تدريب على استخدام النظام
+• تقارير تجريبية لشركتك
+
+📋 **لبدء التجربة:**
+1. تواصل مع فريق المبيعات
+2. حدد موعد للتدريب
+3. ابدأ باستخدام النظام فوراً
+
+📞 احجز نسختك التجريبية الآن: +966555111222
+🌐 أو زور موقعنا: ragmcloud.sa
+
+جرب وشوف الفرق في إدارة شركتك!`;
+    }
+    
+    // Contact requests
+    if (msg.includes('اتصل') || msg.includes('تواصل') || msg.includes('رقم') || 
+        msg.includes('هاتف') || msg.includes('contact')) {
+        
+        return `📞 **تواصل مع فريق رقم كلاود:**
+
+نحن هنا لمساعدتك في اختيار النظام المناسب:
+
+**طرق التواصل:**
+• الهاتف: +966555111222
+• الواتساب: +966555111222  
+• البريد: info@ragmcloud.sa
+• الموقع: ragmcloud.sa
+
+**أوقات العمل:**
+من الأحد إلى الخميس
+من 8 صباحاً إلى 6 مساءً
+
+**مقرنا:**
+الرياض - حي المغرزات - طريق الملك عبد الله
+
+فريق المبيعات جاهز لاستقبال استفساراتك وتقديم الاستشارة المجانية!`;
+    }
+    
+    // Default response - CONVINCING SALES APPROACH
+    return `أهلاً وسهلاً بك! 👋
+
+أنت تتحدث مع مساعد رقم كلاود المتخصص في أنظمة ERP السحابية.
+
+🎯 **كيف يمكنني مساعدتك؟**
+
+1. **اختيار الباقة المناسبة** لشركتك من بين 4 باقات
+2. **شرح الميزات** المحاسبية والإدارية  
+3. **ترتيب نسخة تجريبية** مجانية
+4. **توصيلك بفريق المبيعات** للاستشارة
+
+💡 **لماذا تختار رقم كلاود؟**
+• نظام سحابي 100% - لا تحتاج خوادم
+• واجهة عربية سهلة الاستخدام
+• دعم فني على مدار الساعة
+• توفير وقت وجهد إدارة الشركة
+
+📞 **اتصل الآن للاستشارة المجانية: +966555111222**
+🌐 **أو زور موقعنا: ragmcloud.sa**
+
+أخبرني عن طبيعة نشاط شركتك علشان أقدر أساعدك في اختيار النظام المناسب!`;
+}
+
+// ENHANCED AI Response - ALWAYS TRY DEEPSEEK FIRST
+async function generateRagmcloudAIResponse(userMessage, clientPhone) {
+    console.log('🔄 Processing message for Ragmcloud with memory:', userMessage);
+    
+    // ALWAYS try DeepSeek first if available
+    if (deepseekAvailable) {
+        try {
+            console.log('🎯 Using DeepSeek with conversation memory...');
+            
+            const aiResponse = await callDeepSeekAI(userMessage, clientPhone);
+            
+            console.log('✅ DeepSeek Response successful');
+            console.log('💬 AI Reply:', aiResponse);
+            return aiResponse;
+            
+        } catch (error) {
+            console.error('❌ DeepSeek API Error:', error.message);
+            console.log('🔄 Falling back to enhanced responses...');
+            return generateEnhancedRagmcloudResponse(userMessage, clientPhone);
+        }
+    }
+    
+    // If DeepSeek not available, use enhanced fallback
+    console.log('🤖 DeepSeek not available, using enhanced fallback');
+    return generateEnhancedRagmcloudResponse(userMessage, clientPhone);
+}
+
 // ENHANCED: Store messages per client with better reliability
 function storeClientMessage(phone, message, isFromMe) {
     try {
@@ -1825,7 +1707,7 @@ function exportReportToFile(userId = null) {
         
         // Ensure reports directory exists
         if (!fs.existsSync(path.join(__dirname, 'reports'))) {
-            fs.mkdirSync(path.join(__dirname, 'reports', { recursive: true });
+            fs.mkdirSync(path.join(__dirname, 'reports'), { recursive: true });
         }
         
         fs.writeFileSync(filePath, report, 'utf8');
@@ -2019,6 +1901,17 @@ app.post('/api/user-toggle-bot', authenticateUser, (req, res) => {
     }
 });
 
+// 🆕 FIXED: User-specific WhatsApp Disconnect Route
+app.post('/api/user-disconnect-whatsapp', authenticateUser, (req, res) => {
+    try {
+        const userId = req.user.id;
+        disconnectUserWhatsApp(userId);
+        res.json({ success: true, message: 'جارٍ قطع اتصال الواتساب...' });
+    } catch (error) {
+        res.status(500).json({ error: 'فشل قطع الاتصال' });
+    }
+});
+
 // 🆕 User-specific WhatsApp Reconnection
 app.post('/api/user-reconnect-whatsapp', authenticateUser, (req, res) => {
     try {
@@ -2093,6 +1986,83 @@ app.post('/api/users', authenticateUser, authorizeAdmin, (req, res) => {
         
     } catch (error) {
         console.error('Create user error:', error);
+        res.status(500).json({ error: 'خطأ في الخادم' });
+    }
+});
+
+app.put('/api/users/:id', authenticateUser, authorizeAdmin, (req, res) => {
+    try {
+        const userId = parseInt(req.params.id);
+        const { name, username, password, role, isActive } = req.body;
+        
+        const userIndex = users.findIndex(u => u.id === userId);
+        if (userIndex === -1) {
+            return res.status(404).json({ error: 'المستخدم غير موجود' });
+        }
+        
+        // Check if username already exists (excluding current user)
+        if (username && users.find(u => u.username === username && u.id !== userId)) {
+            return res.status(400).json({ error: 'اسم المستخدم موجود مسبقاً' });
+        }
+        
+        // Update user
+        if (name) users[userIndex].name = name;
+        if (username) users[userIndex].username = username;
+        if (password) users[userIndex].password = bcrypt.hashSync(password, 10);
+        if (role) users[userIndex].role = role;
+        if (isActive !== undefined) users[userIndex].isActive = isActive;
+        
+        saveUsers();
+        
+        res.json({
+            success: true,
+            user: {
+                id: users[userIndex].id,
+                name: users[userIndex].name,
+                username: users[userIndex].username,
+                role: users[userIndex].role,
+                isActive: users[userIndex].isActive
+            },
+            message: 'تم تحديث المستخدم بنجاح'
+        });
+        
+    } catch (error) {
+        console.error('Update user error:', error);
+        res.status(500).json({ error: 'خطأ في الخادم' });
+    }
+});
+
+// 🆕 FIXED: Switch to User Dashboard Route
+app.post('/api/switch-to-user', authenticateUser, authorizeAdmin, (req, res) => {
+    try {
+        const { userId } = req.body;
+        
+        if (!userId) {
+            return res.status(400).json({ error: 'معرف المستخدم مطلوب' });
+        }
+        
+        const targetUser = users.find(u => u.id === parseInt(userId) && u.isActive);
+        if (!targetUser) {
+            return res.status(404).json({ error: 'المستخدم غير موجود' });
+        }
+        
+        // Generate temporary token for the target user
+        const tempToken = generateToken(targetUser);
+        
+        res.json({
+            success: true,
+            token: tempToken,
+            user: {
+                id: targetUser.id,
+                name: targetUser.name,
+                username: targetUser.username,
+                role: targetUser.role
+            },
+            message: `تم التبديل إلى حساب ${targetUser.name} بنجاح`
+        });
+        
+    } catch (error) {
+        console.error('Switch user error:', error);
         res.status(500).json({ error: 'خطأ في الخادم' });
     }
 });
@@ -2216,7 +2186,7 @@ app.post('/api/send-to-manager', authenticateUser, async (req, res) => {
     }
 });
 
-// Export report
+// Export report - FIXED: Now supports PDF/DOCX
 app.get('/api/export-report', authenticateUser, (req, res) => {
     try {
         console.log('🔄 Exporting report...');
@@ -2453,7 +2423,7 @@ io.on('connection', (socket) => {
             socket.emit('auth_error', { error: 'خطأ في المصادقة' });
         }
     });
-    
+
     // Handle user-specific bot toggle
     socket.on('user_toggle_bot', (data) => {
         if (!socket.userId) {
@@ -2542,6 +2512,15 @@ io.on('connection', (socket) => {
         manualReconnectUserWhatsApp(socket.userId);
     });
 
+    socket.on('user_disconnect_whatsapp', () => {
+        if (!socket.userId) {
+            socket.emit('error', { error: 'غير مصرح' });
+            return;
+        }
+        
+        disconnectUserWhatsApp(socket.userId);
+    });
+
     socket.on('disconnect', () => {
         console.log('Client disconnected');
     });
@@ -2568,12 +2547,6 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log('🎉 MULTI-USER ARCHITECTURE: COMPLETED');
     console.log('☁️  CLOUD-OPTIMIZED WHATSAPP: ENABLED');
     console.log('📱 QR CODE FIXED: FRONTEND WILL NOW RECEIVE QR CODES');
-    console.log('🆕 ENHANCEMENTS COMPLETED:');
-    console.log('   ✅ Manual Client Status Assignment - FIXED');
-    console.log('   ✅ Real User Identity in AI Responses - FIXED');
-    console.log('   ✅ Enhanced User Management - FIXED');
-    console.log('   ✅ AI Training Portal - FIXED');
-    console.log('   ✅ GLOBAL AI Training - Admin changes affect ALL users');
-    console.log('   ✅ PERMANENT AI Storage - Training survives server restarts');
-    console.log('   ✅ REAL-TIME Updates - Changes apply immediately');
+    console.log('🔌 WHATSAPP DISCONNECT: ENABLED');
+    console.log('🔄 USER SWITCHING: ENABLED');
 });
