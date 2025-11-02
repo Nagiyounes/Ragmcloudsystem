@@ -6,7 +6,6 @@
     <title>رقم كلاود ERP - Smart Sales Assistant</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Fixed Socket.io CDN -->
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <script>
         tailwind.config = {
@@ -304,13 +303,18 @@
 
         /* NEW: Auto-report notification */
         .auto-report-notification {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
             background: linear-gradient(135deg, #ed8936, #dd6b20);
             color: white;
             padding: 15px;
             border-radius: 10px;
-            margin-bottom: 20px;
             animation: pulse 2s infinite;
             display: none;
+            z-index: 999;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
         }
 
         @keyframes pulse {
@@ -326,6 +330,60 @@
 
         .bot-status-running {
             background: linear-gradient(135deg, #00B98B, #007C5C) !important;
+        }
+
+        /* NEW: User Management Styles */
+        .user-management-section {
+            transition: all 0.3s ease;
+        }
+
+        .user-item {
+            transition: all 0.3s ease;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .user-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .role-admin {
+            border-left: 4px solid #D4AF37 !important;
+        }
+
+        .role-standard {
+            border-left: 4px solid #007C5C !important;
+        }
+
+        .user-active {
+            color: #10B981;
+        }
+
+        .user-inactive {
+            color: #EF4444;
+        }
+
+        /* NEW: User Switch Overlay */
+        .user-switch-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .user-switch-container {
+            background: rgba(45, 55, 72, 0.95);
+            padding: 30px;
+            border-radius: 20px;
+            text-align: center;
+            border: 2px solid #D4AF37;
+            max-width: 500px;
+            width: 90%;
         }
 
         /* NEW: WhatsApp QR Code Status */
@@ -359,18 +417,40 @@
     </style>
 </head>
 <body class="text-white">
-    <!-- Toast Notifications -->
     <div id="toastContainer" class="fixed top-4 right-4 z-50"></div>
     
-    <!-- QR Overlay -->
+    <div id="autoReportNotification" class="auto-report-notification">
+        <i class="fas fa-bell mr-2"></i>
+        <span id="autoReportMessage"></span>
+    </div>
+    
+    <div id="userSwitchOverlay" class="user-switch-overlay hidden">
+        <div class="user-switch-container">
+            <div class="flex items-center justify-center mb-4">
+                <i class="fas fa-user-shield text-3xl text-primary-light mr-3"></i>
+                <h3 class="text-xl font-bold gradient-text">تبديل المستخدم</h3>
+            </div>
+            <p class="text-gray-300 mb-4">أنت الآن تشاهد لوحة التحكم كـ: <span id="currentViewingUser" class="text-primary-light"></span></p>
+            <div class="flex space-x-3 justify-center">
+                <button id="returnToAdmin" class="btn-gold px-6 py-2 rounded-lg font-bold">
+                    <i class="fas fa-arrow-left mr-2"></i>العودة إلى حسابي
+                </button>
+                <button id="closeUserSwitch" class="bg-gray-600 hover:bg-gray-700 px-6 py-2 rounded-lg font-bold transition-colors">
+                    <i class="fas fa-times mr-2"></i>إغلاق
+                </button>
+            </div>
+        </div>
+    </div>
+    
     <div id="qrOverlay" class="qr-overlay hidden">
         <div class="qr-container luxury-card">
             <div class="flex items-center justify-center mb-4">
                 <i class="fab fa-whatsapp text-3xl text-green-400 mr-3"></i>
-                <h3 class="text-xl font-bold gradient-text">Scan QR Code</h3>
+                <h3 class="text-xl font-bold gradient-text">مسح رمز QR</h3>
             </div>
-            <p class="text-gray-300 mb-4">Scan this QR code with WhatsApp to connect</p>
+            <p class="text-gray-300 mb-4">امسح رمز QR هذا باستخدام واتساب للاتصال</p>
             <div id="qrCode" class="mb-4 flex justify-center"></div>
+            <p id="qrStatusMessage" class="text-red-400 mb-4 text-sm hidden">جارٍ محاولة إعادة الاتصال...</p>
             <button id="closeQR" class="btn-gold px-6 py-2 rounded-lg font-bold">
                 <i class="fas fa-times mr-2"></i>إغلاق
             </button>
@@ -378,9 +458,7 @@
     </div>
     
     <div class="flex h-screen">
-        <!-- Left Sidebar -->
         <div class="w-80 luxury-card rounded-r-2xl m-3 flex flex-col">
-            <!-- Header -->
             <div class="p-6 border-b border-gray-600">
                 <div class="flex items-center justify-between mb-4">
                     <div class="flex items-center">
@@ -393,160 +471,137 @@
                         </div>
                     </div>
                 </div>
-                
-                <!-- User Info -->
-                <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center justify-between mb-2">
                     <span class="text-sm text-gray-300">المستخدم:</span>
                     <span id="currentUserName" class="px-3 py-1 bg-primary rounded-full text-sm font-bold">...</span>
                 </div>
-
-                <!-- User Role -->
-                <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center justify-between mb-2">
                     <span class="text-sm text-gray-300">الدور:</span>
                     <span id="currentUserRole" class="px-3 py-1 bg-purple-600 rounded-full text-sm font-bold">...</span>
                 </div>
-                
-                <!-- WhatsApp Status -->
+                 <div id="viewingAsBadge" class="flex items-center justify-center bg-gray-700 p-2 rounded-lg mb-2 hidden">
+                    <i class="fas fa-eye text-yellow-400 ml-2"></i>
+                    <span class="text-xs text-yellow-400">تشاهد كـ: <span id="viewingAsName"></span> (<span id="viewingAsRole"></span>)</span>
+                </div>
                 <div class="flex items-center justify-between mb-4">
                     <span class="text-sm text-gray-300">حالة الواتساب:</span>
-                    <span id="whatsappStatus" class="status-disconnected px-3 py-1 rounded-full text-sm font-bold">جارٍ التحميل...</span>
+                    <span id="whatsappStatus" class="status-disconnected px-3 py-1 rounded-full text-sm font-bold">غير متصل</span>
                 </div>
-
-                <!-- Bot Status -->
-                <div class="flex items-center justify-between mb-4">
-                    <span class="text-sm text-gray-300">حالة البوت:</span>
-                    <span id="botStatus" class="bot-status-running px-3 py-1 rounded-full text-sm font-bold">نشط</span>
+                
+                <div class="flex space-x-2 mb-4 justify-between" dir="ltr">
+                    <button id="reconnectBtn" class="bg-blue-600 hover:bg-blue-700 text-white text-sm px-3 py-1 rounded-lg transition-colors">
+                        <i class="fas fa-sync-alt mr-1"></i>إعادة الاتصال
+                    </button>
+                    <button id="stopBotBtn" class="bot-status-running text-white text-sm px-3 py-1 rounded-lg transition-colors">
+                        <i class="fas fa-stop mr-1"></i>إيقاف البوت
+                    </button>
+                    <button id="userSwitchBtn" class="bg-yellow-600 hover:bg-yellow-700 text-white text-sm px-3 py-1 rounded-lg transition-colors hidden">
+                        <i class="fas fa-users mr-1"></i>تبديل
+                    </button>
                 </div>
-
-                <!-- WhatsApp QR Code Button -->
                 <div id="whatsappQrStatus" class="whatsapp-qr-status hidden">
                     <i class="fas fa-qrcode mr-2"></i>
-                    <span>QR Code جاهز للمسح</span>
+                    <span>اضغط لعرض QR Code</span>
                 </div>
+            </div>
+            
+            <div id="userManagementSection" class="p-6 border-b border-gray-600 hidden user-management-section">
+                <h3 class="font-bold text-lg mb-3 gradient-text"><i class="fas fa-user-shield mr-2"></i>إدارة المستخدمين</h3>
+                <div class="mb-4 bg-gray-700 p-3 rounded-lg">
+                    <h4 class="font-bold text-primary-light mb-2">إضافة مستخدم جديد</h4>
+                    <input type="text" id="newUserName" placeholder="الاسم الكامل" class="w-full bg-gray-800 border border-gray-600 rounded-lg p-2 text-sm mb-2 focus:outline-none focus:border-primary">
+                    <input type="text" id="newUserUsername" placeholder="اسم المستخدم" class="w-full bg-gray-800 border border-gray-600 rounded-lg p-2 text-sm mb-2 focus:outline-none focus:border-primary">
+                    <input type="password" id="newUserPassword" placeholder="كلمة المرور" class="w-full bg-gray-800 border border-gray-600 rounded-lg p-2 text-sm mb-2 focus:outline-none focus:border-primary">
+                    <select id="newUserRole" class="w-full bg-gray-800 border border-gray-600 rounded-lg p-2 text-sm mb-2 focus:outline-none focus:border-primary">
+                        <option value="standard">مستخدم عادي</option>
+                        <option value="admin">مدير</option>
+                    </select>
+                    <button id="addUserBtn" class="w-full bg-primary hover:bg-primary-dark py-2 rounded-lg font-bold transition-colors">
+                        <i class="fas fa-user-plus mr-2"></i>إضافة مستخدم
+                    </button>
+                </div>
+                <div class="max-h-40 overflow-y-auto">
+                    <h4 class="font-bold text-primary-light mb-2">المستخدمين الحاليين</h4>
+                    <div id="usersList">
+                        </div>
+                </div>
+            </div>
+
+            <div class="p-6 overflow-y-auto flex-grow">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="font-bold text-lg gradient-text">العملاء (<span id="clientsListCount">0</span>)</h3>
+                    <button id="uploadBtn" class="bg-primary hover:bg-primary-dark text-white text-sm px-3 py-1 rounded-lg transition-colors">
+                        <i class="fas fa-file-upload mr-1"></i>رفع Excel
+                    </button>
+                </div>
+                <input type="file" id="excelFile" accept=".xlsx,.xls" class="hidden">
+                <p id="fileInfo" class="text-xs text-gray-400 mb-3 hidden"></p>
                 
-                <!-- Reconnect Button -->
-                <button id="reconnectBtn" class="w-full btn-gold py-2 rounded-lg font-bold mb-2">
-                    <i class="fas fa-sync-alt mr-2"></i>إعادة الاتصال
-                </button>
+                <div class="status-filter">
+                    <button class="status-filter-btn btn-all active" data-status="all">الكل</button>
+                    <button class="status-filter-btn btn-no-reply" data-status="no-reply">لم يرد</button>
+                    <button class="status-filter-btn btn-interested" data-status="interested">مهتم</button>
+                    <button class="status-filter-btn btn-busy" data-status="busy">مشغول</button>
+                    <button class="status-filter-btn btn-not-interested" data-status="not-interested">غير مهتم</button>
+                </div>
 
-                <!-- Stop Bot Button -->
-                <button id="stopBotBtn" class="w-full bg-red-600 hover:bg-red-700 py-2 rounded-lg font-bold mb-2 transition-colors">
-                    <i class="fas fa-stop mr-2"></i>إيقاف البوت
-                </button>
-
-                <!-- Logout Button -->
-                <button id="logoutBtn" class="w-full logout-btn py-2 rounded-lg font-bold mb-2">
+                <div id="clientList" class="space-y-1">
+                    </div>
+            </div>
+            
+            <div class="p-6 border-t border-gray-600">
+                <button id="logoutBtn" class="w-full logout-btn py-2 rounded-lg font-bold transition-colors">
                     <i class="fas fa-sign-out-alt mr-2"></i>تسجيل الخروج
                 </button>
-                
-                <!-- AI Mode Toggle -->
-                <div class="flex items-center justify-between p-3 bg-gray-700 rounded-lg">
-                    <span class="text-sm text-gray-300">وضع الذكاء الاصطناعي</span>
-                    <label class="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" id="aiToggle" class="sr-only peer" checked>
-                        <div class="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-                    </label>
-                </div>
-                
-                <!-- AI Status -->
-                <div id="aiStatus" class="mt-2 p-2 bg-green-900 bg-opacity-20 rounded-lg text-center">
-                    <span class="text-green-400 text-sm">🤖 الذكاء الاصطناعي مفعل</span>
-                </div>
-            </div>
-            
-            <!-- File Upload Section -->
-            <div class="p-6 border-b border-gray-600">
-                <h3 class="font-bold text-lg mb-3 gradient-text">رفع قاعدة العملاء</h3>
-                <input type="file" id="excelFile" accept=".xlsx,.xls" class="hidden">
-                <button id="uploadBtn" class="w-full bg-gray-700 hover:bg-gray-600 py-3 rounded-lg font-bold mb-2 transition-colors">
-                    <i class="fas fa-upload mr-2"></i>رفع ملف Excel
-                </button>
-                <div id="fileInfo" class="hidden text-sm text-gray-400 text-center p-2 bg-gray-800 rounded">
-                    <i class="fas fa-file-excel text-primary-light mr-1"></i> لم يتم رفع أي ملف
-                </div>
-            </div>
-            
-            <!-- Bulk Message Section -->
-            <div class="p-6 border-b border-gray-600">
-                <h3 class="font-bold text-lg mb-3 gradient-text">الإرسال الجماعي</h3>
-                <textarea 
-                    id="bulkMessage" 
-                    rows="4" 
-                    class="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 text-sm mb-3 resize-none focus:outline-none focus:border-primary"
-                    placeholder="اكتب الرسالة الترويجية هنا..."></textarea>
-                
-                <div class="flex items-center justify-between mb-3">
-                    <span class="text-sm text-gray-300">فاصل الزمني (ثواني):</span>
-                    <input type="number" id="sendDelay" value="40" min="40" max="120" class="w-20 bg-gray-600 border border-gray-500 rounded px-2 py-1 text-center">
-                </div>
-                
-                <button id="sendBulkBtn" class="w-full btn-gold py-3 rounded-lg font-bold mb-2">
-                    <i class="fas fa-paper-plane mr-2"></i> 🚀 إرسال عروض ترويجية
-                </button>
-                
-                <div class="text-xs text-gray-400 text-center">
-                    سيتم الإرسال إلى <span id="clientsCount">0</span> عميل
-                </div>
-            </div>
-            
-            <!-- Reports Section -->
-            <div class="p-6">
-                <h3 class="font-bold text-lg mb-3 gradient-text">التقارير والإحصائيات</h3>
-                <button id="exportReportBtn" class="w-full bg-gray-700 hover:bg-gray-600 py-2 rounded-lg font-bold mb-2 transition-colors">
-                    <i class="fas fa-download mr-2"></i>تصدير تقرير
-                </button>
-                <button id="sendReportBtn" class="w-full bg-gray-700 hover:bg-gray-600 py-2 rounded-lg font-bold transition-colors">
-                    <i class="fas fa-envelope mr-2"></i>إرسال للمدير
-                </button>
-
-                <!-- Performance Stats -->
-                <div class="mt-4 p-3 bg-gray-800 rounded-lg">
-                    <h4 class="font-bold text-primary-light mb-2">إحصائيات اليوم</h4>
-                    <div class="grid grid-cols-2 gap-2 text-xs">
-                        <div class="flex justify-between">
-                            <span>الرسائل:</span>
-                            <span id="statMessages" class="text-primary-light">0</span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span>الردود الآلية:</span>
-                            <span id="statAIReplies" class="text-primary-light">0</span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span>العملاء:</span>
-                            <span id="statClients" class="text-primary-light">0</span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span>المهتمين:</span>
-                            <span id="statInterested" class="text-primary-light">0</span>
-                        </div>
-                    </div>
-                </div>
             </div>
         </div>
-        
-        <!-- Right Chat Area -->
-        <div class="flex-1 flex flex-col m-3 luxury-card rounded-l-2xl relative">
-            <!-- Chat Header -->
+
+        <div class="flex-grow flex flex-col m-3 luxury-card rounded-2xl">
+            
             <div class="p-6 border-b border-gray-600">
-                <div class="flex items-center justify-between">
-                    <div class="flex items-center">
-                        <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-primary-light flex items-center justify-center text-white mr-3">
-                            <i class="fas fa-user"></i>
-                        </div>
-                        <div>
-                            <h2 id="currentClientName" class="text-xl font-bold">اختر عميلاً</h2>
-                            <p id="currentClientPhone" class="text-sm text-gray-400">لم يتم اختيار عميل</p>
-                        </div>
+                <h3 class="font-bold text-xl gradient-text mb-4">إحصائيات الأداء اليومية</h3>
+                <div class="grid grid-cols-4 gap-4 text-center">
+                    <div class="luxury-card p-3 rounded-lg">
+                        <div id="statMessages" class="text-2xl font-bold text-primary-light">0</div>
+                        <div class="text-xs text-gray-400">رسائل مرسلة</div>
                     </div>
-                    <div class="flex items-center space-x-2">
-                        <div id="activeStatus" class="hidden">
-                            <span class="px-3 py-1 bg-green-900 bg-opacity-20 text-green-400 rounded-full text-sm">
-                                <i class="fas fa-circle text-xs mr-1"></i>نشط
-                            </span>
+                    <div class="luxury-card p-3 rounded-lg">
+                        <div id="statAIReplies" class="text-2xl font-bold text-primary-light">0</div>
+                        <div class="text-xs text-gray-400">ردود AI</div>
+                    </div>
+                    <div class="luxury-card p-3 rounded-lg">
+                        <div id="statClients" class="text-2xl font-bold text-primary-light">0</div>
+                        <div class="text-xs text-gray-400">عملاء متواصل معهم</div>
+                    </div>
+                    <div class="luxury-card p-3 rounded-lg">
+                        <div id="statInterested" class="text-2xl font-bold text-primary-light">0</div>
+                        <div class="text-xs text-gray-400">عملاء مهتمين</div>
+                    </div>
+                </div>
+                <div class="flex justify-end space-x-2 mt-4">
+                    <button id="exportReportBtn" class="bg-gray-600 hover:bg-gray-700 text-white text-sm px-3 py-1 rounded-lg transition-colors">
+                        <i class="fas fa-file-export mr-1"></i>تصدير التقرير
+                    </button>
+                    <button id="sendReportBtn" class="bg-gray-600 hover:bg-gray-700 text-white text-sm px-3 py-1 rounded-lg transition-colors">
+                        <i class="fas fa-paper-plane mr-1"></i>إرسال التقرير
+                    </button>
+                </div>
+            </div>
+
+            <div class="flex flex-grow overflow-hidden">
+                <div class="w-2/3 flex flex-col border-l border-gray-600">
+                    <div id="chatHeader" class="p-4 border-b border-gray-600 flex items-center justify-between hidden">
+                        <div class="flex items-center">
+                            <div class="w-10 h-10 rounded-full bg-primary-light flex items-center justify-center text-white mr-3">
+                                <i class="fas fa-user"></i>
+                            </div>
+                            <div>
+                                <h2 id="currentClientName" class="text-lg font-bold"></h2>
+                                <p id="currentClientPhone" class="text-sm text-gray-400"></p>
+                            </div>
                         </div>
-                        <!-- Client Status Selector -->
                         <div id="clientStatusSelector" class="hidden">
-                            <select id="statusSelect" class="bg-gray-700 border border-gray-600 rounded-lg px-3 py-1 text-sm focus:outline-none focus:border-primary">
+                             <select id="statusSelect" class="bg-gray-700 border border-gray-600 rounded-lg px-3 py-1 text-sm focus:outline-none focus:border-primary">
                                 <option value="no-reply">لم يرد</option>
                                 <option value="interested">مهتم</option>
                                 <option value="busy">مشغول</option>
@@ -554,406 +609,189 @@
                             </select>
                         </div>
                     </div>
-                </div>
-            </div>
-            
-            <!-- Clients List / Chat Area -->
-            <div class="flex-1 flex">
-                <!-- Clients List -->
-                <div class="w-1/3 border-l border-gray-600 h-full overflow-hidden flex flex-col">
-                    <div class="p-4 border-b border-gray-600">
-                        <h3 class="font-bold text-lg gradient-text mb-2">قائمة العملاء</h3>
-                        <!-- Status Filter -->
-                        <div class="status-filter">
-                            <button class="status-filter-btn btn-all active" data-status="all">الكل</button>
-                            <button class="status-filter-btn btn-interested" data-status="interested">
-                                <span class="status-dot dot-interested"></span> مهتم
-                            </button>
-                            <button class="status-filter-btn btn-busy" data-status="busy">
-                                <span class="status-dot dot-busy"></span> مشغول
-                            </button>
-                            <button class="status-filter-btn btn-not-interested" data-status="not-interested">
-                                <span class="status-dot dot-not-interested"></span> غير مهتم
-                            </button>
-                            <button class="status-filter-btn btn-no-reply" data-status="no-reply">
-                                <span class="status-dot dot-no-reply"></span> لم يرد
-                            </button>
-                        </div>
-                    </div>
-                    <div id="clientList" class="flex-1 overflow-y-auto p-2">
-                        <!-- Clients will be populated here -->
-                    </div>
-                </div>
-                
-                <!-- Chat Messages -->
-                <div class="flex-1 flex flex-col relative">
-                    <div id="chatContainer" class="chat-container">
-                        <div class="text-center text-gray-400 mt-20">
-                            <i class="fas fa-comments text-5xl mb-4 opacity-50"></i>
-                            <p class="text-xl mb-2">مرحباً في رقم كلاود ERP!</p>
-                            <p class="text-gray-500">اختر عميلاً لبدء المحادثة</p>
-                        </div>
-                    </div>
                     
-                    <!-- Scroll to Bottom Button -->
-                    <button id="scrollToBottom" class="scroll-to-bottom">
-                        <i class="fas fa-chevron-down"></i>
-                    </button>
-                    
-                    <!-- Message Input -->
-                    <div class="p-4 border-t border-gray-600">
+                    <div id="chatContainer" class="chat-container flex-grow relative">
+                        <div id="chatEmptyState" class="text-center text-gray-400 mt-20">
+                            <i class="fas fa-comments text-7xl mb-4 opacity-50"></i>
+                            <p class="text-lg text-gray-500">اختر عميلاً لبدء المحادثة</p>
+                        </div>
+                        <button id="scrollToBottom" class="scroll-to-bottom">
+                            <i class="fas fa-arrow-down"></i>
+                        </button>
+                    </div>
+
+                    <div id="messageInputArea" class="p-4 border-t border-gray-600 hidden">
                         <div class="flex items-center">
-                            <input 
-                                type="text" 
-                                id="messageInput" 
-                                placeholder="اكتب رسالتك هنا..." 
-                                class="flex-1 bg-gray-700 border border-gray-600 rounded-l-lg p-3 focus:outline-none focus:border-primary"
-                                disabled>
-                            <button 
-                                id="sendMessageBtn" 
-                                class="bg-primary hover:bg-primary-dark px-6 py-3 rounded-r-lg font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                disabled>
+                            <textarea id="messageInput" placeholder="اكتب رسالتك..." class="flex-grow bg-gray-700 border border-gray-600 rounded-lg p-3 text-sm resize-none h-12 focus:outline-none focus:border-primary ml-2"></textarea>
+                            <button id="sendMessageBtn" class="bg-primary hover:bg-primary-dark text-white p-3 rounded-full transition-colors h-12 w-12 flex items-center justify-center">
                                 <i class="fas fa-paper-plane"></i>
                             </button>
                         </div>
                     </div>
+                </div>
+
+                <div class="w-1/3 p-4 flex flex-col space-y-4">
+                    <h3 class="font-bold text-lg gradient-text border-b border-gray-700 pb-2">حملة الرسائل الجماعية</h3>
+                    
+                    <textarea id="bulkMessage" placeholder="نص الرسالة الجماعية (سيتم إرسالها لجميع العملاء في القائمة)..." class="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 text-sm h-32 resize-none focus:outline-none focus:border-primary"></textarea>
+                    
+                    <div class="flex items-center space-x-2" dir="ltr">
+                        <label for="sendDelay" class="text-sm text-gray-400 whitespace-nowrap">تأخير (ثانية):</label>
+                        <input type="number" id="sendDelay" value="5" min="1" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-sm focus:outline-none focus:border-primary text-center">
+                    </div>
+                    
+                    <div id="bulkProgressInfo" class="text-sm text-gray-400 hidden">
+                        <p>الإجمالي: <span id="bulkTotal">0</span> | تم الإرسال: <span id="bulkSent">0</span> | فشل: <span id="bulkFailed">0</span></p>
+                    </div>
+                    
+                    <button id="sendBulkBtn" class="bg-yellow-600 hover:bg-yellow-700 py-2 rounded-lg font-bold transition-colors">
+                        <i class="fas fa-paper-plane mr-2"></i>بدء الحملة الجماعية
+                    </button>
+                    <button id="retryBulkBtn" class="bg-red-600 hover:bg-red-700 py-2 rounded-lg font-bold transition-colors hidden">
+                        <i class="fas fa-redo mr-2"></i>إعادة المحاولة
+                    </button>
+                    
                 </div>
             </div>
         </div>
     </div>
 
     <script>
-        // Global variables
+        // =============================================
+        // 🛠️ FRONTEND LOGIC - INITIALIZATION & VARIABLES
+        // =============================================
+        let socket;
+        let authToken = localStorage.getItem('token');
+        let currentUser = JSON.parse(localStorage.getItem('currentUser'));
+        let isAdminViewingAs = false; 
+        let viewingAsUser = null;     
         let clients = [];
+        let users = []; 
+        let messages = {}; 
         let currentClient = null;
-        let messages = {};
-        let isAIMode = true;
-        let socket = null;
-        let isBulkSending = false;
-        let currentStatusFilter = 'all';
-        let isBotStopped = false;
-        let currentUser = null;
-        let authToken = null;
-        
+        let statusFilter = 'all';
+        let isBotStopped = false; 
+        let performanceStats = {}; 
+        let bulkCampaignLog = []; // Log for bulk campaign failure retries
+        const clientStatuses = {
+            'no-reply': 'لم يرد',
+            'interested': 'مهتم',
+            'busy': 'مشغول',
+            'not-interested': 'غير مهتم',
+            'all': 'الكل'
+        };
+
         // DOM Elements
-        const qrOverlay = document.getElementById('qrOverlay');
-        const qrCode = document.getElementById('qrCode');
-        const closeQR = document.getElementById('closeQR');
-        const reconnectBtn = document.getElementById('reconnectBtn');
-        const stopBotBtn = document.getElementById('stopBotBtn');
-        const logoutBtn = document.getElementById('logoutBtn');
+        const currentUserName = document.getElementById('currentUserName');
+        const currentUserRole = document.getElementById('currentUserRole');
         const whatsappStatus = document.getElementById('whatsappStatus');
         const botStatus = document.getElementById('botStatus');
-        const aiToggle = document.getElementById('aiToggle');
+        const stopBotBtn = document.getElementById('stopBotBtn');
+        const reconnectBtn = document.getElementById('reconnectBtn');
+        const logoutBtn = document.getElementById('logoutBtn');
+        const userManagementSection = document.getElementById('userManagementSection');
+        const userSwitchBtn = document.getElementById('userSwitchBtn');
+        const userSwitchOverlay = document.getElementById('userSwitchOverlay');
+        const currentViewingUser = document.getElementById('currentViewingUser');
+        const returnToAdmin = document.getElementById('returnToAdmin');
+        const closeUserSwitch = document.getElementById('closeUserSwitch');
+        const usersList = document.getElementById('usersList');
+        const newUserName = document.getElementById('newUserName');
+        const newUserUsername = document.getElementById('newUserUsername');
+        const newUserPassword = document.getElementById('newUserPassword');
+        const newUserRole = document.getElementById('newUserRole');
+        const addUserBtn = document.getElementById('addUserBtn');
+        const statMessages = document.getElementById('statMessages');
+        const statAIReplies = document.getElementById('statAIReplies');
+        const statClients = document.getElementById('statClients');
+        const statInterested = document.getElementById('statInterested');
         const uploadBtn = document.getElementById('uploadBtn');
         const excelFile = document.getElementById('excelFile');
         const fileInfo = document.getElementById('fileInfo');
         const bulkMessage = document.getElementById('bulkMessage');
         const sendDelay = document.getElementById('sendDelay');
         const sendBulkBtn = document.getElementById('sendBulkBtn');
+        const retryBulkBtn = document.getElementById('retryBulkBtn');
+        const bulkProgressInfo = document.getElementById('bulkProgressInfo');
+        const bulkTotal = document.getElementById('bulkTotal');
+        const bulkSent = document.getElementById('bulkSent');
+        const bulkFailed = document.getElementById('bulkFailed');
         const clientList = document.getElementById('clientList');
+        const clientsListCount = document.getElementById('clientsListCount');
         const exportReportBtn = document.getElementById('exportReportBtn');
         const sendReportBtn = document.getElementById('sendReportBtn');
         const currentClientName = document.getElementById('currentClientName');
         const currentClientPhone = document.getElementById('currentClientPhone');
-        const activeStatus = document.getElementById('activeStatus');
         const chatContainer = document.getElementById('chatContainer');
         const messageInput = document.getElementById('messageInput');
         const sendMessageBtn = document.getElementById('sendMessageBtn');
-        const aiStatus = document.getElementById('aiStatus');
+        const messageInputArea = document.getElementById('messageInputArea');
         const toastContainer = document.getElementById('toastContainer');
-        const clientsCount = document.getElementById('clientsCount');
         const scrollToBottom = document.getElementById('scrollToBottom');
         const statusSelect = document.getElementById('statusSelect');
         const clientStatusSelector = document.getElementById('clientStatusSelector');
         const whatsappQrStatus = document.getElementById('whatsappQrStatus');
-        const currentUserName = document.getElementById('currentUserName');
-        const currentUserRole = document.getElementById('currentUserRole');
+        const qrOverlay = document.getElementById('qrOverlay');
+        const qrCode = document.getElementById('qrCode');
+        const closeQR = document.getElementById('closeQR');
+        const autoReportNotification = document.getElementById('autoReportNotification');
+        const autoReportMessage = document.getElementById('autoReportMessage');
 
-        // Performance stats elements
-        const statMessages = document.getElementById('statMessages');
-        const statAIReplies = document.getElementById('statAIReplies');
-        const statClients = document.getElementById('statClients');
-        const statInterested = document.getElementById('statInterested');
 
-        // Initialize
-        document.addEventListener('DOMContentLoaded', function() {
-            initializeApp();
-        });
+        // Check authentication on load
+        if (!authToken) {
+            window.location.href = '/';
+        } else {
+            loadCurrentUser();
+        }
 
-        function initializeApp() {
-            try {
-                authToken = localStorage.getItem('authToken');
-                if (!authToken) {
-                    window.location.href = '/';
-                    return;
-                }
+        // =============================================
+        // 🛠️ FRONTEND LOGIC - HELPER FUNCTIONS
+        // =============================================
 
-                socket = io({
-                    timeout: 10000,
-                    reconnectionAttempts: 5
-                });
-                
-                setupSocketEvents();
-                setupEventListeners();
-                loadCurrentUser();
-                
-                setTimeout(() => {
-                    checkWhatsAppStatus();
-                }, 2000);
-                
-                bulkMessage.value = "🚀 نظام رقم كلاود ERP السحابي! حلول متكاملة للمحاسبة، المخزون، الموارد البشرية، والمزيد. جلسة استشارية مجانية! 📞 +966555111222 🌐 ragmcloud.sa";
-                
-            } catch (error) {
-                console.error('Failed to initialize app:', error);
-                showToast('❌ فشل تهيئة التطبيق', 'error');
-            }
+        function showToast(message, type = 'success', duration = 3000) {
+            const toast = document.createElement('div');
+            toast.className = `toast ${type} opacity-0`;
+            toast.textContent = message;
+            toastContainer.appendChild(toast);
+
+            setTimeout(() => {
+                toast.classList.add('show');
+            }, 10);
+
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => toast.remove(), 300);
+            }, duration);
         }
         
-        function setupSocketEvents() {
-            socket.on('connect', () => {
-                console.log('✅ Connected to server');
-                showToast('✅ تم الاتصال بالخادم بنجاح', 'success');
-                
-                if (currentUser) {
-                    console.log('🔐 Authenticating socket for user:', currentUser.id);
-                    socket.emit('authenticate', authToken);
-                }
-            });
+        function showAutoReportNotification(data) {
+            autoReportMessage.textContent = data.message;
+            autoReportNotification.style.display = 'block';
             
-            socket.on('authenticated', (userData) => {
-                console.log('✅ Socket authenticated for user:', userData);
-                const userId = currentUser.id;
-                
-                socket.on(`user_status_${userId}`, (data) => {
-                    console.log('📡 Received user status:', data);
-                    updateWhatsAppStatus(data);
-                });
-
-                socket.on(`user_qr_${userId}`, (data) => {
-                    console.log('📡 Received QR code for user:', userId);
-                    if (data.qrCode) {
-                        showQRCode(data.qrCode);
-                    }
-                });
-
-                socket.on(`user_bot_status_${userId}`, (data) => {
-                    console.log('📡 Received bot status:', data);
-                    isBotStopped = data.stopped;
-                    updateBotStatusUI();
-                });
-
-                socket.on(`user_message_${userId}`, (data) => {
-                    console.log('📡 Received user message:', data);
-                    handleUserMessage(data);
-                });
-                
-                console.log(`✅ User-specific listeners setup complete for user ${userId}`);
-            });
-            
-            socket.on('disconnect', (reason) => {
-                console.log('Disconnected from server:', reason);
-                showToast('❌ فقد الاتصال بالخادم', 'error');
-            });
-            
-            socket.on('connect_error', (error) => {
-                console.error('Connection error:', error);
-                showToast('❌ خطأ في الاتصال بالخادم', 'error');
-            });
-            
-            socket.on('auth_error', (error) => {
-                console.error('Authentication error:', error);
-                showToast('❌ خطأ في المصادقة، جاري إعادة التوجيه...', 'error');
-                setTimeout(() => {
-                    window.location.href = '/';
-                }, 2000);
-            });
-
-            socket.on('bulk_progress', (data) => {
-                handleBulkProgress(data);
-            });
-
-            socket.on('clients_updated', (data) => {
-                clients = data;
-                renderClientList();
-                updateClientsCount();
-            });
-        }
-        
-        function setupEventListeners() {
-            closeQR.addEventListener('click', () => {
-                qrOverlay.classList.add('hidden');
-            });
-
-            whatsappQrStatus.addEventListener('click', () => {
-                fetchUserQRCode();
-            });
-            
-            reconnectBtn.addEventListener('click', () => {
-                socket.emit('user_reconnect_whatsapp');
-                showToast('🔄 جاري إعادة الاتصال...', 'warning');
-            });
-            
-            stopBotBtn.addEventListener('click', () => {
-                const newState = !isBotStopped;
-                socket.emit('user_toggle_bot', { stop: newState });
-                showToast(newState ? '🛑 جاري إيقاف البوت...' : '🚀 جاري تشغيل البوت...', newState ? 'warning' : 'success');
-            });
-
-            logoutBtn.addEventListener('click', () => {
-                logoutUser();
-            });
-            
-            aiToggle.addEventListener('change', (e) => {
-                isAIMode = e.target.checked;
-                aiStatus.innerHTML = isAIMode ? 
-                    '<span class="text-green-400 text-sm">🤖 الذكاء الاصطناعي مفعل</span>' :
-                    '<span class="text-yellow-400 text-sm">⚠️ الذكاء الاصطناعي معطل</span>';
-                
-                showToast(isAIMode ? '🤖 تم تفعيل الذكاء الاصطناعي' : '⚠️ تم تعطيل الذكاء الاصطناعي', 'success');
-            });
-            
-            uploadBtn.addEventListener('click', () => {
-                excelFile.click();
-            });
-            
-            excelFile.addEventListener('change', (e) => {
-                const file = e.target.files[0];
-                if (file) {
-                    uploadExcelFile(file);
-                }
-            });
-            
-            sendBulkBtn.addEventListener('click', () => {
-                if (!bulkMessage.value.trim()) {
-                    showToast('❌ يرجى كتابة رسالة ترويجية', 'error');
-                    return;
-                }
-                
-                if (clients.length === 0) {
-                    showToast('❌ لا يوجد عملاء للإرسال', 'error');
-                    return;
-                }
-                
-                startBulkSending();
-            });
-            
-            messageInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    sendMessage();
-                }
-            });
-            
-            sendMessageBtn.addEventListener('click', sendMessage);
-            
-            document.querySelectorAll('.status-filter-btn').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    const status = e.target.dataset.status;
-                    setStatusFilter(status);
-                });
-            });
-            
-            statusSelect.addEventListener('change', (e) => {
-                if (currentClient) {
-                    updateClientStatus(currentClient.id, e.target.value);
-                }
-            });
-            
-            exportReportBtn.addEventListener('click', () => {
-                exportReport();
-            });
-            
-            sendReportBtn.addEventListener('click', () => {
-                sendReport();
-            });
-            
-            scrollToBottom.addEventListener('click', () => {
-                scrollChatToBottom();
-            });
-        }
-
-        function showQRCode(qrCodeUrl) {
-            console.log('🖼️ Showing QR code:', qrCodeUrl);
-            if (!qrCodeUrl) {
-                console.error('❌ No QR code URL provided');
-                showToast('❌ لم يتم توليد QR Code', 'error');
-                return;
-            }
-            
-            qrCode.innerHTML = '';
-            
-            const qrImage = document.createElement('img');
-            qrImage.src = qrCodeUrl;
-            qrImage.alt = "WhatsApp QR Code";
-            qrImage.className = "w-64 h-64 mx-auto";
-            qrImage.onload = function() {
-                console.log('✅ QR code image loaded successfully');
-            };
-            qrImage.onerror = function() {
-                console.error('❌ Failed to load QR code image');
-                showToast('❌ فشل تحميل QR Code', 'error');
-            };
-            
-            qrCode.appendChild(qrImage);
-            qrOverlay.classList.remove('hidden');
-            
-            showToast('📱 يرجى مسح QR Code للاتصال', 'success');
-            
-            console.log('✅ QR code overlay shown');
-        }
-
-        function fetchUserQRCode() {
-            console.log('🔄 Fetching user QR code...');
-            fetch('/api/user-whatsapp-qr', {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${authToken}`,
-                    'Content-Type': 'application/json'
-                }
-            })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Network response was not ok');
-                }
-                return response.json();
-            })
-            .then(data => {
-                if (data.qrCode) {
-                    console.log('✅ QR code fetched successfully');
-                    showQRCode(data.qrCode);
-                } else {
-                    console.log('ℹ️ QR code not available yet');
-                    showToast('⏳ جاري توليد QR Code...', 'warning');
-                }
-            })
-            .catch(error => {
-                console.error('❌ Error fetching QR code:', error);
-                showToast('❌ فشل جلب QR Code', 'error');
-            });
+            setTimeout(() => {
+                autoReportNotification.style.display = 'none';
+            }, 7000);
         }
 
         function updateWhatsAppStatus(data) {
-            console.log('🔄 Updating WhatsApp status:', data);
-            
             const isConnected = data.status === 'connected';
-            
             whatsappStatus.textContent = data.message;
-            
+            isBotStopped = !data.aiBotRunning; // Keep bot status updated
+
             if (isConnected) {
                 whatsappStatus.className = 'status-connected px-3 py-1 rounded-full text-sm font-bold';
                 whatsappQrStatus.classList.add('hidden');
-                qrOverlay.classList.add('hidden');
+                qrOverlay.classList.add('hidden'); // Hide QR when connected
+                updateBotStatusUI();
             } else {
                 whatsappStatus.className = 'status-disconnected px-3 py-1 rounded-full text-sm font-bold';
-                
                 if (data.status === 'qr-ready') {
                     whatsappQrStatus.classList.remove('hidden');
-                    if (!qrOverlay.classList.contains('hidden')) {
-                        console.log('📱 QR overlay already visible');
-                    } else {
-                        console.log('🔄 Auto-fetching QR code for qr-ready status');
-                        setTimeout(() => fetchUserQRCode(), 1000);
+                    // AUTO-SHOW QR CODE
+                    if (qrOverlay.classList.contains('hidden')) {
+                       // Only auto-fetch if QR overlay is not already open
+                       setTimeout(() => fetchUserQRCode(), 1000);
                     }
                 } else {
                     whatsappQrStatus.classList.add('hidden');
@@ -961,257 +799,241 @@
                 }
             }
         }
+        
+        function updateBotStatusUI() {
+            if (isBotStopped) {
+                botStatus.textContent = 'متوقف';
+                botStatus.className = 'bot-status-stopped px-3 py-1 rounded-full text-sm font-bold';
+                stopBotBtn.innerHTML = '<i class="fas fa-play mr-2"></i>تشغيل البوت';
+                stopBotBtn.classList.remove('bot-status-stopped');
+                stopBotBtn.classList.add('bg-primary', 'hover:bg-primary-dark');
 
-        function checkWhatsAppStatus() {
-            fetch('/api/user-whatsapp-status', {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${authToken}`,
-                    'Content-Type': 'application/json'
-                }
+            } else {
+                botStatus.textContent = 'نشط';
+                botStatus.className = 'bot-status-running px-3 py-1 rounded-full text-sm font-bold';
+                stopBotBtn.innerHTML = '<i class="fas fa-stop mr-2"></i>إيقاف البوت';
+                stopBotBtn.classList.add('bot-status-stopped');
+                stopBotBtn.classList.remove('bg-primary', 'hover:bg-primary-dark');
+            }
+        }
+
+        // =============================================
+        // 🛠️ FRONTEND LOGIC - DATA FETCHING & RENDERING
+        // =============================================
+
+        function loadCurrentUser() {
+            fetch('/api/me', { 
+                method: 'GET', 
+                headers: { 'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/json' } 
             })
             .then(response => response.json())
             .then(data => {
-                console.log('📡 WhatsApp status check:', data);
+                if (data.success) {
+                    currentUser = data.user;
+                    localStorage.setItem('currentUser', JSON.stringify(currentUser));
+                    
+                    // Initialize or update UI elements and start socket connection
+                    updateUserInterface();
+                    initializeSocket();
+                } else {
+                    window.location.href = '/';
+                }
+            })
+            .catch(error => {
+                console.error('Error loading user:', error);
+                window.location.href = '/';
+            });
+        }
+        
+        function updateUserInterface() {
+            const activeUser = isAdminViewingAs ? viewingAsUser : currentUser;
+            if (!activeUser) return;
+            
+            currentUserName.textContent = activeUser.name;
+            currentUserRole.textContent = activeUser.role === 'admin' ? 'مدير' : 'مستخدم عادي';
+            
+            // Admin features visibility
+            userManagementSection.classList.toggle('hidden', activeUser.role !== 'admin' && !isAdminViewingAs);
+            userSwitchBtn.classList.toggle('hidden', activeUser.role !== 'admin');
+            
+            // Viewing as another user logic
+            const viewingAsBadge = document.getElementById('viewingAsBadge');
+            if (isAdminViewingAs) {
+                viewingAsBadge.classList.remove('hidden');
+                document.getElementById('viewingAsName').textContent = viewingAsUser.name;
+                document.getElementById('viewingAsRole').textContent = viewingAsUser.role === 'admin' ? 'مدير' : 'مستخدم عادي';
+            } else {
+                viewingAsBadge.classList.add('hidden');
+            }
+
+            // Load initial data for the current active user
+            checkWhatsAppStatus();
+            loadUsers();
+            loadClients();
+            loadPerformanceStats();
+        }
+
+        function checkWhatsAppStatus() {
+            if (!authToken) return;
+            fetch('/api/user-whatsapp-status', { 
+                method: 'GET', 
+                headers: { 'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/json' } 
+            })
+            .then(response => response.json())
+            .then(data => {
                 updateWhatsAppStatus(data);
             })
             .catch(error => {
                 console.error('Error checking WhatsApp status:', error);
+                showToast('❌ خطأ في التحقق من حالة الواتساب', 'error');
             });
         }
 
-        function handleUserMessage(data) {
-            console.log('💬 Handling user message:', data);
-            
-            const clientPhone = data.from;
-            if (!messages[clientPhone]) {
-                messages[clientPhone] = [];
-            }
-            
-            messages[clientPhone].push({
-                message: data.message,
-                fromMe: data.fromMe,
-                timestamp: data.timestamp
-            });
-            
-            if (currentClient && currentClient.phone === clientPhone) {
-                renderMessages(messages[clientPhone]);
-            }
-            
-            const client = clients.find(c => c.phone === clientPhone);
-            if (client) {
-                client.lastMessage = data.message.substring(0, 50) + (data.message.length > 50 ? '...' : '');
-                client.lastActivity = new Date().toISOString();
-                renderClientList();
-            }
-            
-            if (data.fromMe) {
-                updatePerformanceStats({
-                    aiReplies: parseInt(statAIReplies.textContent) + 1
-                });
-            }
-        }
-
-        function logoutUser() {
-            if (confirm('هل أنت متأكد من تسجيل الخروج؟')) {
-                localStorage.removeItem('authToken');
-                localStorage.removeItem('currentUser');
-                localStorage.removeItem('performanceStats');
-                
-                if (socket) {
-                    socket.disconnect();
-                }
-                
-                showToast('👋 تم تسجيل الخروج بنجاح', 'success');
-                
-                setTimeout(() => {
-                    window.location.href = '/';
-                }, 1500);
-            }
-        }
-
-        function loadCurrentUser() {
-            const savedUser = localStorage.getItem('currentUser');
-            if (savedUser) {
-                currentUser = JSON.parse(savedUser);
-                updateUserInterface();
-                
-                if (socket && socket.connected) {
-                    console.log('🔐 Authenticating socket for user:', currentUser.id);
-                    socket.emit('authenticate', authToken);
-                }
-            } else {
-                fetch('/api/me', {
-                    method: 'GET',
-                    headers: {
-                        'Authorization': `Bearer ${authToken}`,
-                        'Content-Type': 'application/json'
-                    }
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        currentUser = data.user;
-                        localStorage.setItem('currentUser', JSON.stringify(currentUser));
-                        updateUserInterface();
-                        
-                        if (socket && socket.connected) {
-                            console.log('🔐 Authenticating socket for user:', currentUser.id);
-                            socket.emit('authenticate', authToken);
-                        }
-                    } else {
-                        window.location.href = '/';
-                    }
-                })
-                .catch(error => {
-                    console.error('Error loading user:', error);
-                    window.location.href = '/';
-                });
-            }
-        }
-        
-        function updateUserInterface() {
-            if (!currentUser) return;
-            
-            currentUserName.textContent = currentUser.name;
-            currentUserRole.textContent = currentUser.role === 'admin' ? 'مدير' : 'مستخدم عادي';
-            
-            currentUserRole.className = currentUser.role === 'admin' 
-                ? 'px-3 py-1 bg-purple-600 rounded-full text-sm font-bold'
-                : 'px-3 py-1 bg-primary rounded-full text-sm font-bold';
-        }
-
-        function uploadExcelFile(file) {
-            const formData = new FormData();
-            formData.append('excelFile', file);
-            
-            fetch('/api/upload-excel', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${authToken}`
-                },
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    fileInfo.classList.remove('hidden');
-                    fileInfo.innerHTML = `<i class="fas fa-file-excel text-primary-light mr-1"></i> ${file.name} (${data.count} عميل)`;
-                    showToast(`✅ ${data.message}`, 'success');
-                    
-                    clients = data.clients;
-                    renderClientList();
-                    updateClientsCount();
-                } else {
-                    showToast('❌ ' + data.error, 'error');
-                }
-            })
-            .catch(error => {
-                console.error('Error uploading file:', error);
-                showToast('❌ فشل رفع الملف', 'error');
-            });
-        }
-        
         function loadClients() {
+            if (!authToken) return;
+            const userId = isAdminViewingAs ? viewingAsUser.id : currentUser.id;
             fetch('/api/clients', {
                 method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${authToken}`,
-                    'Content-Type': 'application/json'
-                }
+                headers: { 'Authorization': `Bearer ${authToken}` }
             })
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    clients = data.clients;
+                    clients = data.clients.map(client => ({ 
+                        ...client, 
+                        unread: 0, 
+                        id: client.phone 
+                    })); // Use phone as ID
                     renderClientList();
                     updateClientsCount();
+                    
+                    // Re-select client if one was active
+                    if (currentClient) {
+                        const activeClient = clients.find(c => c.id === currentClient.id);
+                        if (activeClient) {
+                            selectClient(activeClient);
+                        } else {
+                            // Client no longer exists in list, clear chat
+                            currentClient = null;
+                            document.getElementById('chatHeader').classList.add('hidden');
+                            document.getElementById('chatEmptyState').classList.remove('hidden');
+                            messageInputArea.classList.add('hidden');
+                        }
+                    }
+                } else {
+                    showToast(`❌ فشل تحميل العملاء: ${data.error}`, 'error');
                 }
             })
             .catch(error => {
                 console.error('Error loading clients:', error);
+                showToast('❌ خطأ في تحميل قائمة العملاء', 'error');
             });
         }
-        
+
         function renderClientList() {
             clientList.innerHTML = '';
-            
-            const filteredClients = currentStatusFilter === 'all' 
-                ? clients 
-                : clients.filter(client => client.status === currentStatusFilter);
-            
+            const filteredClients = clients.filter(client => {
+                if (statusFilter === 'all') return true;
+                return (client.status || 'no-reply') === statusFilter;
+            });
+
             filteredClients.forEach(client => {
-                const clientElement = document.createElement('div');
-                clientElement.className = `client-item p-3 rounded-lg mb-2 cursor-pointer client-status-${client.status} ${currentClient?.id === client.id ? 'active' : ''}`;
-                clientElement.dataset.clientId = client.id;
+                const statusClass = `client-status-${client.status || 'no-reply'}`;
+                const isActive = currentClient && currentClient.id === client.id;
                 
+                const clientElement = document.createElement('div');
+                clientElement.className = `client-item flex items-center justify-between p-4 cursor-pointer hover:bg-gray-800 ${statusClass} ${isActive ? 'active' : ''}`;
+                clientElement.dataset.phone = client.phone;
+                
+                const lastActivityDate = client.lastActivity ? new Date(client.lastActivity) : null;
+                const timeString = lastActivityDate ? lastActivityDate.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }) : '';
+
                 clientElement.innerHTML = `
-                    <div class="flex justify-between items-start">
-                        <div class="flex-1">
-                            <div class="font-bold">${client.name}</div>
-                            <div class="text-xs text-gray-400">${client.phone}</div>
-                            <div class="text-sm mt-1 truncate">${client.lastMessage}</div>
+                    <div class="flex items-center">
+                        <i class="fas fa-user-circle text-2xl text-primary-light mr-3"></i>
+                        <div>
+                            <div class="font-bold text-sm">${client.name || 'عميل جديد'}</div>
+                            <div class="text-xs text-gray-400">
+                                ${client.phone}
+                                <span class="status-dot dot-${client.status || 'no-reply'} ml-2"></span>
+                            </div>
                         </div>
-                        <div class="text-right">
-                            <div class="text-xs text-gray-500">${new Date(client.lastActivity).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</div>
-                            ${client.unread > 0 ? `
-                                <div class="unread-badge text-xs px-2 py-1 rounded-full mt-1">${client.unread}</div>
-                            ` : ''}
+                    </div>
+                    <div class="flex flex-col items-end">
+                        <div class="text-xs text-gray-400 mb-1">
+                            ${timeString}
                         </div>
+                        ${client.unread > 0 ? `<span class="unread-badge px-2 py-0.5 rounded-full text-xs">${client.unread}</span>` : ''}
                     </div>
                 `;
                 
-                clientElement.addEventListener('click', () => {
-                    selectClient(client);
-                });
-                
+                clientElement.addEventListener('click', () => selectClient(client));
                 clientList.appendChild(clientElement);
             });
+            clientsListCount.textContent = filteredClients.length;
         }
-        
+
         function selectClient(client) {
-            currentClient = client;
-            currentClientName.textContent = client.name;
-            currentClientPhone.textContent = client.phone;
-            activeStatus.classList.remove('hidden');
-            clientStatusSelector.classList.remove('hidden');
-            statusSelect.value = client.status;
-            
-            messageInput.disabled = false;
-            sendMessageBtn.disabled = false;
-            
-            document.querySelectorAll('.client-item').forEach(item => {
-                item.classList.remove('active');
-            });
-            document.querySelector(`[data-client-id="${client.id}"]`).classList.add('active');
-            
-            loadMessages(client.id);
-        }
-        
-        function loadMessages(clientId) {
-            fetch(`/api/client-messages/${clientId}`, {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${authToken}`,
-                    'Content-Type': 'application/json'
+            if (currentClient && currentClient.id === client.id) {
+                 // If already active, just clear unread and scroll
+                const existingClient = clients.find(c => c.id === client.id);
+                if (existingClient) {
+                    existingClient.unread = 0;
+                    renderClientList();
                 }
+                scrollChatToBottom();
+                return;
+            }
+            
+            currentClient = client;
+            
+            // Clear unread badge
+            currentClient.unread = 0;
+            
+            // Update UI elements
+            currentClientName.textContent = client.name || 'عميل جديد';
+            currentClientPhone.textContent = client.phone;
+            document.getElementById('chatHeader').classList.remove('hidden');
+            document.getElementById('chatEmptyState').classList.add('hidden');
+            messageInputArea.classList.remove('hidden');
+            
+            // Update status selector
+            statusSelect.value = client.status || 'no-reply';
+            clientStatusSelector.classList.remove('hidden');
+            
+            // Update client list UI
+            renderClientList();
+            
+            // Load chat history
+            loadMessages(client.phone);
+        }
+
+        function loadMessages(phone) {
+            if (messages[phone]) {
+                return renderMessages(messages[phone]);
+            }
+            
+            fetch(`/api/client-messages/${phone}`, {
+                method: 'GET',
+                headers: { 'Authorization': `Bearer ${authToken}` }
             })
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    messages[clientId] = data.messages;
-                    renderMessages(messages[clientId]);
+                    messages[phone] = data.messages;
+                    renderMessages(data.messages);
+                } else {
+                    showToast(`❌ فشل تحميل الرسائل: ${data.error}`, 'error');
                 }
             })
             .catch(error => {
                 console.error('Error loading messages:', error);
             });
         }
-        
-        function renderMessages(messages) {
+
+        function renderMessages(messagesToRender) {
             chatContainer.innerHTML = '';
-            
-            if (messages.length === 0) {
+            if (messagesToRender.length === 0) {
                 chatContainer.innerHTML = `
                     <div class="text-center text-gray-400 mt-20">
                         <i class="fas fa-comments text-5xl mb-4 opacity-50"></i>
@@ -1220,287 +1042,370 @@
                 `;
                 return;
             }
-            
-            messages.forEach(message => {
+
+            messagesToRender.forEach(message => {
                 const messageElement = document.createElement('div');
                 messageElement.className = `chat-bubble ${message.fromMe ? 'sent' : 'received'}`;
                 
+                const messageTime = new Date(message.timestamp).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+                
                 messageElement.innerHTML = `
                     <div class="message-content">${message.message}</div>
-                    <div class="chat-time">${new Date(message.timestamp).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</div>
+                    <div class="chat-time">${messageTime}</div>
                 `;
-                
                 chatContainer.appendChild(messageElement);
             });
-            
             scrollChatToBottom();
         }
-        
-        function sendMessage() {
-            const message = messageInput.value.trim();
-            if (!message || !currentClient) return;
-            
-            socket.emit('send_message', {
-                to: currentClient.phone,
-                message: message
-            });
-            
-            const newMessage = {
+
+        function handleUserMessage(data) {
+            const clientPhone = data.from;
+            const message = {
                 id: Date.now(),
-                message: message,
-                fromMe: true,
-                timestamp: new Date().toISOString()
+                message: data.message,
+                fromMe: data.fromMe,
+                timestamp: data.timestamp
             };
-            
-            if (!messages[currentClient.id]) {
-                messages[currentClient.id] = [];
+
+            if (!messages[clientPhone]) {
+                messages[clientPhone] = [];
             }
-            messages[currentClient.id].push(newMessage);
+            messages[clientPhone].push(message);
+
+            // Update clients list (add new client if unknown, update last message time)
+            let client = clients.find(c => c.id === clientPhone);
+            if (!client) {
+                // New client from an incoming message
+                client = { 
+                    id: clientPhone, 
+                    phone: clientPhone, 
+                    name: data.fromMe ? (currentClient?.name || 'عميل جديد') : 'عميل جديد', 
+                    status: 'no-reply', 
+                    unread: 0 
+                };
+                clients.unshift(client); // Add to the top of the list
+            }
             
-            renderMessages(messages[currentClient.id]);
-            messageInput.value = '';
+            client.lastActivity = new Date(data.timestamp).toISOString();
             
-            updatePerformanceStats({
-                messages: parseInt(statMessages.textContent) + 1
+            // Increment unread count if message is incoming AND not the current chat
+            if (!data.fromMe && currentClient?.id !== clientPhone) {
+                client.unread++;
+                showToast(`✉️ رسالة جديدة من: ${client.name || clientPhone}`, 'warning');
+            }
+            
+            // Ensure current client list is updated if client was new/updated
+            clients.sort((a, b) => new Date(b.lastActivity) - new Date(a.lastActivity));
+
+
+            // Re-render chat if it's the active client
+            if (currentClient?.id === clientPhone) {
+                renderMessages(messages[clientPhone]);
+            }
+            
+            // Re-render client list
+            renderClientList();
+            updateClientsCount();
+            loadPerformanceStats(); // Update stats in case of an AI reply
+        }
+
+        function updateClientsCount() {
+            statClients.textContent = clients.length;
+        }
+
+        function scrollChatToBottom() {
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+            scrollToBottom.classList.remove('visible');
+        }
+
+        function loadPerformanceStats() {
+            if (!authToken) return;
+            fetch('/api/performance-stats', {
+                method: 'GET',
+                headers: { 'Authorization': `Bearer ${authToken}` }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    performanceStats = data.stats;
+                    updatePerformanceStats(performanceStats);
+                }
+            })
+            .catch(error => {
+                console.error('Error loading performance stats:', error);
+            });
+        }
+
+        function updatePerformanceStats(stats) {
+            if (stats.messagesSent !== undefined) statMessages.textContent = stats.messagesSent;
+            if (stats.aiRepliesSent !== undefined) statAIReplies.textContent = stats.aiRepliesSent;
+            if (stats.clientsContacted !== undefined) statClients.textContent = stats.clientsContacted;
+            if (stats.interestedClients !== undefined) statInterested.textContent = stats.interestedClients;
+        }
+        
+        // =============================================
+        // 🛠️ FRONTEND LOGIC - WHATSAPP & QR
+        // =============================================
+
+        function showQRCode(qrDataUrl) {
+            qrCode.innerHTML = `<img src="${qrDataUrl}" alt="WhatsApp QR Code" class="w-64 h-64 mx-auto p-4 bg-white rounded-lg" />`;
+            qrOverlay.classList.remove('hidden');
+            whatsappQrStatus.classList.add('hidden'); // Hide the status button while the overlay is open
+        }
+
+        function fetchUserQRCode() {
+            if (!authToken) return;
+            fetch('/api/user-whatsapp-qr', {
+                method: 'GET',
+                headers: { 'Authorization': `Bearer ${authToken}` }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.qrCode) {
+                    showQRCode(data.qrCode);
+                } else {
+                    showToast('❌ لا يوجد QR Code متاح حالياً', 'warning');
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching QR code:', error);
+                showToast('❌ فشل جلب QR Code', 'error');
             });
         }
         
-        function startBulkSending() {
-            if (isBulkSending) {
-                showToast('⚠️ جاري الإرسال بالفعل', 'warning');
-                return;
-            }
-            
-            const message = bulkMessage.value.trim();
-            const delay = parseInt(sendDelay.value);
-            
-            if (!message) {
-                showToast('❌ يرجى كتابة رسالة ترويجية', 'error');
-                return;
-            }
-            
-            if (clients.length === 0) {
-                showToast('❌ لا يوجد عملاء للإرسال', 'error');
-                return;
-            }
-            
-            fetch('/api/send-bulk', {
+        function toggleBotStatus() {
+            const newStatus = !isBotStopped;
+            fetch('/api/user-toggle-bot', {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${authToken}`,
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({
-                    message: message,
-                    delay: delay,
-                    clients: clients
-                })
+                body: JSON.stringify({ stop: newStatus })
             })
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    showToast(`🚀 ${data.message}`, 'success');
-                    isBulkSending = true;
-                    sendBulkBtn.disabled = true;
-                    sendBulkBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> جاري الإرسال...';
+                    isBotStopped = newStatus;
+                    updateBotStatusUI();
+                    showToast(`✅ ${data.message}`, 'success');
                 } else {
-                    showToast('❌ ' + data.error, 'error');
+                    showToast(`❌ فشل في التحكم بالبوت: ${data.error}`, 'error');
                 }
             })
             .catch(error => {
-                console.error('Error sending bulk messages:', error);
-                showToast('❌ فشل الإرسال الجماعي', 'error');
+                console.error('Error toggling bot:', error);
+                showToast('❌ خطأ في التحكم بالبوت', 'error');
             });
         }
 
-        function handleBulkProgress(data) {
-            if (data.type === 'start') {
-                showToast(`🚀 بدء الإرسال إلى ${data.total} عميل`, 'success');
-            } else if (data.success) {
-                console.log(`✅ Sent to ${data.client}: ${data.clientPhone}`);
-            } else {
-                console.error(`❌ Failed to send to ${data.client}: ${data.error}`);
-            }
-        }
+
+        // =============================================
+        // 🛠️ FRONTEND LOGIC - USER MANAGEMENT
+        // =============================================
         
-        function updateClientStatus(clientId, newStatus) {
-            const client = clients.find(c => c.id === clientId);
-            if (client) {
-                socket.emit('update_client_status', {
-                    phone: client.phone,
-                    status: newStatus
+        function loadUsers() {
+            if (currentUser && currentUser.role === 'admin') {
+                fetch('/api/users', { 
+                    method: 'GET', 
+                    headers: { 'Authorization': `Bearer ${authToken}` } 
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        users = data.users;
+                        renderUsersList();
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading users:', error);
                 });
+            }
+        }
+
+        function renderUsersList() {
+            usersList.innerHTML = '';
+            users.forEach(user => {
+                const userElement = document.createElement('div');
+                userElement.className = `user-item flex items-center justify-between p-2 rounded-lg mb-2 cursor-pointer ${user.role === 'admin' ? 'role-admin' : 'role-standard'}`;
                 
-                client.status = newStatus;
-                renderClientList();
+                const isActiveText = user.isActive ? 'نشط' : 'غير نشط';
+                const activeClass = user.isActive ? 'user-active' : 'user-inactive';
+
+                userElement.innerHTML = `
+                    <div>
+                        <div class="font-bold text-sm">${user.name}</div>
+                        <div class="text-xs text-gray-400">${user.username} - ${user.role === 'admin' ? 'مدير' : 'مستخدم عادي'}</div>
+                        <div class="text-xs ${activeClass}">${isActiveText}</div>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        ${currentUser.id !== user.id && currentUser.role === 'admin' ? `
+                            <button class="switch-to-user-btn bg-gray-600 hover:bg-primary-dark text-white text-xs px-2 py-1 rounded transition-colors" data-user-id="${user.id}">
+                                <i class="fas fa-eye mr-1"></i>عرض
+                            </button>
+                        ` : ''}
+                        ${currentUser.role === 'admin' ? `
+                            <button class="toggle-user-status-btn bg-gray-600 hover:bg-yellow-600 text-white text-xs px-2 py-1 rounded transition-colors" data-user-id="${user.id}" data-is-active="${user.isActive}">
+                                <i class="fas ${user.isActive ? 'fa-user-slash' : 'fa-user-check'} mr-1"></i>${user.isActive ? 'تعطيل' : 'تفعيل'}
+                            </button>
+                        ` : ''}
+                    </div>
+                `;
+                usersList.appendChild(userElement);
+            });
+
+            document.querySelectorAll('.switch-to-user-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const userId = e.target.closest('button').dataset.userId;
+                    switchToUser(userId);
+                });
+            });
+            
+            document.querySelectorAll('.toggle-user-status-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const userId = e.target.closest('button').dataset.userId;
+                    const isActive = e.target.closest('button').dataset.isActive === 'true';
+                    updateUserStatus(userId, !isActive);
+                });
+            });
+        }
+
+        function switchToUser(userId) {
+            const targetUser = users.find(u => u.id === userId);
+            if (targetUser) {
+                isAdminViewingAs = true;
+                viewingAsUser = targetUser;
+                userSwitchOverlay.classList.add('hidden');
                 
-                if (newStatus === 'interested') {
-                    updatePerformanceStats({
-                        interested: parseInt(statInterested.textContent) + 1
-                    });
-                }
+                // Disconnect and reconnect socket for the new user context
+                if (socket) socket.close();
+                initializeSocket();
                 
-                showToast(`✅ تم تحديث حالة العميل إلى: ${getStatusText(newStatus)}`, 'success');
+                updateUserInterface(); // This reloads data for the new user
+                
+                showToast(`👁️ تشاهد الآن كـ: ${targetUser.name}`, 'success');
             }
         }
         
-        function getStatusText(status) {
-            const statusMap = {
-                'interested': 'مهتم',
-                'busy': 'مشغول',
-                'not-interested': 'غير مهتم',
-                'no-reply': 'لم يرد'
-            };
-            return statusMap[status] || status;
+        function updateUserStatus(userId, isActive) {
+            if (!authToken) return;
+            fetch('/api/update-user', {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ userId, isActive })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast(`✅ تم ${isActive ? 'تفعيل' : 'تعطيل'} المستخدم بنجاح`, 'success');
+                    loadUsers(); // Reload user list
+                } else {
+                    showToast(`❌ فشل تحديث حالة المستخدم: ${data.error}`, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error updating user status:', error);
+                showToast('❌ خطأ في تحديث حالة المستخدم', 'error');
+            });
         }
+
+        function clearUserForm() {
+            newUserName.value = '';
+            newUserUsername.value = '';
+            newUserPassword.value = '';
+            newUserRole.value = 'standard';
+        }
+
+        // =============================================
+        // 🛠️ FRONTEND LOGIC - EVENT LISTENERS
+        // =============================================
+
+        // --- Core Events ---
+        logoutBtn.addEventListener('click', () => {
+            fetch('/api/logout', { 
+                method: 'POST', 
+                headers: { 'Authorization': `Bearer ${authToken}` } 
+            })
+            .then(() => {
+                localStorage.removeItem('token');
+                localStorage.removeItem('currentUser');
+                window.location.href = '/';
+            })
+            .catch(error => {
+                console.error('Logout error:', error);
+                localStorage.removeItem('token');
+                localStorage.removeItem('currentUser');
+                window.location.href = '/';
+            });
+        });
         
-        function setStatusFilter(status) {
-            currentStatusFilter = status;
+        reconnectBtn.addEventListener('click', () => {
+            showToast('🔄 جارٍ محاولة إعادة الاتصال...', 'warning');
+            const activeUserId = isAdminViewingAs ? viewingAsUser.id : currentUser.id;
             
+            // Re-initialize socket to trigger backend session re-initialization
+            if (socket) socket.close();
+            initializeSocket();
+            // Also explicitly check status to update UI immediately
+            checkWhatsAppStatus(); 
+        });
+
+        stopBotBtn.addEventListener('click', toggleBotStatus);
+        
+        whatsappQrStatus.addEventListener('click', fetchUserQRCode);
+        closeQR.addEventListener('click', () => qrOverlay.classList.add('hidden'));
+
+        // --- User Management Events ---
+        userSwitchBtn.addEventListener('click', () => {
+            userSwitchOverlay.classList.remove('hidden');
+            currentViewingUser.textContent = isAdminViewingAs ? viewingAsUser.name : currentUser.name;
+        });
+
+        returnToAdmin.addEventListener('click', () => {
+            isAdminViewingAs = false;
+            viewingAsUser = null;
+            userSwitchOverlay.classList.add('hidden');
+            
+            // Disconnect and reconnect socket back to admin context
+            if (socket) socket.close();
+            initializeSocket(); 
+            
+            updateUserInterface();
+            showToast(`✅ عدت إلى حسابك كمدير`, 'success');
+        });
+
+        closeUserSwitch.addEventListener('click', () => {
+            userSwitchOverlay.classList.add('hidden');
+        });
+        
+        // --- Client List & Chat Events ---
+        statusSelect.addEventListener('change', (e) => {
+            if (currentClient) {
+                updateClientStatus(currentClient.phone, e.target.value);
+            }
+        });
+
+        function setStatusFilter(status) {
+            statusFilter = status;
             document.querySelectorAll('.status-filter-btn').forEach(btn => {
                 btn.classList.remove('active');
             });
             document.querySelector(`[data-status="${status}"]`).classList.add('active');
-            
             renderClientList();
         }
         
-        function updateClientsCount() {
-            clientsCount.textContent = clients.length;
-            statClients.textContent = clients.length;
-        }
-        
-        function scrollChatToBottom() {
-            chatContainer.scrollTop = chatContainer.scrollHeight;
-        }
-        
-        function updatePerformanceStats(stats) {
-            if (stats.messages !== undefined) statMessages.textContent = stats.messages;
-            if (stats.aiReplies !== undefined) statAIReplies.textContent = stats.aiReplies;
-            if (stats.clients !== undefined) statClients.textContent = stats.clients;
-            if (stats.interested !== undefined) statInterested.textContent = stats.interested;
-            
-            const currentStats = {
-                messages: parseInt(statMessages.textContent),
-                aiReplies: parseInt(statAIReplies.textContent),
-                clients: parseInt(statClients.textContent),
-                interested: parseInt(statInterested.textContent)
-            };
-            localStorage.setItem('performanceStats', JSON.stringify(currentStats));
-        }
-        
-        function loadPerformanceStats() {
-            fetch('/api/employee-performance', {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${authToken}`,
-                    'Content-Type': 'application/json'
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    const perf = data.performance.dailyStats;
-                    updatePerformanceStats({
-                        messages: perf.messagesSent,
-                        aiReplies: perf.aiRepliesSent,
-                        clients: perf.clientsContacted,
-                        interested: perf.interestedClients
-                    });
-                }
-            })
-            .catch(error => {
-                console.error('Error loading performance stats:', error);
-                const savedStats = localStorage.getItem('performanceStats');
-                if (savedStats) {
-                    updatePerformanceStats(JSON.parse(savedStats));
-                }
+        // Status Filter
+        document.querySelectorAll('.status-filter-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const status = e.target.dataset.status;
+                setStatusFilter(status);
             });
-        }
-        
-        function exportReport() {
-            fetch('/api/export-report', {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${authToken}`
-                }
-            })
-            .then(response => {
-                if (response.ok) {
-                    return response.blob();
-                }
-                throw new Error('Export failed');
-            })
-            .then(blob => {
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.style.display = 'none';
-                a.href = url;
-                a.download = `ragmcloud-report-${new Date().toISOString().split('T')[0]}.txt`;
-                document.body.appendChild(a);
-                a.click();
-                window.URL.revokeObjectURL(url);
-                showToast('📊 تم تصدير التقرير بنجاح', 'success');
-            })
-            .catch(error => {
-                console.error('Error exporting report:', error);
-                showToast('❌ فشل تصدير التقرير', 'error');
-            });
-        }
-        
-        function sendReport() {
-            fetch('/api/send-to-manager', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${authToken}`,
-                    'Content-Type': 'application/json'
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showToast('📧 تم إرسال التقرير إلى المدير بنجاح', 'success');
-                    } else {
-                    showToast('❌ ' + data.error, 'error');
-                    }
-            })
-            .catch(error => {
-                console.error('Error sending report:', error);
-                showToast('❌ فشل إرسال التقرير', 'error');
-            });
-        }
-        
-        function showToast(message, type = 'success') {
-            const toast = document.createElement('div');
-            toast.className = `toast ${type}`;
-            toast.textContent = message;
-            
-            toastContainer.appendChild(toast);
-            
-            setTimeout(() => {
-                toast.classList.add('show');
-            }, 100);
-            
-            setTimeout(() => {
-                toast.classList.remove('show');
-                setTimeout(() => {
-                    toastContainer.removeChild(toast);
-                }, 300);
-            }, 4000);
-        }
-        
-        function updateBotStatusUI() {
-            if (isBotStopped) {
-                botStatus.textContent = 'متوقف';
-                botStatus.className = 'bot-status-stopped px-3 py-1 rounded-full text-sm font-bold';
-                stopBotBtn.innerHTML = '<i class="fas fa-play mr-2"></i>تشغيل البوت';
-            } else {
-                botStatus.textContent = 'نشط';
-                botStatus.className = 'bot-status-running px-3 py-1 rounded-full text-sm font-bold';
-                stopBotBtn.innerHTML = '<i class="fas fa-stop mr-2"></i>إيقاف البوت';
-            }
-        }
-        
+        });
+
+        // Chat scroll detection
         chatContainer.addEventListener('scroll', () => {
             const scrollThreshold = 100;
             const isNearBottom = chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight < scrollThreshold;
@@ -1512,8 +1417,308 @@
             }
         });
 
-        loadClients();
-        loadPerformanceStats();
+        scrollToBottom.addEventListener('click', () => {
+            scrollChatToBottom();
+        });
+
+
+        // --- File Upload Events ---
+        uploadBtn.addEventListener('click', () => {
+            excelFile.click();
+        });
+
+        excelFile.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                const file = e.target.files[0];
+                uploadExcelFile(file);
+            }
+        });
+
+        function uploadExcelFile(file) {
+            const formData = new FormData();
+            formData.append('excelFile', file);
+
+            fetch('/api/upload-excel', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${authToken}` },
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    fileInfo.classList.remove('hidden');
+                    fileInfo.innerHTML = `<i class="fas fa-file-excel text-primary-light mr-1"></i> ${file.name} (${data.count} عميل)`;
+                    showToast(`✅ تم رفع ومعالجة ${data.count} عميل بنجاح`, 'success');
+                    loadClients();
+                } else {
+                    showToast(`❌ فشل رفع ملف Excel: ${data.error}`, 'error');
+                }
+                excelFile.value = ''; // Clear file input
+            })
+            .catch(error => {
+                console.error('Error uploading file:', error);
+                showToast('❌ خطأ في تحميل ملف Excel', 'error');
+                excelFile.value = '';
+            });
+        }
+        
+        // --- Message & Bulk Sending Events ---
+        function sendMessage() {
+            const message = messageInput.value.trim();
+            if (!message || !currentClient) return;
+            
+            const activeUserId = isAdminViewingAs ? viewingAsUser.id : currentUser.id;
+
+            socket.emit('send_message', { 
+                to: currentClient.phone, 
+                message: message 
+            });
+            
+            // Optimistic update (message will be re-rendered via socket 'user_message_' event)
+            messageInput.value = '';
+        }
+
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        sendMessageBtn.addEventListener('click', sendMessage);
+
+        sendBulkBtn.addEventListener('click', () => {
+            startBulkSending(false);
+        });
+
+        retryBulkBtn.addEventListener('click', () => {
+            startBulkSending(true);
+        });
+
+        function startBulkSending(isRetry) {
+            const message = bulkMessage.value.trim();
+            const delay = parseInt(sendDelay.value) || 5;
+
+            if (!message) {
+                return showToast('❌ يرجى كتابة نص الرسالة الجماعية', 'error');
+            }
+            
+            let bulkClients = isRetry ? bulkCampaignLog : clients.filter(c => c.status !== 'not-interested');
+
+            if (bulkClients.length === 0) {
+                 return showToast('❌ لا توجد عملاء لإرسال الرسائل إليهم', 'error');
+            }
+            
+            // Disable buttons and show progress
+            sendBulkBtn.disabled = true;
+            retryBulkBtn.disabled = true;
+            bulkProgressInfo.classList.remove('hidden');
+            bulkCampaignLog = []; // Clear log for new attempt
+
+            fetch('/api/bulk-send', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ 
+                    clients: bulkClients, 
+                    message, 
+                    delay 
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast(`✅ ${data.message}`, 'success', 5000);
+                } else {
+                    showToast(`❌ فشل بدء الحملة: ${data.error}`, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Bulk send error:', error);
+                showToast('❌ خطأ في بدء الحملة الجماعية', 'error');
+            });
+        }
+
+        // --- Reporting Events ---
+        function exportReport() {
+            if (!authToken) return;
+            showToast('🔄 جارٍ إعداد تقرير الأداء...', 'warning');
+            
+            fetch('/api/export-report', {
+                method: 'GET',
+                headers: { 'Authorization': `Bearer ${authToken}` }
+            })
+            .then(response => {
+                if (response.ok) {
+                    response.blob().then(blob => {
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.style.display = 'none';
+                        a.href = url;
+                        
+                        // Extract filename from Content-Disposition header
+                        const contentDisposition = response.headers.get('Content-Disposition');
+                        const filenameMatch = contentDisposition && contentDisposition.match(/filename="(.+?)"/);
+                        const filename = filenameMatch ? filenameMatch[1] : `Performance_Report_${Date.now()}.xlsx`;
+                        a.download = filename;
+                        
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                        showToast('✅ تم تصدير تقرير الأداء بنجاح', 'success');
+                    });
+                } else {
+                    response.json().then(data => {
+                        showToast(`❌ فشل تصدير التقرير: ${data.error}`, 'error');
+                    });
+                }
+            })
+            .catch(error => {
+                console.error('Error exporting report:', error);
+                showToast('❌ خطأ في تصدير تقرير الأداء', 'error');
+            });
+        }
+
+        function sendReport() {
+            if (!authToken) return;
+            showToast('🔄 جارٍ إرسال التقرير إلى المدير...', 'warning');
+            fetch('/api/send-report-to-admin', {
+                method: 'POST',
+                headers: { 
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json' 
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast(`✅ ${data.message}`, 'success');
+                } else {
+                    showToast(`❌ فشل إرسال التقرير: ${data.error}`, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error sending report:', error);
+                showToast('❌ خطأ في إرسال التقرير', 'error');
+            });
+        }
+        
+        exportReportBtn.addEventListener('click', exportReport);
+        sendReportBtn.addEventListener('click', sendReport);
+
+
+        // =============================================
+        // 🛠️ FRONTEND LOGIC - SOCKET.IO CONNECTION
+        // =============================================
+
+        function initializeSocket() {
+            const activeUser = isAdminViewingAs ? viewingAsUser : currentUser;
+            if (!activeUser) return;
+            
+            const userId = activeUser.id;
+            
+            socket = io.connect(window.location.origin, {
+                auth: { token: authToken } // Optional initial auth, we use 'authenticate' event
+            });
+
+            socket.on('connect', () => {
+                console.log('Connected to server');
+                
+                // Explicitly send authentication for multi-user context
+                if (authToken) {
+                    socket.emit('authenticate', authToken);
+                }
+            });
+            
+            socket.on('authenticated', (data) => {
+                console.log('Socket authenticated for userId:', data.userId);
+                
+                // Set up user-specific listeners
+                const listenerId = data.userId; // The ID from the backend's authenticated event
+
+                socket.on(`user_status_${listenerId}`, (data) => { 
+                    console.log('📡 Received user status:', data); 
+                    updateWhatsAppStatus(data); 
+                });
+
+                socket.on(`user_qr_${listenerId}`, (data) => { 
+                    console.log('📡 Received QR code for user:', listenerId); 
+                    if (data.qrCode) { 
+                        showQRCode(data.qrCode); 
+                    } 
+                });
+
+                socket.on(`user_bot_status_${listenerId}`, (data) => { 
+                    console.log('📡 Received bot status:', data); 
+                    isBotStopped = data.stopped; 
+                    updateBotStatusUI(); 
+                });
+
+                socket.on(`user_message_${listenerId}`, (data) => { 
+                    console.log('📡 Received user message:', data); 
+                    handleUserMessage(data); 
+                });
+                
+                socket.on('auto_report_notification', (data) => {
+                    if (data.userId === listenerId) {
+                        showAutoReportNotification(data);
+                    }
+                });
+                
+                socket.on('clients_updated', (data) => {
+                    // Update client list when bulk operation finishes or status is changed by another user
+                    loadClients();
+                });
+                
+                socket.on('bulk_progress', (data) => {
+                    bulkTotal.textContent = data.total || 0;
+                    bulkSent.textContent = data.success || 0;
+                    bulkFailed.textContent = data.fail || 0;
+                    bulkProgressInfo.classList.remove('hidden');
+
+                    if (data.type === 'end') {
+                        showToast(`✅ انتهاء حملة الرسائل. نجاح: ${data.success}, فشل: ${data.fail}`, 'success', 8000);
+                        sendBulkBtn.disabled = false;
+                        if (data.fail > 0) {
+                            retryBulkBtn.classList.remove('hidden');
+                            bulkCampaignLog = clients.filter(c => !c.phone || c.phone.length < 10); // Simple log for retries
+                        } else {
+                            retryBulkBtn.classList.add('hidden');
+                        }
+                    }
+                });
+
+                console.log(`✅ User-specific listeners setup complete for user ${listenerId}`);
+            });
+            
+            socket.on('disconnect', (reason) => { 
+                console.log('Disconnected from server:', reason); 
+                showToast('❌ فقد الاتصال بالخادم', 'error'); 
+            });
+            
+            socket.on('connect_error', (error) => { 
+                console.error('Connection error:', error); 
+                showToast('❌ خطأ في الاتصال بالخادم', 'error'); 
+            });
+            
+            socket.on('auth_error', (data) => {
+                console.error('Socket Auth Error:', data.error);
+                showToast(`❌ خطأ في المصادقة: ${data.error}`, 'error', 5000);
+                if (data.error.includes('غير صالح') || data.error.includes('غير موجود')) {
+                    localStorage.removeItem('token');
+                    window.location.href = '/';
+                }
+            });
+            
+            socket.on('message_error', (data) => {
+                 showToast(`❌ فشل إرسال الرسالة لـ ${data.to}: ${data.error}`, 'error');
+            });
+        }
+        
+        // Load initial data
+        // Initial check is done inside loadCurrentUser()
     </script>
 </body>
 </html>
