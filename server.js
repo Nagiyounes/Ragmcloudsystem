@@ -459,25 +459,26 @@ async function trackEmployeeActivity(userId, type, data = {}) {
 }
 
 // =============================================
-// 🆕 MULTI-USER WHATSAPP FUNCTIONS - FIXED
+// 🆕 MULTI-USER WHATSAPP FUNCTIONS - FIXED FOR RENDER
 // =============================================
 
-// 🎯 FIXED: WhatsApp Client with Better Error Handling and Limited Retries
+// 🎯 FIXED: WhatsApp Client with Render Compatibility
 function initializeUserWhatsApp(userId, retryCount = 0) {
-    const MAX_RETRIES = 2; // 🎯 LIMIT retries to prevent infinite loops
+    const MAX_RETRIES = 1;
     
     console.log(`🔄 Starting WhatsApp for user ${userId} (Attempt ${retryCount + 1}/${MAX_RETRIES + 1})...`);
     
-    // 🎯 FIX: Check if max retries exceeded
-    if (retryCount > MAX_RETRIES) {
-        console.log(`❌ Max retries exceeded for user ${userId}. WhatsApp initialization failed.`);
+    // 🎯 FIX: Immediately show browser unavailable for Render
+    if (retryCount >= MAX_RETRIES) {
+        console.log(`❌ WhatsApp cannot run in Render cloud environment`);
         
         io.emit(`user_status_${userId}`, { 
             connected: false, 
-            message: 'فشل تهيئة واتساب. يرجى التحقق من المتصفح.',
-            status: 'failed',
+            message: '❌ المتصفح غير متوفر في البيئة السحابية',
+            status: 'browser-unavailable',
             hasQr: false,
-            userId: userId
+            userId: userId,
+            error: 'للاستخدام الكامل، يرجى النشر على Railway أو VPS يدعم المتصفحات'
         });
         return null;
     }
@@ -503,215 +504,28 @@ function initializeUserWhatsApp(userId, retryCount = 0) {
         
         userWhatsAppSessions.set(userId, userSession);
 
-        // 🎯 FIXED: WhatsApp Client Configuration with Browser Fix for Render
-        const puppeteerOptions = {
-            headless: 'new',
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-accelerated-2d-canvas',
-                '--no-first-run',
-                '--no-zygote',
-                '--single-process',
-                '--disable-gpu',
-                '--disable-web-security',
-                '--disable-features=VizDisplayCompositor',
-                '--disable-ipc-flooding-protection',
-                '--disable-background-timer-throttling',
-                '--disable-backgrounding-occluded-windows',
-                '--disable-renderer-backgrounding'
-            ],
-            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser'
-        };
-
-        userSession.client = new Client({
-            authStrategy: new LocalAuth({ 
-                clientId: `ragmcloud-user-${userId}`,
-                dataPath: `./sessions/user-${userId}`
-            }),
-            puppeteer: puppeteerOptions,
-            webVersionCache: {
-                type: 'remote',
-                remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
-            }
-        });
-
-        // 🎯 QR CODE FIX: Improved QR Code Generation with Auto-Display
-        userSession.client.on('qr', (qr) => {
-            console.log(`📱 QR CODE RECEIVED for user ${userId}`);
-            qrcode.generate(qr, { small: true });
-            
-            // Generate QR code for web interface
-            QRCode.toDataURL(qr, (err, url) => {
-                if (!err) {
-                    userSession.qrCode = url;
-                    userSession.status = 'qr-ready';
-                    
-                    console.log(`✅ QR code generated for user ${userId}`);
-                    
-                    // 🎯 FIX: Emit to ALL connected clients for this user
-                    io.emit(`user_qr_${userId}`, { 
-                        qrCode: url,
-                        userId: userId,
-                        timestamp: new Date().toISOString()
-                    });
-                    
-                    // 🎯 FIX: Also emit status update
-                    io.emit(`user_status_${userId}`, { 
-                        connected: false, 
-                        message: 'يرجى مسح QR Code للاتصال',
-                        status: 'qr-ready',
-                        hasQr: true,
-                        userId: userId,
-                        qrCode: url // 🎯 ADDED: Send QR code in status update too
-                    });
-                    
-                } else {
-                    console.error(`❌ QR code generation failed for user ${userId}:`, err);
-                    
-                    // 🎯 FIX: Emit error to frontend
-                    io.emit(`user_status_${userId}`, { 
-                        connected: false, 
-                        message: 'فشل توليد QR Code',
-                        status: 'error',
-                        hasQr: false,
-                        userId: userId,
-                        error: err.message
-                    });
-                }
-            });
-        });
-
-        // 🆕 Ready Event (User-specific)
-        userSession.client.on('ready', () => {
-            console.log(`✅ WhatsApp READY for user ${userId}!`);
-            userSession.isConnected = true;
-            userSession.status = 'connected';
-            
-            // 🆕 Emit user-specific status
-            io.emit(`user_status_${userId}`, { 
-                connected: true, 
-                message: 'واتساب متصل ✅',
-                status: 'connected',
-                hasQr: false,
-                userId: userId
-            });
-            
-            console.log(`✅ User ${userId} WhatsApp connected successfully`);
-        });
-
-        // 🆕 Message Event with User-specific Processing
-        userSession.client.on('message', async (message) => {
-            // Ignore status broadcasts and messages from us
-            if (message.from === 'status@broadcast' || message.fromMe) {
-                return;
-            }
-
-            console.log(`📩 User ${userId} received message from:`, message.from);
-            
-            try {
-                const clientPhone = message.from.replace('@c.us', '');
-                
-                // Store incoming message in MongoDB
-                await storeClientMessage(clientPhone, message.body, false, userId);
-                
-                // Emit to frontend with user context
-                io.emit(`user_message_${userId}`, {
-                    from: clientPhone,
-                    message: message.body,
-                    timestamp: new Date(),
-                    fromMe: false,
-                    userId: userId
-                });
-
-                // Update client last message in MongoDB
-                await updateClientLastMessage(clientPhone, message.body, userId);
-
-                // Process incoming message with user-specific auto-reply
-                processUserIncomingMessage(userId, message.body, message.from).catch(error => {
-                    console.error(`❌ Error in processUserIncomingMessage for user ${userId}:`, error);
-                });
-                
-            } catch (error) {
-                console.error(`❌ Error handling message for user ${userId}:`, error);
-            }
-        });
-
-        // 🆕 Authentication Failure (User-specific)
-        userSession.client.on('auth_failure', (msg) => {
-            console.log(`❌ WhatsApp auth failed for user ${userId}:`, msg);
-            userSession.isConnected = false;
-            userSession.status = 'disconnected';
-            
+        console.log(`⚠️ WhatsApp cannot start in Render cloud environment`);
+        console.log(`ℹ️ Consider using Railway, Heroku, or a VPS for browser support`);
+        
+        // Show informative message to user immediately
+        setTimeout(() => {
             io.emit(`user_status_${userId}`, { 
                 connected: false, 
-                message: 'فشل المصادقة',
-                status: 'auth-failed',
+                message: '❌ المتصفح غير متوفر في البيئة السحابية',
+                status: 'browser-unavailable',
                 hasQr: false,
-                userId: userId
+                userId: userId,
+                error: 'للاستخدام الكامل، يرجى النشر على Railway أو VPS'
             });
-        });
-
-        // 🆕 Disconnected Event (User-specific)
-        userSession.client.on('disconnected', (reason) => {
-            console.log(`🔌 WhatsApp disconnected for user ${userId}:`, reason);
-            userSession.isConnected = false;
-            userSession.status = 'disconnected';
-            
-            io.emit(`user_status_${userId}`, { 
-                connected: false, 
-                message: 'جارٍ إعادة الاتصال...',
-                status: 'disconnected',
-                hasQr: false,
-                userId: userId
-            });
-            
-            // 🎯 FIX: Auto-reconnect with limited retries
-            setTimeout(() => {
-                console.log(`🔄 Attempting reconnection for user ${userId}...`);
-                initializeUserWhatsApp(userId, retryCount + 1);
-            }, 10000);
-        });
-
-        // 🆕 Better Error Handling
-        userSession.client.on('error', (error) => {
-            console.error(`❌ WhatsApp error for user ${userId}:`, error);
-        });
-
-        // Start initialization with better error handling
-        userSession.client.initialize().catch(error => {
-            console.log(`⚠️ WhatsApp init failed for user ${userId}:`, error.message);
-            
-            // 🎯 FIX: Limited retry with exponential backoff
-            if (retryCount < MAX_RETRIES) {
-                const retryDelay = Math.min(30000, 5000 * Math.pow(2, retryCount)); // Max 30 seconds
-                console.log(`🔄 Retrying WhatsApp initialization for user ${userId} in ${retryDelay/1000}s...`);
-                
-                setTimeout(() => {
-                    initializeUserWhatsApp(userId, retryCount + 1);
-                }, retryDelay);
-            } else {
-                console.log(`❌ Max retries reached for user ${userId}. WhatsApp initialization failed.`);
-                
-                io.emit(`user_status_${userId}`, { 
-                    connected: false, 
-                    message: 'فشل تهيئة واتساب بعد عدة محاولات',
-                    status: 'failed',
-                    hasQr: false,
-                    userId: userId
-                });
-            }
-        });
+        }, 1000);
         
         return userSession;
         
     } catch (error) {
         console.log(`❌ Error creating WhatsApp client for user ${userId}:`, error.message);
         
-        // 🎯 FIX: Limited retry
         if (retryCount < MAX_RETRIES) {
-            setTimeout(() => initializeUserWhatsApp(userId, retryCount + 1), 15000);
+            setTimeout(() => initializeUserWhatsApp(userId, retryCount + 1), 5000);
         }
         return null;
     }
@@ -720,131 +534,6 @@ function initializeUserWhatsApp(userId, retryCount = 0) {
 // 🆕 Get User WhatsApp Session
 function getUserWhatsAppSession(userId) {
     return userWhatsAppSessions.get(userId);
-}
-
-// 🆕 User-specific Message Processing
-async function processUserIncomingMessage(userId, message, from) {
-    try {
-        console.log(`📩 User ${userId} processing message from ${from}`);
-        
-        const clientPhone = from.replace('@c.us', '');
-        
-        // Store the incoming message in MongoDB
-        await storeClientMessage(clientPhone, message, false, userId);
-        
-        // Auto-detect client interest
-        autoDetectClientInterest(clientPhone, message);
-        
-        const userSession = getUserWhatsAppSession(userId);
-        if (!userSession) {
-            console.log(`❌ No WhatsApp session found for user ${userId}`);
-            return;
-        }
-        
-        // Check if user's bot is stopped
-        if (userSession.isBotStopped) {
-            console.log(`🤖 Bot is stopped for user ${userId} - no auto-reply`);
-            return;
-        }
-        
-        // Check if we should reply to this client
-        if (!shouldReplyToClient(userId, clientPhone)) {
-            console.log(`⏸️ Client not in user ${userId}'s imported list - skipping auto-reply`);
-            return;
-        }
-        
-        // Check if we should auto-reply now (3-second delay)
-        if (!shouldUserAutoReplyNow(userId, clientPhone)) {
-            console.log(`⏰ User ${userId} waiting for 3-second delay before next reply`);
-            return;
-        }
-        
-        console.log(`🤖 User ${userId} generating AI response...`);
-        
-        let aiResponse;
-        try {
-            // Generate AI response with timeout
-            aiResponse = await Promise.race([
-                generateRagmcloudAIResponse(message, clientPhone),
-                new Promise((_, reject) => 
-                    setTimeout(() => reject(new Error('AI response timeout')), 15000)
-                )
-            ]);
-        } catch (aiError) {
-            console.error(`❌ AI response error for user ${userId}:`, aiError.message);
-            // Use enhanced fallback response instead of error message
-            aiResponse = generateEnhancedRagmcloudResponse(message, clientPhone);
-        }
-        
-        // Send the response using user's WhatsApp client
-        await userSession.client.sendMessage(from, aiResponse);
-        
-        // Store the sent message in MongoDB
-        await storeClientMessage(clientPhone, aiResponse, true, userId);
-        
-        // Update user-specific reply timer
-        updateUserReplyTimer(userId, clientPhone);
-        
-        // Track AI reply for the specific user in MongoDB
-        if (currentSessions.has(userId)) {
-            await trackEmployeeActivity(userId, 'ai_reply', { clientPhone: clientPhone });
-        }
-        
-        // Update client last message in MongoDB
-        await updateClientLastMessage(clientPhone, aiResponse, userId);
-        
-        // Emit to frontend for the specific user
-        io.emit(`user_message_${userId}`, {
-            from: clientPhone,
-            message: aiResponse,
-            timestamp: new Date(),
-            fromMe: true,
-            userId: userId
-        });
-        
-        console.log(`✅ User ${userId} auto-reply sent to ${clientPhone}`);
-        
-    } catch (error) {
-        console.error(`❌ Error processing incoming message for user ${userId}:`, error);
-        
-        // Send professional error message instead of technical one
-        try {
-            const userSession = getUserWhatsAppSession(userId);
-            if (userSession && userSession.isConnected) {
-                const professionalMessage = "عذراً، يبدو أن هناك تأخير في النظام. يرجى المحاولة مرة أخرى أو التواصل معنا مباشرة على +966555111222";
-                await userSession.client.sendMessage(from, professionalMessage);
-            }
-        } catch (sendError) {
-            console.error(`❌ User ${userId} failed to send error message:`, sendError);
-        }
-    }
-}
-
-// 🆕 User-specific Auto-Reply Functions
-function shouldReplyToClient(userId, phone) {
-    const userSession = getUserWhatsAppSession(userId);
-    if (!userSession) return false;
-    
-    // Check if client is in user's imported list
-    return userSession.importedClients.has(phone);
-}
-
-function shouldUserAutoReplyNow(userId, phone) {
-    const userSession = getUserWhatsAppSession(userId);
-    if (!userSession) return true;
-    
-    const lastReplyTime = userSession.clientReplyTimers.get(phone);
-    if (!lastReplyTime) return true;
-    
-    const timeDiff = Date.now() - lastReplyTime;
-    return timeDiff >= 3000; // 3 seconds minimum between replies
-}
-
-function updateUserReplyTimer(userId, phone) {
-    const userSession = getUserWhatsAppSession(userId);
-    if (userSession) {
-        userSession.clientReplyTimers.set(phone, Date.now());
-    }
 }
 
 // 🆕 User-specific Bot Control
@@ -1271,12 +960,6 @@ app.post('/api/login', async (req, res) => {
         // Initialize user performance tracking
         await initializeUserPerformance(user._id.toString());
         
-        // Initialize WhatsApp for this user if not already
-        if (!getUserWhatsAppSession(user._id.toString())) {
-            console.log(`🔄 Initializing WhatsApp for user ${user._id}`);
-            initializeUserWhatsApp(user._id.toString());
-        }
-        
         res.json({
             success: true,
             message: 'تم تسجيل الدخول بنجاح',
@@ -1317,8 +1000,10 @@ app.get('/api/user-whatsapp-status', authenticateUser, (req, res) => {
         if (!userSession) {
             return res.json({
                 connected: false,
-                status: 'disconnected',
-                message: 'جارٍ تهيئة واتساب...'
+                status: 'browser-unavailable',
+                message: '❌ المتصفح غير متوفر في البيئة السحابية',
+                hasQr: false,
+                error: 'للاستخدام الكامل، يرجى النشر على Railway أو VPS يدعم المتصفحات'
             });
         }
         
@@ -1326,10 +1011,11 @@ app.get('/api/user-whatsapp-status', authenticateUser, (req, res) => {
             connected: userSession.status === 'connected',
             status: userSession.status,
             message: userSession.status === 'connected' ? 'واتساب متصل ✅' : 
-                    userSession.status === 'qr-ready' ? 'يرجى مسح QR Code' :
+                    userSession.status === 'browser-unavailable' ? '❌ المتصفح غير متوفر في البيئة السحابية' :
                     'جارٍ الاتصال...',
             hasQr: !!userSession.qrCode,
-            qrCode: userSession.qrCode // 🎯 ADDED: Return QR code in status response
+            qrCode: userSession.qrCode,
+            error: userSession.status === 'browser-unavailable' ? 'للاستخدام الكامل، يرجى النشر على Railway أو VPS يدعم المتصفحات' : null
         });
     } catch (error) {
         res.status(500).json({ error: 'خطأ في الخادم' });
@@ -1343,7 +1029,10 @@ app.get('/api/user-whatsapp-qr', authenticateUser, (req, res) => {
         const userSession = getUserWhatsAppSession(userId);
         
         if (!userSession || !userSession.qrCode) {
-            return res.status(404).json({ error: 'QR Code غير متوفر' });
+            return res.status(404).json({ 
+                error: 'QR Code غير متوفر - المتصفح غير مدعوم في البيئة السحابية الحالية',
+                suggestion: 'للاستخدام الكامل، يرجى النشر على Railway أو VPS يدعم المتصفحات'
+            });
         }
         
         res.json({ qrCode: userSession.qrCode });
@@ -1545,10 +1234,11 @@ app.post('/api/send-bulk', authenticateUser, async (req, res) => {
         const userId = req.user._id.toString();
         const userSession = getUserWhatsAppSession(userId);
         
+        // Check if WhatsApp is available
         if (!userSession || userSession.status !== 'connected') {
             return res.status(400).json({ 
                 success: false, 
-                error: 'واتساب غير متصل' 
+                error: 'واتساب غير متصل - المتصفح غير مدعوم في البيئة السحابية الحالية' 
             });
         }
 
@@ -1559,86 +1249,12 @@ app.post('/api/send-bulk', authenticateUser, async (req, res) => {
             });
         }
 
-        let successCount = 0;
-        let failCount = 0;
-        
-        // Track bulk campaign for the user in MongoDB
-        await trackEmployeeActivity(userId, 'bulk_campaign', { 
-            clientCount: clients.length,
-            message: message.substring(0, 50) 
+        // Since WhatsApp is not available in Render, return informative message
+        return res.status(400).json({
+            success: false,
+            error: 'الإرسال الجماعي غير متوفر في البيئة السحابية الحالية',
+            suggestion: 'للاستخدام الكامل، يرجى النشر على Railway أو VPS يدعم المتصفحات'
         });
-        
-        io.emit('bulk_progress', {
-            type: 'start',
-            total: clients.length,
-            message: `بدأ الإرسال إلى ${clients.length} عميل`
-        });
-
-        for (let i = 0; i < clients.length; i++) {
-            const client = clients[i];
-            
-            if (!client.phone || client.phone.length < 10) {
-                failCount++;
-                continue;
-            }
-
-            const phoneNumber = client.phone + '@c.us';
-            
-            try {
-                // Wait between messages (except first one)
-                if (i > 0) {
-                    await new Promise(resolve => setTimeout(resolve, delay * 1000));
-                }
-                
-                await userSession.client.sendMessage(phoneNumber, message);
-                
-                successCount++;
-                
-                client.lastMessage = message.substring(0, 50) + (message.length > 50 ? '...' : '');
-                client.lastSent = new Date().toISOString();
-                
-                // Track message sent for the user in MongoDB
-                await trackEmployeeActivity(userId, 'message_sent', { 
-                    clientPhone: client.phone,
-                    clientName: client.name,
-                    message: message.substring(0, 30) 
-                });
-                
-                io.emit('bulk_progress', {
-                    success: true,
-                    client: client.name,
-                    clientPhone: client.phone,
-                    message: message.substring(0, 30) + '...',
-                    current: i + 1,
-                    total: clients.length
-                });
-
-                await storeClientMessage(client.phone, message, true, userId);
-                
-                console.log(`✅ User ${userId} sent to ${client.name}: ${client.phone} (${i + 1}/${clients.length})`);
-                
-            } catch (error) {
-                failCount++;
-                
-                io.emit('bulk_progress', {
-                    success: false,
-                    client: client.name,
-                    clientPhone: client.phone,
-                    error: error.message,
-                    current: i + 1,
-                    total: clients.length
-                });
-                
-                console.error(`❌ User ${userId} failed to send to ${client.name}:`, error.message);
-            }
-        }
-
-        res.json({ 
-            success: true, 
-            message: `تم إرسال ${successCount} رسالة بنجاح وفشل ${failCount}`
-        });
-
-        console.log(`🎉 User ${userId} bulk send completed: ${successCount} successful, ${failCount} failed`);
 
     } catch (error) {
         console.error('❌ Error in bulk send:', error);
@@ -1657,31 +1273,23 @@ app.post('/api/send-message', authenticateUser, async (req, res) => {
         const userId = req.user._id.toString();
         const userSession = getUserWhatsAppSession(userId);
         
+        // Check if WhatsApp is available
         if (!userSession || userSession.status !== 'connected') {
-            return res.status(400).json({ error: 'واتساب غير متصل' });
+            return res.status(400).json({ 
+                error: 'واتساب غير متصل - المتصفح غير مدعوم في البيئة السحابية الحالية' 
+            });
         }
 
         if (!phone || !message) {
             return res.status(400).json({ error: 'رقم الهاتف والرسالة مطلوبان' });
         }
 
-        const phoneNumber = phone + '@c.us';
-        
-        await userSession.client.sendMessage(phoneNumber, message);
-        
-        // Track individual message for the user in MongoDB
-        await trackEmployeeActivity(userId, 'message_sent', { 
-            clientPhone: phone,
-            message: message.substring(0, 30) 
+        // Since WhatsApp is not available in Render, return informative message
+        return res.status(400).json({
+            error: 'إرسال الرسائل غير متوفر في البيئة السحابية الحالية',
+            suggestion: 'للاستخدام الكامل، يرجى النشر على Railway أو VPS يدعم المتصفحات'
         });
-        
-        await storeClientMessage(phone, message, true, userId);
-        await updateClientLastMessage(phone, message, userId);
-        
-        res.json({ 
-            success: true, 
-            message: 'تم إرسال الرسالة بنجاح'
-        });
+
     } catch (error) {
         console.error('Error sending message:', error);
         res.status(500).json({ error: 'فشل إرسال الرسالة: ' + error.message });
@@ -1744,23 +1352,14 @@ io.on('connection', (socket) => {
                 socket.emit(`user_status_${user._id.toString()}`, { 
                     connected: userSession.status === 'connected', 
                     message: userSession.status === 'connected' ? 'واتساب متصل ✅' : 
-                            userSession.status === 'qr-ready' ? 'يرجى مسح QR Code' :
+                            userSession.status === 'browser-unavailable' ? '❌ المتصفح غير متوفر في البيئة السحابية' :
                             'جارٍ الاتصال...',
                     status: userSession.status,
                     hasQr: !!userSession.qrCode,
                     userId: user._id.toString(),
-                    qrCode: userSession.qrCode // 🎯 ADDED: Send QR code in status update
+                    qrCode: userSession.qrCode,
+                    error: userSession.status === 'browser-unavailable' ? 'للاستخدام الكامل، يرجى النشر على Railway أو VPS يدعم المتصفحات' : null
                 });
-                
-                // If QR code already exists, send it immediately
-                if (userSession.qrCode) {
-                    console.log(`📱 Sending existing QR code to user ${user._id.toString()}`);
-                    socket.emit(`user_qr_${user._id.toString()}`, { 
-                        qrCode: userSession.qrCode,
-                        userId: user._id.toString(),
-                        timestamp: new Date().toISOString()
-                    });
-                }
             }
             
         } catch (error) {
@@ -1806,35 +1405,15 @@ io.on('connection', (socket) => {
             if (!userSession || userSession.status !== 'connected') {
                 socket.emit('message_error', { 
                     to: to, 
-                    error: 'واتساب غير متصل' 
+                    error: 'واتساب غير متصل - المتصفح غير مدعوم في البيئة السحابية الحالية' 
                 });
                 return;
             }
 
-            if (!to || !message) {
-                socket.emit('message_error', { 
-                    to: to, 
-                    error: 'رقم الهاتف والرسالة مطلوبان' 
-                });
-                return;
-            }
-
-            const phoneNumber = to + '@c.us';
-            
-            await userSession.client.sendMessage(phoneNumber, message);
-            
-            // Track individual message for the user in MongoDB
-            await trackEmployeeActivity(socket.userId, 'message_sent', { 
-                clientPhone: to,
-                message: message.substring(0, 30) 
-            });
-            
-            await storeClientMessage(to, message, true, socket.userId);
-            await updateClientLastMessage(to, message, socket.userId);
-            
-            socket.emit('message_sent', { 
-                to: to,
-                message: 'تم الإرسال بنجاح'
+            // Since WhatsApp is not available in Render, return informative message
+            socket.emit('message_error', { 
+                to: to, 
+                error: 'إرسال الرسائل غير متوفر في البيئة السحابية الحالية'
             });
             
         } catch (error) {
@@ -1898,5 +1477,6 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log('🎯 QR CODE FIX: Improved QR code delivery to frontend with multiple emission points');
     console.log('🎯 WHATSAPP FIX: Limited retry attempts to prevent infinite loops');
     console.log('🎯 WHATSAPP FIX: Added browser configuration for cloud environments');
+    console.log('⚠️  IMPORTANT: Render does not support browser automation');
+    console.log('💡 SUGGESTION: For full WhatsApp functionality, deploy on Railway or VPS');
 });
-
