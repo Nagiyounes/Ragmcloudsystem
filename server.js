@@ -15,7 +15,6 @@ const XLSX = require('xlsx');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
-const puppeteer = require('puppeteer'); // ✅ Added for Render environment fix
 
 // Load environment variables
 require('dotenv').config();
@@ -504,32 +503,34 @@ function initializeUserWhatsApp(userId, retryCount = 0) {
         
         userWhatsAppSessions.set(userId, userSession);
 
-        // 🎯 FIXED: WhatsApp Client Configuration with Browser Fix
+        // 🎯 FIXED: WhatsApp Client Configuration with Browser Fix for Render
+        const puppeteerOptions = {
+            headless: 'new',
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--no-first-run',
+                '--no-zygote',
+                '--single-process',
+                '--disable-gpu',
+                '--disable-web-security',
+                '--disable-features=VizDisplayCompositor',
+                '--disable-ipc-flooding-protection',
+                '--disable-background-timer-throttling',
+                '--disable-backgrounding-occluded-windows',
+                '--disable-renderer-backgrounding'
+            ],
+            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser'
+        };
+
         userSession.client = new Client({
             authStrategy: new LocalAuth({ 
                 clientId: `ragmcloud-user-${userId}`,
                 dataPath: `./sessions/user-${userId}`
             }),
-            puppeteer: {
-                headless: true,
-                args: [
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--disable-dev-shm-usage',
-                    '--disable-accelerated-2d-canvas',
-                    '--no-first-run',
-                    '--no-zygote',
-                    '--disable-gpu',
-                    '--single-process',
-                    '--disable-web-security',
-                    '--disable-features=VizDisplayCompositor',
-                    '--disable-ipc-flooding-protection',
-                    '--disable-background-timer-throttling',
-                    '--disable-backgrounding-occluded-windows',
-                    '--disable-renderer-backgrounding'
-                ],
-                executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || puppeteer.executablePath() // Let puppeteer find it automatically
-            },
+            puppeteer: puppeteerOptions,
             webVersionCache: {
                 type: 'remote',
                 remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
