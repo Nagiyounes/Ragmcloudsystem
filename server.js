@@ -74,22 +74,11 @@ const upload = multer({ storage: storage });
 // =============================================
 
 // 🆕 User WhatsApp Sessions Management
-const userWhatsAppSessions = new Map(); // Key: userId, Value: session object
-
-// Session object structure:
-// {
-//   client: null, // The WhatsApp Web.js client instance
-//   qrCode: null, // Current QR code string
-//   status: 'disconnected', // 'disconnected', 'qr-ready', 'authenticating', 'connected'
-//   isConnected: false,
-//   isBotStopped: false,
-//   clientReplyTimers: new Map(), // User-specific reply timers
-//   importedClients: new Set(), // User-specific imported clients
-// }
+const userWhatsAppSessions = new Map();
 
 // NEW: User Management Variables
 let users = [];
-let currentSessions = new Map(); // Track logged in users
+let currentSessions = new Map();
 const JWT_SECRET = process.env.JWT_SECRET || 'ragmcloud-erp-secret-key-2024';
 
 // Employee Performance Tracking - NOW PER USER
@@ -117,7 +106,6 @@ const ragmcloudCompanyInfo = {
     address: "الرياض - حي المغرزات - طريق الملك عبد الله",
     workingHours: "من الأحد إلى الخميس - 8 صباحاً إلى 6 مساءً",
     
-    // CORRECT PACKAGES from website
     packages: {
         basic: {
             name: "الباقة الأساسية",
@@ -212,30 +200,7 @@ const ragmcloudCompanyInfo = {
             ],
             target: "الشركات الكبيرة والمؤسسات"
         }
-    },
-
-    // Services
-    services: {
-        accounting: "الحلول المحاسبية المتكاملة",
-        inventory: "إدارة المخزون والمستودعات",
-        hr: "إدارة الموارد البشرية والرواتب",
-        crm: "إدارة علاقات العملاء",
-        sales: "إدارة المبيعات والمشتريات", 
-        reports: "التقارير والتحليلات الذكية",
-        integration: "التكامل مع الأنظمة الحكومية"
-    },
-
-    // System Features
-    features: [
-        "سحابي 100% - لا حاجة لخوادم",
-        "واجهة عربية سهلة الاستخدام", 
-        "دعم فني على مدار الساعة",
-        "تكامل مع الزكاة والضريبة",
-        "تقارير ذكية وقابلة للتخصيص",
-        "نسخ احتياطي تلقائي",
-        "تطبيق جوال متكامل",
-        "أمان عالي وحماية بيانات"
-    ]
+    }
 };
 
 // AI System Prompt
@@ -264,18 +229,6 @@ const AI_SYSTEM_PROMPT = `أنت مساعد ذكي ومحترف تمثل شرك�
 3. **كن مقنعاً:** ركز على فوائد النظام للعميل
 4. **اسأل عن نشاط العميل:** لتعرف أي باقة تناسبه
 5. **شجع على التواصل:** وجه العميل للاتصال بفريق المبيعات
-
-🔹 **نماذج الردود المقنعة:**
-- "نظامنا بيوفر عليك 50% من وقتك اليومي في المتابعة المحاسبية"
-- "بتقدر تتابع كل فروعك من مكان واحد بدون ما تحتاج تروح لكل فرع"
-- "التقارير بتكون جاهزة بشكل فوري علشان تتابع أداء شركتك"
-- "جرب النظام مجاناً لمدة 7 أيام وتشوف الفرق بنفسك"
-
-🔹 **كيفية التعامل مع الأسئلة:**
-- اسأل عن طبيعة نشاط العميل أولاً
-- حدد التحديات التي يواجهها
-- اقترح الباقة المناسبة لاحتياجاته
-- وجهه للاتصال بفريق المبيعات للتسجيل
 
 تذكر: أنت بائع محترف هدفك مساعدة العملاء في اختيار النظام المناسب لشركاتهم.`;
 
@@ -311,7 +264,7 @@ function initializeUserWhatsApp(userId) {
         userSession.client = new Client({
             authStrategy: new LocalAuth({ 
                 clientId: `ragmcloud-user-${userId}`,
-                dataPath: `./sessions/user-${userId}` // Separate sessions per user
+                dataPath: `./sessions/user-${userId}`
             }),
             puppeteer: {
                 headless: true,
@@ -323,17 +276,12 @@ function initializeUserWhatsApp(userId) {
                     '--no-first-run',
                     '--no-zygote',
                     '--disable-gpu',
-                    '--single-process', // 🆕 Important for cloud
+                    '--single-process',
                     '--disable-web-security',
                     '--disable-features=VizDisplayCompositor',
-                    '--disable-ipc-flooding-protection',
-                    '--disable-background-timer-throttling',
-                    '--disable-backgrounding-occluded-windows',
-                    '--disable-renderer-backgrounding',
-                    '--disable-back-forward-cache',
-                    '--disable-component-extensions-with-background-pages'
+                    '--disable-ipc-flooding-protection'
                 ],
-                executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || null // 🆕 For cloud environments
+                executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || null
             },
             webVersionCache: {
                 type: 'remote',
@@ -341,25 +289,52 @@ function initializeUserWhatsApp(userId) {
             }
         });
 
-        // 🆕 FIXED QR Code Generation (User-specific)
+        // 🆕 FIXED QR Code Generation (User-specific) - COMPLETELY REWRITTEN
         userSession.client.on('qr', async (qr) => {
             console.log(`📱 QR CODE RECEIVED for user ${userId}`);
+            console.log(`QR String length: ${qr.length}`);
+            
+            // Always show in terminal
             qrcode.generate(qr, { small: true });
             
             try {
-                // Generate QR code for web interface
-                const url = await QRCode.toDataURL(qr);
+                console.log(`🔄 Generating QR code data URL for user ${userId}...`);
+                
+                // Generate QR code for web interface with better error handling
+                const url = await new Promise((resolve, reject) => {
+                    QRCode.toDataURL(qr, {
+                        width: 300,
+                        height: 300,
+                        margin: 2,
+                        color: {
+                            dark: '#000000',
+                            light: '#FFFFFF'
+                        }
+                    }, (err, url) => {
+                        if (err) {
+                            reject(err);
+                        } else {
+                            resolve(url);
+                        }
+                    });
+                });
+
+                console.log(`✅ QR code generated successfully for user ${userId}`);
+                console.log(`QR Data URL length: ${url.length}`);
+                
+                // Store QR code in session
                 userSession.qrCode = url;
                 userSession.status = 'qr-ready';
                 
-                console.log(`✅ QR code generated for user ${userId}`);
                 console.log(`📡 Emitting QR to user_qr_${userId}`);
+                console.log(`📡 Emitting status to user_status_${userId}`);
                 
                 // 🆕 FIXED: Emit to ALL connected clients for this user
                 io.emit(`user_qr_${userId}`, { 
                     qrCode: url,
                     userId: userId,
-                    timestamp: new Date().toISOString()
+                    timestamp: new Date().toISOString(),
+                    message: 'QR Code جاهز للمسح'
                 });
                 
                 // 🆕 FIXED: Also emit status update
@@ -368,8 +343,11 @@ function initializeUserWhatsApp(userId) {
                     message: 'يرجى مسح QR Code للاتصال',
                     status: 'qr-ready',
                     hasQr: true,
-                    userId: userId
+                    userId: userId,
+                    qrAvailable: true
                 });
+                
+                console.log(`✅ QR events emitted successfully for user ${userId}`);
                 
             } catch (err) {
                 console.error(`❌ QR code generation failed for user ${userId}:`, err);
@@ -381,7 +359,8 @@ function initializeUserWhatsApp(userId) {
                     status: 'error',
                     hasQr: false,
                     userId: userId,
-                    error: err.message
+                    error: err.message,
+                    qrAvailable: false
                 });
             }
         });
@@ -406,7 +385,6 @@ function initializeUserWhatsApp(userId) {
 
         // 🆕 Message Event with User-specific Processing
         userSession.client.on('message', async (message) => {
-            // Ignore status broadcasts and messages from us
             if (message.from === 'status@broadcast' || message.fromMe) {
                 return;
             }
@@ -415,11 +393,9 @@ function initializeUserWhatsApp(userId) {
             console.log('💬 Message content:', message.body);
             
             try {
-                // Store incoming message immediately
                 const clientPhone = message.from.replace('@c.us', '');
                 storeClientMessage(clientPhone, message.body, false);
                 
-                // Emit to frontend with user context
                 io.emit(`user_message_${userId}`, {
                     from: clientPhone,
                     message: message.body,
@@ -428,10 +404,7 @@ function initializeUserWhatsApp(userId) {
                     userId: userId
                 });
 
-                // Update client last message
                 updateClientLastMessage(clientPhone, message.body);
-
-                // Process incoming message with user-specific auto-reply
                 processUserIncomingMessage(userId, message.body, message.from).catch(error => {
                     console.error(`❌ Error in processUserIncomingMessage for user ${userId}:`, error);
                 });
@@ -470,23 +443,19 @@ function initializeUserWhatsApp(userId) {
                 userId: userId
             });
             
-            // Auto-reconnect after 10 seconds
             setTimeout(() => {
                 console.log(`🔄 Attempting reconnection for user ${userId}...`);
                 initializeUserWhatsApp(userId);
             }, 10000);
         });
 
-        // 🆕 Better Error Handling
         userSession.client.on('error', (error) => {
             console.error(`❌ WhatsApp error for user ${userId}:`, error);
         });
 
-        // Start initialization with better error handling
         userSession.client.initialize().catch(error => {
             console.log(`⚠️ WhatsApp init failed for user ${userId}:`, error.message);
             
-            // Retry after 15 seconds with exponential backoff
             setTimeout(() => {
                 console.log(`🔄 Retrying WhatsApp initialization for user ${userId}...`);
                 initializeUserWhatsApp(userId);
@@ -520,10 +489,7 @@ async function processUserIncomingMessage(userId, message, from) {
         
         const clientPhone = from.replace('@c.us', '');
         
-        // Store the incoming message
         storeClientMessage(clientPhone, message, false);
-        
-        // Auto-detect client interest
         autoDetectClientInterest(clientPhone, message);
         
         const userSession = getUserWhatsAppSession(userId);
@@ -532,19 +498,16 @@ async function processUserIncomingMessage(userId, message, from) {
             return;
         }
         
-        // Check if user's bot is stopped
         if (userSession.isBotStopped) {
             console.log(`🤖 Bot is stopped for user ${userId} - no auto-reply`);
             return;
         }
         
-        // Check if we should reply to this client
         if (!shouldReplyToClient(userId, clientPhone)) {
             console.log(`⏸️ Client not in user ${userId}'s imported list - skipping auto-reply`);
             return;
         }
         
-        // Check if we should auto-reply now (3-second delay)
         if (!shouldUserAutoReplyNow(userId, clientPhone)) {
             console.log(`⏰ User ${userId} waiting for 3-second delay before next reply`);
             return;
@@ -554,7 +517,6 @@ async function processUserIncomingMessage(userId, message, from) {
         
         let aiResponse;
         try {
-            // Generate AI response with timeout
             aiResponse = await Promise.race([
                 generateRagmcloudAIResponse(message, clientPhone),
                 new Promise((_, reject) => 
@@ -563,28 +525,19 @@ async function processUserIncomingMessage(userId, message, from) {
             ]);
         } catch (aiError) {
             console.error(`❌ AI response error for user ${userId}:`, aiError.message);
-            // Use enhanced fallback response instead of error message
             aiResponse = generateEnhancedRagmcloudResponse(message, clientPhone);
         }
         
-        // Send the response using user's WhatsApp client
         await userSession.client.sendMessage(from, aiResponse);
-        
-        // Store the sent message
         storeClientMessage(clientPhone, aiResponse, true);
-        
-        // Update user-specific reply timer
         updateUserReplyTimer(userId, clientPhone);
         
-        // Track AI reply for the specific user
         if (currentSessions.has(userId)) {
             trackEmployeeActivity(userId, 'ai_reply', { clientPhone: clientPhone });
         }
         
-        // Update client last message
         updateClientLastMessage(clientPhone, aiResponse);
         
-        // Emit to frontend for the specific user
         io.emit(`user_message_${userId}`, {
             from: clientPhone,
             message: aiResponse,
@@ -598,7 +551,6 @@ async function processUserIncomingMessage(userId, message, from) {
     } catch (error) {
         console.error(`❌ Error processing incoming message for user ${userId}:`, error);
         
-        // Send professional error message instead of technical one
         try {
             const userSession = getUserWhatsAppSession(userId);
             if (userSession && userSession.isConnected) {
@@ -615,8 +567,6 @@ async function processUserIncomingMessage(userId, message, from) {
 function shouldReplyToClient(userId, phone) {
     const userSession = getUserWhatsAppSession(userId);
     if (!userSession) return false;
-    
-    // Check if client is in user's imported list
     return userSession.importedClients.has(phone);
 }
 
@@ -628,7 +578,7 @@ function shouldUserAutoReplyNow(userId, phone) {
     if (!lastReplyTime) return true;
     
     const timeDiff = Date.now() - lastReplyTime;
-    return timeDiff >= 3000; // 3 seconds minimum between replies
+    return timeDiff >= 3000;
 }
 
 function updateUserReplyTimer(userId, phone) {
@@ -645,7 +595,6 @@ function toggleUserBot(userId, stop) {
         userSession.isBotStopped = stop;
         console.log(`🤖 User ${userId} bot ${stop ? 'stopped' : 'started'}`);
         
-        // Emit user-specific bot status
         io.emit(`user_bot_status_${userId}`, { stopped: stop, userId: userId });
         
         return true;
@@ -681,7 +630,6 @@ function initializeUsers() {
             users = JSON.parse(usersData);
             console.log(`✅ Loaded ${users.length} users from file`);
         } else {
-            // Create default admin user
             const defaultPassword = bcrypt.hashSync('admin123', 10);
             users = [
                 {
@@ -790,7 +738,6 @@ function initializeUserPerformance(userId) {
         };
     }
     
-    // Check if it's a new day
     const today = new Date().toISOString().split('T')[0];
     if (employeePerformance[userId].dailyStats.date !== today) {
         resetUserDailyStats(userId);
@@ -863,10 +810,7 @@ function trackEmployeeActivity(userId, type, data = {}) {
         ...data
     });
     
-    // Check if we should auto-send report to manager (after 30 messages)
     checkAutoSendReport(userId);
-    
-    // Save performance data
     saveUserPerformanceData(userId);
 }
 
@@ -896,7 +840,6 @@ function loadUserPerformanceData(userId) {
                 clientInteractions: new Map(data.clientInteractions || [])
             };
             
-            // Check if it's a new day
             const today = new Date().toISOString().split('T')[0];
             if (employeePerformance[userId].dailyStats.date !== today) {
                 resetUserDailyStats(userId);
@@ -917,16 +860,13 @@ function generateUserPerformanceReport(userId) {
     }
     
     const stats = employeePerformance[userId].dailyStats;
-    const totalInteractions = stats.messagesSent + stats.aiRepliesSent;
     const interestRate = stats.clientsContacted > 0 ? (stats.interestedClients / stats.clientsContacted * 100).toFixed(1) : 0;
     
-    // Calculate performance score (0-100)
     let performanceScore = 0;
-    performanceScore += Math.min(stats.messagesSent * 2, 30); // Max 30 points for messages
-    performanceScore += Math.min(stats.clientsContacted * 5, 30); // Max 30 points for clients
-    performanceScore += Math.min(stats.interestedClients * 10, 40); // Max 40 points for interested clients
+    performanceScore += Math.min(stats.messagesSent * 2, 30);
+    performanceScore += Math.min(stats.clientsContacted * 5, 30);
+    performanceScore += Math.min(stats.interestedClients * 10, 40);
     
-    // Performance evaluation
     let performanceLevel = 'ضعيف';
     let improvementSuggestions = [];
     
@@ -940,7 +880,6 @@ function generateUserPerformanceReport(userId) {
         performanceLevel = 'مقبول';
     }
     
-    // Generate improvement suggestions
     if (stats.messagesSent < 10) {
         improvementSuggestions.push('• زيادة عدد الرسائل المرسلة');
     }
@@ -1004,18 +943,15 @@ function checkAutoSendReport(userId) {
     
     const messageCount = employeePerformance[userId].dailyStats.messagesSent;
     
-    // Auto-send report after every 30 messages
     if (messageCount > 0 && messageCount % 30 === 0) {
         console.log(`📊 Auto-sending report for user ${userId} after ${messageCount} messages...`);
         
-        // Send notification to frontend
         io.emit('auto_report_notification', {
             userId: userId,
             messageCount: messageCount,
             message: `تم إرسال ${messageCount} رسالة. جاري إرسال التقرير التلقائي إلى المدير...`
         });
         
-        // Auto-send report
         setTimeout(() => {
             sendReportToManager(userId).catch(error => {
                 console.error('❌ Auto-report failed for user', userId, error);
@@ -1029,49 +965,18 @@ function shouldSendGreeting(phone) {
     try {
         const messages = getClientMessages(phone);
         if (messages.length === 0) {
-            return true; // First message in conversation
+            return true;
         }
         
-        // Find the last message timestamp
         const lastMessage = messages[messages.length - 1];
         const lastMessageTime = new Date(lastMessage.timestamp);
         const currentTime = new Date();
         const hoursDiff = (currentTime - lastMessageTime) / (1000 * 60 * 60);
         
-        // Return true if more than 5 hours passed
         return hoursDiff > 5;
     } catch (error) {
         console.error('Error checking greeting condition:', error);
-        return true; // Default to greeting if error
-    }
-}
-
-// FIXED: Check if we should auto-reply to client (REPLY TO ALL CLIENTS)
-function shouldReplyToClient(userId, phone) {
-    const userSession = getUserWhatsAppSession(userId);
-    if (!userSession) return false;
-    
-    // Check if client is in user's imported list
-    return userSession.importedClients.has(phone);
-}
-
-// Check if we should auto-reply to client (3-second delay)
-function shouldUserAutoReplyNow(userId, phone) {
-    const userSession = getUserWhatsAppSession(userId);
-    if (!userSession) return true;
-    
-    const lastReplyTime = userSession.clientReplyTimers.get(phone);
-    if (!lastReplyTime) return true;
-    
-    const timeDiff = Date.now() - lastReplyTime;
-    return timeDiff >= 3000; // 3 seconds minimum between replies
-}
-
-// Update client reply timer
-function updateUserReplyTimer(userId, phone) {
-    const userSession = getUserWhatsAppSession(userId);
-    if (userSession) {
-        userSession.clientReplyTimers.set(phone, Date.now());
+        return true;
     }
 }
 
@@ -1080,7 +985,6 @@ function autoDetectClientInterest(phone, message) {
     try {
         const msg = message.toLowerCase();
         
-        // Keywords for different interest levels
         const interestedKeywords = ['سعر', 'تكلفة', 'عرض', 'خصم', 'تجربة', 'جرب', 'مميزات', 'تفاصيل', 'متى', 'كيف', 'أرغب', 'أريد', 'شرح', 'شرح', 'تكلم', 'اتصل', 'تواصل'];
         const busyKeywords = ['لاحقاً', 'مشغول', 'بعدين', 'لاحقا', 'الوقت', 'منشغل', 'مشغول', 'شغل', 'دور', 'وظيفة'];
         const notInterestedKeywords = ['لا أريد', 'غير مهتم', 'لا أرغب', 'شكراً', 'لا شكر', 'ما ابغى', 'ما ابي', 'كفاية', 'توقف', 'لا تتصل', 'بلوك'];
@@ -1095,7 +999,6 @@ function autoDetectClientInterest(phone, message) {
             newStatus = 'not-interested';
         }
         
-        // Update client status in memory
         updateClientStatus(phone, newStatus);
         
         return newStatus;
@@ -1122,7 +1025,6 @@ function updateClientStatus(phone, status) {
             clients[clientIndex].statusUpdatedAt = new Date().toISOString();
             fs.writeFileSync(clientsFile, JSON.stringify(clients, null, 2));
             
-            // Emit status update to frontend
             io.emit('client_status_updated', {
                 phone: phone,
                 status: status,
@@ -1140,11 +1042,8 @@ function updateClientStatus(phone, status) {
 function getConversationHistoryForAI(phone, maxMessages = 10) {
     try {
         const messages = getClientMessages(phone);
-        
-        // Get recent messages (last 10 messages for context)
         const recentMessages = messages.slice(-maxMessages);
         
-        // Format conversation history for AI
         const conversationHistory = recentMessages.map(msg => {
             const role = msg.fromMe ? 'assistant' : 'user';
             return {
@@ -1173,7 +1072,6 @@ async function callDeepSeekAI(userMessage, clientPhone) {
         const shouldGreet = shouldSendGreeting(clientPhone);
         const conversationHistory = getConversationHistoryForAI(clientPhone);
         
-        // Build messages array
         const messages = [
             {
                 role: "system",
@@ -1181,12 +1079,10 @@ async function callDeepSeekAI(userMessage, clientPhone) {
             }
         ];
 
-        // Add conversation history
         if (conversationHistory.length > 0) {
             messages.push(...conversationHistory);
         }
 
-        // Add current user message with context
         messages.push({
             role: "user", 
             content: `العميل يقول: "${userMessage}"
@@ -1236,7 +1132,6 @@ function generateEnhancedRagmcloudResponse(userMessage, clientPhone) {
     
     console.log('🤖 Using enhanced Ragmcloud response for:', msg);
     
-    // Check for personal/irrelevant questions - REJECT THEM
     const irrelevantQuestions = [
         'من أنت', 'ما اسمك', 'who are you', 'what is your name',
         'مدير', 'المدير', 'manager', 'owner', 'صاحب',
@@ -1249,7 +1144,6 @@ function generateEnhancedRagmcloudResponse(userMessage, clientPhone) {
         return "أعتذر، هذا السؤال خارج نطاق تخصصي في أنظمة ERP. يمكنني مساعدتك في اختيار النظام المناسب لشركتك أو الإجابة على استفساراتك حول باقاتنا وخدماتنا.";
     }
     
-    // Greeting only at start or after 5 hours
     if (shouldGreet && (msg.includes('السلام') || msg.includes('سلام') || msg.includes('اهلا') || 
         msg.includes('مرحبا') || msg.includes('اهلين') || msg.includes('مساء') || 
         msg.includes('صباح') || msg.includes('hello') || msg.includes('hi'))) {
@@ -1268,7 +1162,6 @@ function generateEnhancedRagmcloudResponse(userMessage, clientPhone) {
 كيف يمكنني مساعدتك اليوم؟`;
     }
     
-    // Price/Packages questions
     if (msg.includes('سعر') || msg.includes('تكلفة') || msg.includes('باقة') || 
         msg.includes('package') || msg.includes('price') || msg.includes('كم') || 
         msg.includes('كام') || msg.includes('تعرفة')) {
@@ -1297,7 +1190,6 @@ function generateEnhancedRagmcloudResponse(userMessage, clientPhone) {
 📞 فريق المبيعات جاهز لمساعدتك: +966555111222`;
     }
     
-    // ERP System questions
     if (msg.includes('نظام') || msg.includes('erp') || msg.includes('برنامج') || 
         msg.includes('سوفت وير') || msg.includes('system')) {
         
@@ -1328,7 +1220,6 @@ function generateEnhancedRagmcloudResponse(userMessage, clientPhone) {
 📞 جرب النظام مجاناً: +966555111222`;
     }
     
-    // Accounting questions
     if (msg.includes('محاسبة') || msg.includes('محاسب') || msg.includes('حسابات') || 
         msg.includes('مالي') || msg.includes('accounting')) {
         
@@ -1356,7 +1247,6 @@ function generateEnhancedRagmcloudResponse(userMessage, clientPhone) {
 📞 استشارة محاسبية مجانية: +966555111222`;
     }
     
-    // Inventory questions  
     if (msg.includes('مخزون') || msg.includes('مستودع') || msg.includes('بضاعة') || 
         msg.includes('inventory') || msg.includes('stock')) {
         
@@ -1383,7 +1273,6 @@ function generateEnhancedRagmcloudResponse(userMessage, clientPhone) {
 📞 للاستشارة: +966555111222`;
     }
     
-    // Trial/Demo requests
     if (msg.includes('تجريب') || msg.includes('تجربة') || msg.includes('demo') || 
         msg.includes('جرب') || msg.includes('نسخة')) {
         
@@ -1408,7 +1297,6 @@ function generateEnhancedRagmcloudResponse(userMessage, clientPhone) {
 جرب وشوف الفرق في إدارة شركتك!`;
     }
     
-    // Contact requests
     if (msg.includes('اتصل') || msg.includes('تواصل') || msg.includes('رقم') || 
         msg.includes('هاتف') || msg.includes('contact')) {
         
@@ -1432,7 +1320,6 @@ function generateEnhancedRagmcloudResponse(userMessage, clientPhone) {
 فريق المبيعات جاهز لاستقبال استفساراتك وتقديم الاستشارة المجانية!`;
     }
     
-    // Default response - CONVINCING SALES APPROACH
     return `أهلاً وسهلاً بك! 👋
 
 أنت تتحدث مع مساعد رقم كلاود المتخصص في أنظمة ERP السحابية.
@@ -1460,7 +1347,6 @@ function generateEnhancedRagmcloudResponse(userMessage, clientPhone) {
 async function generateRagmcloudAIResponse(userMessage, clientPhone) {
     console.log('🔄 Processing message for Ragmcloud with memory:', userMessage);
     
-    // ALWAYS try DeepSeek first if available
     if (deepseekAvailable) {
         try {
             console.log('🎯 Using DeepSeek with conversation memory...');
@@ -1478,7 +1364,6 @@ async function generateRagmcloudAIResponse(userMessage, clientPhone) {
         }
     }
     
-    // If DeepSeek not available, use enhanced fallback
     console.log('🤖 DeepSeek not available, using enhanced fallback');
     return generateEnhancedRagmcloudResponse(userMessage, clientPhone);
 }
@@ -1495,7 +1380,6 @@ function storeClientMessage(phone, message, isFromMe) {
         let clientMessages = [];
         const messageFile = `./memory/messages_${phone}.json`;
         
-        // Ensure memory directory exists
         if (!fs.existsSync('./memory')) {
             fs.mkdirSync('./memory', { recursive: true });
         }
@@ -1512,7 +1396,6 @@ function storeClientMessage(phone, message, isFromMe) {
 
         clientMessages.push(messageData);
         
-        // Keep only last 50 messages to prevent file bloat
         if (clientMessages.length > 50) {
             clientMessages = clientMessages.slice(-50);
         }
@@ -1569,7 +1452,6 @@ function processExcelFile(filePath) {
         const jsonData = XLSX.utils.sheet_to_json(worksheet);
 
         const clients = jsonData.map((row, index) => {
-            // Try multiple possible column names for name and phone
             const name = row['Name'] || row['name'] || row['الاسم'] || row['اسم'] || 
                          row['اسم العميل'] || row['Client Name'] || row['client_name'] || 
                          `عميل ${index + 1}`;
@@ -1592,7 +1474,6 @@ function processExcelFile(filePath) {
                 status: 'no-reply'
             };
         }).filter(client => {
-            // Filter only valid phone numbers
             return client.phone && client.phone.length >= 10;
         });
 
@@ -1635,7 +1516,6 @@ async function sendReportToManager(userId = null) {
         if (userId) {
             report = generateUserPerformanceReport(userId);
         } else {
-            // Generate combined report for all users
             report = "📊 **تقرير أداء الفريق الكامل**\n\n";
             currentSessions.forEach((session, uid) => {
                 if (session.isActive) {
@@ -1648,7 +1528,6 @@ async function sendReportToManager(userId = null) {
         
         console.log('📤 Sending report to manager:', managerPhone);
         
-        // Find any connected user to send the report
         let senderSession = null;
         for (const [uid, session] of userWhatsAppSessions) {
             if (session.status === 'connected') {
@@ -1692,7 +1571,6 @@ function exportReportToFile(userId = null) {
         
         const filePath = path.join(__dirname, 'reports', fileName);
         
-        // Ensure reports directory exists
         if (!fs.existsSync(path.join(__dirname, 'reports'))) {
             fs.mkdirSync(path.join(__dirname, 'reports'), { recursive: true });
         }
@@ -1755,18 +1633,14 @@ app.post('/api/login', (req, res) => {
             return res.status(401).json({ error: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
         }
         
-        // Update last login
         user.lastLogin = new Date().toISOString();
         saveUsers();
         
-        // Initialize user performance tracking
         initializeUserPerformance(user.id);
         loadUserPerformanceData(user.id);
         
-        // 🆕 Initialize user WhatsApp session
         initializeUserWhatsApp(user.id);
         
-        // Create session
         const token = generateToken(user);
         currentSessions.set(user.id, {
             user: user,
@@ -1797,7 +1671,6 @@ app.post('/api/logout', authenticateUser, (req, res) => {
     try {
         const userId = req.user.id;
         
-        // 🆕 Clean up user WhatsApp session
         const userSession = getUserWhatsAppSession(userId);
         if (userSession && userSession.client) {
             userSession.client.destroy();
@@ -1866,6 +1739,33 @@ app.get('/api/user-whatsapp-qr', authenticateUser, (req, res) => {
     }
 });
 
+// 🆕 Debug QR Code Route
+app.get('/api/debug-qr', authenticateUser, (req, res) => {
+    try {
+        const userId = req.user.id;
+        const userSession = getUserWhatsAppSession(userId);
+        
+        const debugInfo = {
+            userId: userId,
+            hasSession: !!userSession,
+            sessionStatus: userSession ? userSession.status : 'no-session',
+            hasQR: userSession ? !!userSession.qrCode : false,
+            qrLength: userSession && userSession.qrCode ? userSession.qrCode.length : 0,
+            timestamp: new Date().toISOString()
+        };
+        
+        console.log('🔍 QR Debug Info:', debugInfo);
+        
+        res.json({
+            success: true,
+            debug: debugInfo,
+            message: 'QR debug information'
+        });
+    } catch (error) {
+        res.status(500).json({ error: 'خطأ في الخادم' });
+    }
+});
+
 // 🆕 User-specific Bot Control Route
 app.post('/api/user-toggle-bot', authenticateUser, (req, res) => {
     try {
@@ -1926,7 +1826,6 @@ app.post('/api/users', authenticateUser, authorizeAdmin, (req, res) => {
             return res.status(400).json({ error: 'جميع الحقول مطلوبة' });
         }
         
-        // Check if username already exists
         if (users.find(u => u.username === username)) {
             return res.status(400).json({ error: 'اسم المستخدم موجود مسبقاً' });
         }
@@ -1945,7 +1844,6 @@ app.post('/api/users', authenticateUser, authorizeAdmin, (req, res) => {
         users.push(newUser);
         saveUsers();
         
-        // Initialize performance tracking for new user
         initializeUserPerformance(newUser.id);
         
         res.json({
@@ -1976,12 +1874,10 @@ app.put('/api/users/:id', authenticateUser, authorizeAdmin, (req, res) => {
             return res.status(404).json({ error: 'المستخدم غير موجود' });
         }
         
-        // Check if username already exists (excluding current user)
         if (username && users.find(u => u.username === username && u.id !== userId)) {
             return res.status(400).json({ error: 'اسم المستخدم موجود مسبقاً' });
         }
         
-        // Update user
         if (name) users[userIndex].name = name;
         if (username) users[userIndex].username = username;
         if (password) users[userIndex].password = bcrypt.hashSync(password, 10);
@@ -2026,7 +1922,6 @@ app.post('/api/upload-excel', authenticateUser, upload.single('excelFile'), (req
             });
         }
 
-        // 🆕 Add clients to user's imported list
         const userId = req.user.id;
         const userSession = getUserWhatsAppSession(userId);
         if (userSession) {
@@ -2035,11 +1930,9 @@ app.post('/api/upload-excel', authenticateUser, upload.single('excelFile'), (req
             });
         }
 
-        // Save clients to file
         fs.writeFileSync('./memory/clients.json', JSON.stringify(clients, null, 2));
-        fs.unlinkSync(req.file.path); // Clean up uploaded file
+        fs.unlinkSync(req.file.path);
 
-        // Emit to all connected clients
         io.emit('clients_updated', clients);
 
         res.json({ 
@@ -2052,7 +1945,6 @@ app.post('/api/upload-excel', authenticateUser, upload.single('excelFile'), (req
     } catch (error) {
         console.error('❌ Error processing Excel:', error);
         
-        // Clean up uploaded file
         if (req.file && fs.existsSync(req.file.path)) {
             fs.unlinkSync(req.file.path);
         }
@@ -2133,7 +2025,6 @@ app.get('/api/export-report', authenticateUser, (req, res) => {
         console.log('🔄 Exporting report...');
         const result = exportReportToFile(req.user.id);
         
-        // Send the file for download
         res.download(result.filePath, result.fileName, (err) => {
             if (err) {
                 console.error('Error downloading file:', err);
@@ -2163,7 +2054,6 @@ app.post('/api/send-bulk', authenticateUser, async (req, res) => {
         const userId = req.user.id;
         const userSession = getUserWhatsAppSession(userId);
         
-        // 🛠️ FIXED: Check status instead of isConnected
         if (!userSession || userSession.status !== 'connected') {
             return res.status(400).json({ 
                 success: false, 
@@ -2181,7 +2071,6 @@ app.post('/api/send-bulk', authenticateUser, async (req, res) => {
         let successCount = 0;
         let failCount = 0;
         
-        // Track bulk campaign for the user
         trackEmployeeActivity(userId, 'bulk_campaign', { 
             clientCount: clients.length,
             message: message.substring(0, 50) 
@@ -2205,7 +2094,6 @@ app.post('/api/send-bulk', authenticateUser, async (req, res) => {
             const phoneNumber = formattedPhone + '@c.us';
             
             try {
-                // Wait between messages (except first one)
                 if (i > 0) {
                     await new Promise(resolve => setTimeout(resolve, delay * 1000));
                 }
@@ -2217,7 +2105,6 @@ app.post('/api/send-bulk', authenticateUser, async (req, res) => {
                 client.lastMessage = message.substring(0, 50) + (message.length > 50 ? '...' : '');
                 client.lastSent = new Date().toISOString();
                 
-                // Track message sent for the user
                 trackEmployeeActivity(userId, 'message_sent', { 
                     clientPhone: formattedPhone,
                     clientName: client.name,
@@ -2277,7 +2164,6 @@ app.post('/api/send-message', authenticateUser, async (req, res) => {
         const userId = req.user.id;
         const userSession = getUserWhatsAppSession(userId);
         
-        // 🛠️ FIXED: Check status instead of isConnected
         if (!userSession || userSession.status !== 'connected') {
             return res.status(400).json({ error: 'واتساب غير متصل' });
         }
@@ -2291,7 +2177,6 @@ app.post('/api/send-message', authenticateUser, async (req, res) => {
         
         await userSession.client.sendMessage(phoneNumber, message);
         
-        // Track individual message for the user
         trackEmployeeActivity(userId, 'message_sent', { 
             clientPhone: formattedPhone,
             message: message.substring(0, 30) 
@@ -2314,7 +2199,6 @@ app.post('/api/send-message', authenticateUser, async (req, res) => {
 io.on('connection', (socket) => {
     console.log('✅ Client connected:', socket.id);
     
-    // Handle user authentication for socket
     socket.on('authenticate', (token) => {
         try {
             const decoded = verifyToken(token);
@@ -2332,13 +2216,11 @@ io.on('connection', (socket) => {
             socket.userId = user.id;
             console.log(`🔐 Socket authenticated for user ${user.name} (${user.id})`);
             
-            // 🆕 CRITICAL: Send authentication success
             socket.emit('authenticated', { 
                 userId: user.id, 
                 username: user.username 
             });
             
-            // Send user-specific initial data
             const userSession = getUserWhatsAppSession(user.id);
             if (userSession) {
                 socket.emit(`user_status_${user.id}`, { 
@@ -2351,7 +2233,6 @@ io.on('connection', (socket) => {
                     userId: user.id
                 });
                 
-                // 🆕 CRITICAL: If QR code already exists, send it immediately
                 if (userSession.qrCode) {
                     console.log(`📱 Sending existing QR code to user ${user.id}`);
                     socket.emit(`user_qr_${user.id}`, { 
@@ -2368,7 +2249,6 @@ io.on('connection', (socket) => {
         }
     });
     
-    // Handle user-specific bot toggle
     socket.on('user_toggle_bot', (data) => {
         if (!socket.userId) {
             socket.emit('error', { error: 'غير مصرح' });
@@ -2384,7 +2264,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Handle client status update
     socket.on('update_client_status', (data) => {
         updateClientStatus(data.phone, data.status);
         socket.emit('client_status_updated', { success: true });
@@ -2403,7 +2282,6 @@ io.on('connection', (socket) => {
             const { to, message } = data;
             
             const userSession = getUserWhatsAppSession(socket.userId);
-            // 🛠️ FIXED: Check status instead of isConnected
             if (!userSession || userSession.status !== 'connected') {
                 socket.emit('message_error', { 
                     to: to, 
@@ -2425,7 +2303,6 @@ io.on('connection', (socket) => {
             
             await userSession.client.sendMessage(phoneNumber, message);
             
-            // Track individual message for the user
             trackEmployeeActivity(socket.userId, 'message_sent', { 
                 clientPhone: formattedPhone,
                 message: message.substring(0, 30) 
@@ -2461,7 +2338,6 @@ io.on('connection', (socket) => {
         console.log('❌ Client disconnected:', socket.id, 'Reason:', reason);
     });
 
-    // Handle connection errors
     socket.on('connect_error', (error) => {
         console.error('❌ Socket connection error:', error);
     });
